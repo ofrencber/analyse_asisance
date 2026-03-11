@@ -1661,8 +1661,10 @@ def compare_methods(
         return {}
     score_frames: List[pd.DataFrame] = []
     rank_frames: List[pd.DataFrame] = []
+    method_tables: Dict[str, pd.DataFrame] = {}
+    method_details: Dict[str, Dict[str, Any]] = {}
     for method in methods:
-        res, _ = rank_alternatives(
+        res, det = rank_alternatives(
             data,
             criteria,
             criteria_types,
@@ -1679,6 +1681,8 @@ def compare_methods(
             promethee_s=promethee_s,
             fuzzy_spread=fuzzy_spread,
         )
+        method_tables[str(method)] = res.copy()
+        method_details[str(method)] = det
         s = res[["Alternatif", "Skor"]].rename(columns={"Skor": method})
         r = res[["Alternatif", "Sıra"]].rename(columns={"Sıra": method})
         score_frames.append(s)
@@ -1704,6 +1708,8 @@ def compare_methods(
         "rank_table": rank_table,
         "spearman_matrix": corr.reset_index().rename(columns={"index": "Yöntem"}),
         "top_alternatives": pd.DataFrame(best_counts),
+        "method_tables": method_tables,
+        "method_details": method_details,
     }
 
 
@@ -2187,6 +2193,16 @@ def generate_data_diagnostics(
     cv_vals = {str(row["Kriter"]): float(row["cv"]) for _, row in stats.iterrows()}
     mean_cv = float(np.nanmean(list(cv_vals.values()))) if cv_vals else 0.0
     max_cv = float(np.nanmax(list(cv_vals.values()))) if cv_vals else 0.0
+    cv_std = float(np.nanstd(list(cv_vals.values()))) if cv_vals else 0.0
+
+    skew_vals = df.skew(numeric_only=True).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    mean_abs_skew = float(skew_vals.abs().mean()) if not skew_vals.empty else 0.0
+
+    q1 = df.quantile(0.25)
+    q3 = df.quantile(0.75)
+    iqr = (q3 - q1).replace(0, np.nan)
+    outlier_mask = ((df.lt(q1 - 1.5 * iqr)) | (df.gt(q3 + 1.5 * iqr))).fillna(False)
+    outlier_ratio = float(outlier_mask.to_numpy(dtype=float).mean()) if outlier_mask.size else 0.0
 
     corr = df.corr(numeric_only=True)
     high_corr_pairs: List[Tuple[str, str, float]] = []
@@ -2198,6 +2214,9 @@ def generate_data_diagnostics(
     max_corr = max((abs(v) for _, _, v in high_corr_pairs), default=0.0)
 
     constant = [c for c in criteria if df[c].nunique() <= 1]
+    benefit = [c for c in criteria if criteria_types.get(c, "max") == "max"]
+    cost = [c for c in criteria if criteria_types.get(c, "max") == "min"]
+    cost_ratio = len(cost) / max(n_crit, 1)
 
     recommendations: List[Dict[str, str]] = []
     suggested_weight: Optional[str] = None
@@ -2258,42 +2277,62 @@ def generate_data_diagnostics(
     if n_alt <= 6:
         suggested_ranking_methods = ["PROMETHEE", "VIKOR", "TOPSIS"]
         ranking_reason_tr = (
-            f"Karar ağacı çıktısı: Alternatif sayısı {n_alt} ile küçük. Küçük örneklemde PROMETHEE ikili karşılaştırmaları açık okutur, "
-            "VIKOR uzlaşı çözümü sunar, TOPSIS ise mesafe temelli dengeyi referans olarak verir."
+            f"Karar ağacı çıktısı: Alternatif sayısı {n_alt} ile küçük. Küçük örneklemde PROMETHEE ikili üstünlükleri daha okunur verir, "
+            "VIKOR çatışan kriterlerde uzlaşı çözümü üretir, TOPSIS ise ideal çözüme yakınlık üzerinden dengeli bir referans sunar."
         )
         ranking_reason_en = (
-            f"Decision-tree output: the number of alternatives is small ({n_alt}). In small samples, PROMETHEE provides clear pairwise reading, "
-            "VIKOR offers a compromise solution, and TOPSIS serves as a distance-based benchmark."
+            f"Decision-tree output: the number of alternatives is small ({n_alt}). In small samples, PROMETHEE makes pairwise dominance easier to read, "
+            "VIKOR offers a compromise solution under conflicting criteria, and TOPSIS provides a balanced distance-based benchmark."
+        )
+    elif max_corr >= 0.78 and cost_ratio >= 0.30:
+        suggested_ranking_methods = ["VIKOR", "PROMETHEE", "TOPSIS"]
+        ranking_reason_tr = (
+            f"Karar ağacı çıktısı: Maksimum korelasyon {max_corr:.2f} ve maliyet kriteri oranı %{cost_ratio*100:.0f}. "
+            "Kriter çatışmasının belirgin olduğu bu yapıda VIKOR uzlaşıyı, PROMETHEE ikili üstünlükleri, TOPSIS ise genel dengeyi daha gerçekçi okur."
+        )
+        ranking_reason_en = (
+            f"Decision-tree output: maximum correlation is {max_corr:.2f} and the cost-criterion ratio is {cost_ratio*100:.0f}%. "
+            "Under this level of criterion conflict, VIKOR reads compromise well, PROMETHEE clarifies pairwise dominance, and TOPSIS preserves overall balance."
+        )
+    elif mean_abs_skew >= 1.00 or outlier_ratio >= 0.08:
+        suggested_ranking_methods = ["EDAS", "CODAS", "TOPSIS"]
+        ranking_reason_tr = (
+            f"Karar ağacı çıktısı: Ortalama mutlak çarpıklık {mean_abs_skew:.2f} ve aykırı gözlem oranı %{outlier_ratio*100:.1f}. "
+            "Dağılımlar asimetrik olduğu için EDAS ortalamaya göre sapmayı, CODAS kötü senaryodan ayrışmayı, TOPSIS ise genel mesafe dengesini iyi yakalar."
+        )
+        ranking_reason_en = (
+            f"Decision-tree output: mean absolute skewness is {mean_abs_skew:.2f} and the outlier ratio is {outlier_ratio*100:.1f}%. "
+            "Because the distributions are asymmetric, EDAS captures deviation from the average well, CODAS separates alternatives from the adverse zone, and TOPSIS preserves overall distance balance."
         )
     elif n_alt >= 15 and mean_cv >= 0.22:
         suggested_ranking_methods = ["TOPSIS", "EDAS", "CODAS"]
         ranking_reason_tr = (
-            f"Karar ağacı çıktısı: {n_alt} alternatif ve ortalama CV {mean_cv:.2f}. Geniş alternatif setinde mesafe/sapma tabanlı yöntemler "
-            "ölçeklenebilir ve kararlı çalışır; bu nedenle TOPSIS, EDAS ve CODAS öne çıkar."
+            f"Karar ağacı çıktısı: {n_alt} alternatif, ortalama CV {mean_cv:.2f} ve CV yayılımı {cv_std:.2f}. "
+            "Alternatif sayısı yükseldiğinde TOPSIS ölçeklenebilir bir ana referans verir; EDAS ve CODAS ise sapma ve uzaklık gücüyle geniş veri yapısında güçlü çalışır."
         )
         ranking_reason_en = (
-            f"Decision-tree output: there are {n_alt} alternatives and mean CV is {mean_cv:.2f}. With a wider set of alternatives, distance/deviation-based "
-            "methods scale better and remain stable; therefore TOPSIS, EDAS, and CODAS stand out."
+            f"Decision-tree output: there are {n_alt} alternatives, mean CV is {mean_cv:.2f}, and CV spread is {cv_std:.2f}. "
+            "As the number of alternatives grows, TOPSIS remains a scalable benchmark, while EDAS and CODAS stay strong through deviation- and distance-based discrimination."
         )
-    elif max_corr >= 0.80 or (len(criteria) >= 6 and len([c for c in criteria if criteria_types.get(c, "max") == "min"]) >= 2):
-        suggested_ranking_methods = ["VIKOR", "PROMETHEE", "TOPSIS"]
+    elif mean_cv <= 0.14 and max_corr <= 0.60:
+        suggested_ranking_methods = ["VIKOR", "MARCOS", "PROMETHEE"]
         ranking_reason_tr = (
-            f"Karar ağacı çıktısı: Kriter çatışması belirgin görünüyor (maks. ρ = {max_corr:.2f}). "
-            "Uzlaşı ve ikili üstünlük okumaları bu yapıda daha gerçekçi olduğu için VIKOR ve PROMETHEE öne alındı; TOPSIS dengeleyici üçüncü seçenektir."
+            f"Karar ağacı çıktısı: Ortalama CV {mean_cv:.2f} ile düşük ve maksimum korelasyon {max_corr:.2f} ile sınırlı. "
+            "Ayrışmanın zayıf olduğu bu yapıda VIKOR uzlaşıyı, MARCOS ideal-karşıt ideal dengesini, PROMETHEE ise yakın alternatifler arasındaki ince farkları daha iyi görünür kılar."
         )
         ranking_reason_en = (
-            f"Decision-tree output: criterion conflict appears material (max ρ = {max_corr:.2f}). "
-            "Compromise and pairwise-dominance readings are more realistic in this structure, so VIKOR and PROMETHEE are prioritized, with TOPSIS as the third stabilizing option."
+            f"Decision-tree output: mean CV is low at {mean_cv:.2f}, while maximum correlation remains limited at {max_corr:.2f}. "
+            "When separation is weak, VIKOR reads compromise well, MARCOS leverages ideal versus anti-ideal balance, and PROMETHEE makes fine pairwise differences more visible."
         )
     else:
-        suggested_ranking_methods = ["TOPSIS", "VIKOR", "MARCOS"]
+        suggested_ranking_methods = ["TOPSIS", "VIKOR", "PROMETHEE"]
         ranking_reason_tr = (
-            f"Karar ağacı çıktısı: Veri yapısı orta yoğunlukta ve dengeli. TOPSIS genel referans çözümü sağlar, "
-            "VIKOR uzlaşıyı test eder, MARCOS ise ideal ve anti-ideal dengeyi ikinci bir doğrulama kanalı olarak sunar."
+            f"Karar ağacı çıktısı: Veri yapısı dengeli; ortalama CV {mean_cv:.2f}, maksimum korelasyon {max_corr:.2f}, çarpıklık {mean_abs_skew:.2f}. "
+            "Bu profilde TOPSIS genel referans çözümü verir, VIKOR uzlaşıyı test eder, PROMETHEE ise sonucu ikili üstünlük açısından doğrular."
         )
         ranking_reason_en = (
-            "Decision-tree output: the data profile is moderately complex and balanced. TOPSIS provides a general benchmark, "
-            "VIKOR tests compromise behavior, and MARCOS offers a second validation channel through ideal/anti-ideal balance."
+            f"Decision-tree output: the data profile is balanced; mean CV is {mean_cv:.2f}, maximum correlation is {max_corr:.2f}, and skewness is {mean_abs_skew:.2f}. "
+            "In this profile, TOPSIS provides the main benchmark, VIKOR tests compromise behavior, and PROMETHEE validates the result through pairwise dominance."
         )
 
     suggested_ranking_methods = suggested_ranking_methods[:3]
@@ -2316,8 +2355,6 @@ def generate_data_diagnostics(
         "action_en": f"Recommended ranking methods: {', '.join(suggested_ranking_methods)}.",
     })
 
-    benefit = [c for c in criteria if criteria_types.get(c, "max") == "max"]
-    cost = [c for c in criteria if criteria_types.get(c, "max") == "min"]
     if not cost:
         recommendations.append({
             "level": "info",
@@ -2333,7 +2370,10 @@ def generate_data_diagnostics(
         "n_crit": n_crit,
         "mean_cv": mean_cv,
         "max_cv": max_cv,
+        "cv_std": cv_std,
         "max_corr": max_corr,
+        "mean_abs_skew": mean_abs_skew,
+        "outlier_ratio": outlier_ratio,
         "high_corr_pairs": high_corr_pairs,
         "constant_criteria": constant,
         "cv_per_criterion": cv_vals,

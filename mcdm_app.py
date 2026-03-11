@@ -39,17 +39,20 @@ st.markdown(
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
 
         :root {
-            --bg-main: #FBFAF8;
-            --bg-sidebar: #EDE8DF;
-            --card-bg: #FDFAF5;
+            --bg-main: #F0F5FA;
+            --bg-sidebar: #E5EDF5;
+            --card-bg: #FFFFFF;
             --text-main: #1C1C1E;
-            --text-muted: #5C5650;
-            --text-light: #8C8478;
-            --border: #D8CFC4;
-            --border-strong: #C5BAB0;
-            --accent: #5A8DC8;
-            --accent-hover: #4A7AB5;
-            --accent-soft: #EAF2FB;
+            --text-muted: #556070;
+            --text-light: #7A8A9A;
+            --border: #C8D8E8;
+            --border-strong: #B0C8DC;
+            --accent: #1F4A73;
+            --accent-hover: #173754;
+            --accent-soft: #EAF0F5;
+            --button-soft: #87CEEB;
+            --button-soft-hover: #5BB8E0;
+            --button-soft-text: #000000;
             --header-bg-from: #1C3252;
             --header-bg-to: #263D5A;
             --header-text: #EEF2FA;
@@ -62,13 +65,16 @@ st.markdown(
         }
 
         .stApp {
-            background-color: var(--bg-main) !important;
+            background:
+                radial-gradient(circle at 0% 0%, rgba(135, 206, 235, 0.12) 0%, rgba(135, 206, 235, 0.00) 28%),
+                radial-gradient(circle at 100% 0%, rgba(31, 74, 115, 0.08) 0%, rgba(31, 74, 115, 0.00) 26%),
+                linear-gradient(180deg, #F6FAFE 0%, var(--bg-main) 50%, #EEF4FA 100%) !important;
             color: var(--text-main) !important;
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }
 
         .main .block-container {
-            padding-top: 1.25rem !important;
+            padding-top: 0.18rem !important;
             padding-bottom: 2.5rem;
             max-width: 1500px;
         }
@@ -96,7 +102,7 @@ st.markdown(
             justify-content: center;
             gap: 0.35rem;
             padding: 0.9rem 2.2rem 0.8rem 2.2rem;
-            margin: 0 0 1.4rem 0;
+            margin: 0 0 0.95rem 0;
             border-radius: 0 0 22px 22px;
             border-bottom: 1px solid rgba(184, 154, 92, 0.48);
             box-shadow: 0 10px 28px rgba(5, 13, 24, 0.28);
@@ -291,38 +297,62 @@ st.markdown(
             margin-bottom: 0.8rem;
         }
 
-        /* ────── BUTTONS — single flat color, subtle change only ────── */
-        .stButton > button,
-        [data-testid="stDownloadButton"] > button {
+        /* ────── BUTTONS — açık gökyüzü mavisi, siyah yazı ────── */
+        .stButton > button {
             border-radius: 8px !important;
             font-weight: 600 !important;
-            border: none !important;
-            background: var(--accent) !important;
+            border: 1px solid rgba(70, 150, 210, 0.40) !important;
+            background: #87CEEB !important;
+            color: #000000 !important;
+            padding: 0.44rem 1rem !important;
+            font-size: 0.875rem !important;
+            letter-spacing: 0.15px !important;
+            box-shadow: 0 2px 8px rgba(70, 140, 200, 0.15) !important;
+            transition: background 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease !important;
+        }
+        [data-testid="stDownloadButton"] > button {
+            border-radius: 8px !important;
+            font-weight: 700 !important;
+            border: 1px solid rgba(18, 39, 62, 0.18) !important;
+            background: linear-gradient(180deg, #274F78 0%, var(--accent) 100%) !important;
             color: #FFFFFF !important;
             padding: 0.44rem 1rem !important;
             font-size: 0.875rem !important;
             letter-spacing: 0.15px !important;
-            box-shadow: 0 1px 3px rgba(61, 100, 145, 0.22) !important;
-            transition: background 0.12s ease, box-shadow 0.12s ease !important;
+            box-shadow: 0 8px 18px rgba(21, 43, 66, 0.16) !important;
+            transition: background 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease !important;
         }
         .stButton > button:hover,
+        .stButton > button[kind="secondary"]:hover {
+            background: #5BB8E0 !important;
+            color: #000000 !important;
+            border-color: rgba(70, 150, 210, 0.60) !important;
+            box-shadow: 0 4px 12px rgba(70, 140, 200, 0.25) !important;
+        }
         [data-testid="stDownloadButton"] > button:hover {
-            background: var(--accent-hover) !important;
+            background: linear-gradient(180deg, #1E4367 0%, var(--accent-hover) 100%) !important;
             color: #FFFFFF !important;
-            box-shadow: 0 2px 7px rgba(61, 100, 145, 0.32) !important;
+            box-shadow: 0 10px 20px rgba(21, 43, 66, 0.22) !important;
+            border-color: rgba(18, 39, 62, 0.26) !important;
         }
         .stButton > button:focus,
         .stButton > button:active,
         [data-testid="stDownloadButton"] > button:focus,
         [data-testid="stDownloadButton"] > button:active {
-            background: var(--accent-hover) !important;
-            color: #FFFFFF !important;
-            box-shadow: 0 1px 3px rgba(61, 100, 145, 0.2) !important;
+            box-shadow: 0 0 0 0.16rem rgba(70, 150, 210, 0.30) !important;
             outline: none !important;
         }
         .stButton > button[kind="primary"] {
-            background: var(--accent) !important;
+            background: linear-gradient(180deg, #274F78 0%, var(--accent) 100%) !important;
             color: #FFFFFF !important;
+            border: 1px solid rgba(18, 39, 62, 0.18) !important;
+            box-shadow: 0 8px 18px rgba(21, 43, 66, 0.16) !important;
+        }
+        .stButton > button[kind="primary"]:hover {
+            background: linear-gradient(180deg, #1E4367 0%, var(--accent-hover) 100%) !important;
+            color: #FFFFFF !important;
+            border-color: rgba(18, 39, 62, 0.26) !important;
+            box-shadow: 0 10px 20px rgba(21, 43, 66, 0.22) !important;
         }
 
         /* ────── FILE UPLOADER ────── */
@@ -388,7 +418,7 @@ st.markdown(
         /* ────── TABS ────── */
         .stTabs [data-baseweb="tab-list"] {
             gap: 3px;
-            background: #E5DECF;
+            background: #D6E8F5;
             border-radius: 10px;
             border: 1px solid var(--border-strong);
             padding: 4px;
@@ -404,11 +434,11 @@ st.markdown(
             transition: all 0.12s ease;
         }
         .stTabs [data-baseweb="tab"]:hover {
-            background: rgba(61, 100, 145, 0.1) !important;
+            background: rgba(135, 206, 235, 0.45) !important;
         }
         .stTabs [aria-selected="true"] {
-            background: var(--accent) !important;
-            color: #FFFFFF !important;
+            background: #87CEEB !important;
+            color: #000000 !important;
             font-weight: 700 !important;
             border: none !important;
         }
@@ -566,6 +596,7 @@ def init_state() -> None:
         "panel_results": None,
         "panel_years": [],
         "panel_view_choice": None,
+        "step1_done": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -575,6 +606,28 @@ init_state()
 
 def tt(tr_text: str, en_text: str) -> str:
     return en_text if st.session_state.get("ui_lang", "TR") == "EN" else tr_text
+
+def _method_help_text(method_name: str) -> str:
+    base_method = str(method_name or "").replace("Fuzzy ", "").strip()
+    fallback = {
+        "Eşit Ağırlık": {
+            "simple": "Eşit ağırlık yaklaşımı, tüm kriterlere aynı başlangıç önemini verir.",
+            "academic": "Bu seçim, veri temelli farklılaştırma yapmadan dengeli ve normatif bir başlangıç çerçevesi kurar.",
+        },
+        "Manuel Ağırlık": {
+            "simple": "Manuel ağırlık yaklaşımı, kriter önemini doğrudan kullanıcı tercihine göre tanımlar.",
+            "academic": "Bu seçim, karar verici yargısını modele açık biçimde taşıdığı için sonuçların öznel önceliklerle birlikte okunmasını gerektirir.",
+        },
+    }
+    ph = (
+        me.METHOD_PHILOSOPHY.get(str(method_name), {})
+        or me.METHOD_PHILOSOPHY.get(base_method, {})
+        or fallback.get(str(method_name), {})
+        or fallback.get(base_method, {})
+    )
+    simple = ph.get("simple", tt("Seçilen yöntem, problemi kendi değerlendirme mantığıyla okur.", "The selected method reads the problem through its own evaluation logic."))
+    academic = ph.get("academic", tt("Bu nedenle sonuçlar, seçilen yöntemin varsayımları içinde yorumlanmalıdır.", "Therefore, results should be interpreted within the assumptions of the selected method."))
+    return f"{simple}\n{academic}"
 
 _COL_TR_EN = {
     "Kriter": "Criterion",
@@ -653,6 +706,51 @@ def method_internal_name(name: str) -> str:
             return tr_name
     return name
 
+
+def weight_method_groups() -> List[tuple[str, List[str]]]:
+    return [
+        (
+            tt("Bilgi ve dağılım temelli", "Information and dispersion based"),
+            ["Entropy", "Standart Sapma", "LOPCOW"],
+        ),
+        (
+            tt("İlişki ve yapı temelli", "Relation and structure based"),
+            ["CRITIC", "PCA"],
+        ),
+        (
+            tt("Etki ve hibrit temelli", "Impact and hybrid based"),
+            ["MEREC", "IDOCRIW", "Fuzzy IDOCRIW"],
+        ),
+    ]
+
+
+def ranking_method_groups(layer_key: str) -> List[tuple[str, List[str]]]:
+    base_groups: List[tuple[str, List[str]]] = [
+        (
+            tt("İdeal ve uzlaşı odaklı", "Ideal and compromise oriented"),
+            ["TOPSIS", "VIKOR", "MARCOS", "ARAS"],
+        ),
+        (
+            tt("Sapma ve mesafe odaklı", "Deviation and distance oriented"),
+            ["EDAS", "CODAS", "MABAC", "GRA"],
+        ),
+        (
+            tt("Fayda toplulaştırma odaklı", "Utility aggregation oriented"),
+            ["SAW", "WPM", "MAUT", "WASPAS", "CoCoSo"],
+        ),
+        (
+            tt("Göreli üstünlük ve rekabet odaklı", "Relative dominance and competitiveness oriented"),
+            ["COPRAS", "OCRA", "MOORA", "PROMETHEE"],
+        ),
+    ]
+    if layer_key != "fuzzy":
+        return base_groups
+    fuzzy_methods = set(me.FUZZY_MCDM_METHODS)
+    return [
+        (label, [f"Fuzzy {method}" for method in methods if f"Fuzzy {method}" in fuzzy_methods])
+        for label, methods in base_groups
+    ]
+
 def sample_dataset() -> pd.DataFrame:
     rng = np.random.default_rng(42)
     n = 16
@@ -677,17 +775,21 @@ def guess_direction(col_name: str) -> str:
 def clean_dataframe(df: pd.DataFrame, missing_strategy: str, clip_outliers: bool) -> pd.DataFrame:
     out = df.copy()
     numeric_cols = out.select_dtypes(include=[np.number]).columns.tolist()
+    if missing_strategy in {"Sil", "Drop"}:
+        out = out.dropna(subset=numeric_cols)
+    else:
+        for col in numeric_cols:
+            if out[col].isna().any():
+                if missing_strategy in {"Medyan", "Median"}:
+                    out[col] = out[col].fillna(out[col].median())
+                elif missing_strategy in {"Ortalama", "Mean"}:
+                    out[col] = out[col].fillna(out[col].mean())
+                elif missing_strategy in {"Interpolasyon", "Interpolation"}:
+                    out[col] = out[col].interpolate(method="linear", limit_direction="both")
+                    out[col] = out[col].fillna(out[col].median())
+                else:
+                    out[col] = out[col].fillna(0)
     for col in numeric_cols:
-        if out[col].isna().any():
-            if missing_strategy in {"Medyan", "Median"}:
-                out[col] = out[col].fillna(out[col].median())
-            elif missing_strategy in {"Ortalama", "Mean"}:
-                out[col] = out[col].fillna(out[col].mean())
-            elif missing_strategy in {"Interpolasyon", "Interpolation"}:
-                out[col] = out[col].interpolate(method="linear", limit_direction="both")
-                out[col] = out[col].fillna(out[col].median())
-            else:
-                out[col] = out[col].fillna(0)
         if clip_outliers:
             q1, q3 = out[col].quantile(0.25), out[col].quantile(0.75)
             iqr = q3 - q1
@@ -897,7 +999,7 @@ def get_method_steps(method: str, stage: str) -> str:
             "CRITIC": "1) Min-max normalization\n2) Compute standard deviations\n3) Build correlation structure\n4) Generate information-content weights",
             "Standart Sapma": "1) Normalize\n2) Compute criterion standard deviations\n3) Convert relative dispersion to weights",
             "Eşit Ağırlık": "1) Assign equal weight to each criterion\n2) Normalize (sum=1)\n3) Proceed to ranking",
-            "Manuel Ağırlık": "1) Collect user-defined criterion importance\n2) Normalize (sum=1)\n3) Proceed to ranking",
+            "Manuel Ağırlık": "1) Collect raw user-defined importance values\n2) Normalize valid ratios automatically\n3) Proceed to ranking",
             "MEREC": "1) Positive transformation\n2) Log-based performance matrix\n3) Criterion-removal effect\n4) Normalize effects to weights",
             "LOPCOW": "1) Normalize\n2) Compute RMS/std terms\n3) Logarithmic percentage variability\n4) Normalize weights",
             "PCA": "1) Standardize\n2) Extract principal components\n3) Combine loadings and explained variance\n4) Produce criterion weights",
@@ -935,7 +1037,7 @@ def get_method_steps(method: str, stage: str) -> str:
         "CRITIC": "1) Min-max normalize et\n2) Standart sapmaları bul\n3) Korelasyon yapısını çıkar\n4) Bilgi içeriğinden ağırlık üret",
         "Standart Sapma": "1) Normalize et\n2) Kriter std sapmalarını hesapla\n3) Std oranlarını ağırlığa çevir",
         "Eşit Ağırlık": "1) Her kritere eşit önem ver\n2) Toplamı 1'e normalize et\n3) Sıralama aşamasına geç",
-        "Manuel Ağırlık": "1) Kullanıcıdan kriter önemlerini al\n2) Toplamı 1'e normalize et\n3) Sıralama aşamasına geç",
+        "Manuel Ağırlık": "1) Kullanıcıdan ham önem puanlarını al\n2) Geçerli oranları otomatik normalize et\n3) Sıralama aşamasına geç",
         "MEREC": "1) Pozitif dönüşüm\n2) Log tabanlı performans\n3) Kriter çıkarma etkisi\n4) Etkiyi normalize et",
         "LOPCOW": "1) Normalize et\n2) RMS ve std oranlarını hesapla\n3) Logaritmik yüzde değişim gücü\n4) Ağırlıkları normalize et",
         "PCA": "1) Standardize et\n2) Temel bileşenleri çıkar\n3) Yükleri ve açıklanan varyansı birleştir\n4) Kriter ağırlıklarını üret",
@@ -2485,12 +2587,9 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
             st.info(tt("Bu yöntem için ek yöntem-özel görsel bulunmuyor.", "No additional method-specific visualization is available for this method."))
 
 def render_tab_assistant(commentary: str, key: str = "") -> None:
-    _plain = _html_to_plain(commentary)
-    _simple = _plain if len(_plain) <= 700 else (_plain[:700].rstrip() + "...")
-    with st.expander(tt("🗣️ Analiz Asistanı — Basit Anlatım", "🗣️ Analysis Assistant — Plain Narrative"), expanded=False):
-        st.markdown(f'<div class="tab-assistant">{_simple.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
-    with st.expander(tt("🤖 Analiz Asistanı — Akademik Yorum", "🤖 Analysis Assistant — Academic Commentary"), expanded=False):
+    with st.expander(tt("💬 Analiz Asistanı — Yorum", "💬 Analysis Assistant — Commentary"), expanded=True):
         st.markdown(f'<div class="tab-assistant">{commentary}</div>', unsafe_allow_html=True)
+    st.caption(tt("Detaylar için lütfen aşağıdaki tablo ve şekilleri inceleyin.", "For details, please review the tables and figures below."))
 
 def _top_cv_crit(result: Dict[str, Any]) -> tuple[str, float]:
     data = result["selected_data"]
@@ -2509,20 +2608,166 @@ def _max_corr_pair(result: Dict[str, Any]) -> tuple[str, str, float]:
 
 def _compose_commentary(simple: str, academic: str, action: str, example: str = "") -> str:
     is_en = st.session_state.get("ui_lang") == "EN"
+    main_commentary = academic or simple
     labels = {
-        "simple": "Plain View" if is_en else "En Basit Yorum",
+        "commentary": "Commentary" if is_en else "Yorum",
         "example": "Short Example" if is_en else "Kısa Örnek",
-        "academic": "Academic Reading" if is_en else "Akademik Değerlendirme",
         "action": "What To Do Next" if is_en else "Ne Yapmalı",
     }
-    parts = [f"<strong>{labels['simple']}:</strong> {simple}"]
+    parts = [f"<strong>{labels['commentary']}:</strong> {main_commentary}"]
     if example:
         parts.append(f"<strong>{labels['example']}:</strong> {example}")
-    if academic:
-        parts.append(f"<strong>{labels['academic']}:</strong> {academic}")
     if action:
         parts.append(f"<strong>{labels['action']}:</strong> {action}")
     return "<br><br>".join(parts)
+
+def _compose_structured_commentary(did: str, why: str, found: str, example: str = "", action: str = "") -> str:
+    is_en = st.session_state.get("ui_lang") == "EN"
+    labels = {
+        "did": "What Was Done" if is_en else "Ne Yapıldı",
+        "why": "Why It Was Done" if is_en else "Neden Yapıldı",
+        "found": "What Was Found" if is_en else "Ne Bulundu",
+        "example": "Short Example" if is_en else "Kısa Örnek",
+        "action": "How To Read It" if is_en else "Nasıl Okunmalı",
+    }
+    parts = [
+        f"<strong>{labels['did']}:</strong> {did}",
+        f"<strong>{labels['why']}:</strong> {why}",
+        f"<strong>{labels['found']}:</strong> {found}",
+    ]
+    if example:
+        parts.append(f"<strong>{labels['example']}:</strong> {example}")
+    if action:
+        parts.append(f"<strong>{labels['action']}:</strong> {action}")
+    return "<br><br>".join(parts)
+
+def gen_weight_robustness_commentary(result: Dict[str, Any]) -> str:
+    wr = result.get("weight_robustness", {}) or {}
+    if not wr:
+        return tt("Ağırlık sağlamlık verisi mevcut değil.", "Weight robustness data is not available.")
+    if wr.get("info"):
+        return str(wr.get("info"))
+    if wr.get("error"):
+        return tt("Ağırlık sağlamlık testleri üretilemedi.", "Weight robustness tests could not be generated.")
+
+    loo_mean = wr.get("loo_mean_rho")
+    loo_min = wr.get("loo_min_rho")
+    top_match = wr.get("loo_top_match_rate")
+    eff_n = wr.get("effective_criteria_n")
+    dom = wr.get("dominance_ratio")
+    loo_df = wr.get("leave_one_out")
+    boot_df = wr.get("bootstrap_summary")
+
+    worst_alt = "—"
+    worst_rho = np.nan
+    if isinstance(loo_df, pd.DataFrame) and not loo_df.empty:
+        rho_col = col_key(loo_df, "SpearmanRho", "SpearmanRho")
+        alt_col = col_key(loo_df, "Alternatif", "Alternative")
+        worst_idx = pd.to_numeric(loo_df[rho_col], errors="coerce").idxmin()
+        if pd.notna(worst_idx):
+            worst_alt = str(loo_df.loc[worst_idx, alt_col])
+            worst_rho = float(pd.to_numeric(loo_df.loc[worst_idx, rho_col], errors="coerce"))
+
+    uncertain_crit = "—"
+    uncertain_span = np.nan
+    if isinstance(boot_df, pd.DataFrame) and not boot_df.empty:
+        crit_col = col_key(boot_df, "Kriter", "Criterion")
+        low_col = col_key(boot_df, "AltYuzde5", "Lower5Pct")
+        high_col = col_key(boot_df, "UstYuzde95", "Upper95Pct")
+        boot_tmp = boot_df.copy()
+        boot_tmp["_span"] = pd.to_numeric(boot_tmp[high_col], errors="coerce") - pd.to_numeric(boot_tmp[low_col], errors="coerce")
+        idx = boot_tmp["_span"].idxmax()
+        if pd.notna(idx):
+            uncertain_crit = str(boot_tmp.loc[idx, crit_col])
+            uncertain_span = float(pd.to_numeric(boot_tmp.loc[idx, "_span"], errors="coerce"))
+
+    is_en = st.session_state.get("ui_lang") == "EN"
+    did = (
+        "We tested the weight vector in two ways: first, each alternative was removed one by one (leave-one-out); second, the data was repeatedly resampled to build bootstrap confidence intervals for each criterion weight."
+        if is_en else
+        "Ağırlık vektörü iki yoldan sınandı: önce her alternatif tek tek çıkarıldı (leave-one-out), ardından veri tekrar örneklenerek her kriter ağırlığı için bootstrap güven aralıkları üretildi."
+    )
+    why = (
+        "The goal is to see whether the reported criterion priorities depend too much on a single row or on small sample fluctuations."
+        if is_en else
+        "Amaç, raporlanan kriter önceliklerinin tek bir satıra ya da küçük örnek oynamalarına aşırı bağlı olup olmadığını görmektir."
+    )
+
+    if loo_mean is not None and np.isfinite(loo_mean) and top_match is not None and np.isfinite(top_match):
+        if loo_mean >= 0.90 and top_match >= 0.75:
+            stability_text = (
+                "Overall robustness is high."
+                if is_en else
+                "Genel sağlamlık düzeyi yüksektir."
+            )
+            action = (
+                "You can report the weight structure with stronger confidence; still keep the most uncertain criterion under observation in the discussion section."
+                if is_en else
+                "Ağırlık yapısını daha güçlü biçimde raporlayabilirsiniz; yine de tartışma bölümünde en belirsiz kriteri ayrıca izleyin."
+            )
+        elif loo_mean >= 0.75 and top_match >= 0.50:
+            stability_text = (
+                "Overall robustness is moderate."
+                if is_en else
+                "Genel sağlamlık düzeyi ortadır."
+            )
+            action = (
+                "Present the weights together with a caution note, and emphasize which criterion becomes unstable under data perturbation."
+                if is_en else
+                "Ağırlıkları temkin notuyla birlikte sunun ve veri oynadığında hangi kriterin daha çabuk bozulduğunu özellikle belirtin."
+            )
+        else:
+            stability_text = (
+                "Overall robustness is low."
+                if is_en else
+                "Genel sağlamlık düzeyi düşüktür."
+            )
+            action = (
+                "Avoid presenting the weights as fixed truth; compare alternative weighting methods and treat the current profile as sensitive."
+                if is_en else
+                "Ağırlıkları kesin gerçek gibi sunmayın; alternatif ağırlık yöntemleriyle karşılaştırın ve mevcut profili duyarlı kabul edin."
+            )
+    else:
+        stability_text = tt("Kararlılık özeti üretilemedi.", "Stability summary could not be generated.")
+        action = tt("Veri yapısını yeniden kontrol edin.", "Recheck the data structure.")
+
+    found = (
+        f"{stability_text} Mean leave-one-out agreement is {float(loo_mean):.3f}, worst-case agreement is {float(loo_min):.3f}, and top-criterion consistency is {float(top_match)*100:.1f}%. "
+        f"The effective number of criteria is {float(eff_n):.2f}. "
+        + (
+            f"The top-to-second criterion weight ratio is {float(dom):.2f}, which suggests a {'concentrated' if float(dom) >= 1.80 else 'balanced'} weight profile. "
+            if dom is not None and np.isfinite(dom) else ""
+        )
+        + (
+            f"The weakest leave-one-out scenario appears when {worst_alt} is removed (ρ = {float(worst_rho):.3f}). "
+            if np.isfinite(worst_rho) else ""
+        )
+        + (
+            f"The widest bootstrap uncertainty band belongs to {uncertain_crit} (span ≈ {float(uncertain_span):.4f}), so the first movement is most likely to appear there."
+            if np.isfinite(uncertain_span) else ""
+        )
+        if is_en else
+        f"{stability_text} Leave-one-out ortalama uyumu {float(loo_mean):.3f}, en zayıf senaryo uyumu {float(loo_min):.3f} ve lider kriter tutarlılığı %{float(top_match)*100:.1f} düzeyindedir. "
+        f"Etkin kriter sayısı {float(eff_n):.2f} olarak görünmektedir. "
+        + (
+            f"Lider/ikinci kriter ağırlık oranı {float(dom):.2f} olduğu için ağırlık yapısı {'yoğunlaşmış' if float(dom) >= 1.80 else 'daha dengeli'} okunabilir. "
+            if dom is not None and np.isfinite(dom) else ""
+        )
+        + (
+            f"En zayıf leave-one-out senaryosu {worst_alt} çıkarıldığında oluşmuştur (ρ = {float(worst_rho):.3f}). "
+            if np.isfinite(worst_rho) else ""
+        )
+        + (
+            f"Bootstrap tarafında en geniş belirsizlik bandı {uncertain_crit} kriterinde görülmektedir (aralık ≈ {float(uncertain_span):.4f}); bu nedenle ilk oynama en çok burada beklenir."
+            if np.isfinite(uncertain_span) else ""
+        )
+    )
+    example = (
+        f"For example, if removing one alternative still leaves the same criterion on top, the model keeps telling the same story. If the story changes immediately, the weighting result depends too much on that observation. Here the most fragile removal is {worst_alt}."
+        if is_en else
+        f"Örneğin bir alternatif çıkarıldığında en önemli kriter yine aynı kalıyorsa model aynı hikâyeyi anlatmaya devam eder. Hikâye hemen değişiyorsa ağırlık sonucu o gözleme fazla bağımlıdır. Bu çalışmada en hassas çıkarma senaryosu {worst_alt} ile görülmüştür."
+    )
+    return _compose_structured_commentary(did, why, found, example, action)
 
 def _ranking_method_commentary(result: Dict[str, Any], top_alt: str, top_disp: str) -> tuple[str, str, str]:
     ranking = result.get("ranking", {}) or {}
@@ -2834,39 +3079,82 @@ def gen_mc_commentary(result: Dict[str, Any]) -> str:
         stable_leader = str(mc_df.iloc[0][mc_alt_col])
         if len(mc_df) > 1:
             challenger = str(mc_df.iloc[1][mc_alt_col])
-    if st.session_state.get("ui_lang") == "EN":
-        simple = f"When the weights were randomly perturbed across <strong>{n_iter:,}</strong> scenarios, the original leader <strong>{base_top}</strong> stayed in first place <strong>{stab*100:.1f}%</strong> of the time."
-        example = (
-            f"In plain language: even if the model 'wiggles' the importance values, the same option often keeps winning. The most frequent simulated leader is <strong>{stable_leader}</strong>."
-            if stable_leader == base_top else
-            f"In plain language: small weight changes sometimes promote another option. Here the original leader is <strong>{base_top}</strong>, but the most frequent simulated leader becomes <strong>{stable_leader}</strong>."
-        )
-        if stab >= 0.80:
-            academic = "This is strong robustness against weight uncertainty; the first-place result appears structurally stable."
-            action = "You can report the leading option with relatively strong confidence, while still keeping the local sensitivity chart as supporting evidence."
-        elif stab >= 0.60:
-            academic = "This is moderate robustness. The core result survives often, but not enough to treat the ranking as fully insensitive to weight assumptions."
-            action = "Read Monte Carlo together with method comparison and inspect which criterion changes destabilize the top rank."
-        else:
-            academic = "This is low robustness. The top position is sensitive to reasonable weight perturbations, so the decision narrative should remain cautious."
-            action = f"Do not rely on a single winner yet. Revisit weighting logic, criterion design, and compare the leader against challengers such as <strong>{stable_leader}</strong> or <strong>{challenger}</strong>."
-        return _compose_commentary(simple, academic, action, example)
-    simple = f"Ağırlıkları küçük oynamalarla <strong>{n_iter:,}</strong> kez yeniden denediğimizde, başlangıçta lider olan <strong>{base_top}</strong> seçeneği senaryoların <strong>%{stab*100:.1f}</strong>'inde birinci kaldı."
-    example = (
-        f"Basitçe: ağırlıklar biraz kıpırdasa bile aynı seçenek çoğu kez önde kalıyorsa sonuç daha sağlamdır. Bu simülasyonlarda en sık öne çıkan alternatif <strong>{stable_leader}</strong> oldu."
-        if stable_leader == base_top else
-        f"Basitçe: ağırlıklar biraz değişince başka bir seçenek de öne geçebiliyor. Burada başlangıç lideri <strong>{base_top}</strong> iken simülasyonlarda en sık öne çıkan alternatif <strong>{stable_leader}</strong> oldu."
+    local_df = sens.get("local_scenarios")
+    sensitive_crit = "—"
+    sensitive_delta = "—"
+    sensitive_rho = np.nan
+    if isinstance(local_df, pd.DataFrame) and not local_df.empty:
+        rho_col = col_key(local_df, "SpearmanRho", "SpearmanRho")
+        crit_col = col_key(local_df, "Kriter", "Criterion")
+        delta_col = col_key(local_df, "AğırlıkDeğişimi", "WeightChange")
+        idx = pd.to_numeric(local_df[rho_col], errors="coerce").idxmin()
+        if pd.notna(idx):
+            sensitive_crit = str(local_df.loc[idx, crit_col])
+            sensitive_delta = str(local_df.loc[idx, delta_col])
+            sensitive_rho = float(pd.to_numeric(local_df.loc[idx, rho_col], errors="coerce"))
+
+    is_en = st.session_state.get("ui_lang") == "EN"
+    did = (
+        f"We reran the ranking under {n_iter:,} Monte Carlo weight perturbations and also checked local ±10% / ±20% changes for each criterion."
+        if is_en else
+        f"Sıralama, {n_iter:,} adet Monte Carlo ağırlık bozma senaryosu altında yeniden çalıştırıldı; ayrıca her kriter için yerel ±%10 / ±%20 değişim etkisi de kontrol edildi."
+    )
+    why = (
+        "The goal is to see whether the reported winner survives reasonable weight uncertainty and to identify which criterion is most likely to destabilize the ranking."
+        if is_en else
+        "Amaç, raporlanan kazananın makul ağırlık belirsizliği altında korunup korunmadığını ve sıralamayı en çok hangi kriterin bozduğunu görmektir."
     )
     if stab >= 0.80:
-        academic = "Bu düzey, ağırlık belirsizliğine karşı güçlü kararlılık anlamına gelir; birincilik sonucu yapısal olarak desteklenmektedir."
-        action = "Lider alternatifi daha güvenli biçimde raporlayabilirsiniz; yine de yerel duyarlılık grafiğini destekleyici kanıt olarak kullanın."
+        stability_text = tt("Dayanıklılık düzeyi yüksektir.", "Robustness is high.")
+        action = (
+            "You can present the leader with stronger confidence; still keep the local sensitivity result as supporting evidence in the discussion."
+            if is_en else
+            "Lider alternatifi daha güçlü güvenle sunabilirsiniz; yine de yerel duyarlılık sonucunu tartışma bölümünde destekleyici kanıt olarak koruyun."
+        )
     elif stab >= 0.60:
-        academic = "Bu düzey orta kararlılık gösterir. Sonuç sıkça korunuyor olsa da, sıralama ağırlık kabullerinden tamamen bağımsız değildir."
-        action = "Monte Carlo sonucunu yöntem karşılaştırmasıyla birlikte okuyun ve hangi kriter değişimlerinin liderliği bozduğunu özellikle inceleyin."
+        stability_text = tt("Dayanıklılık düzeyi ortadır.", "Robustness is moderate.")
+        action = (
+            "Present the leader with caution and report the challenger together with the most sensitive criterion."
+            if is_en else
+            "Lider alternatifi temkinli sunun ve en hassas kriterle birlikte yakın rakibi de raporlayın."
+        )
     else:
-        academic = "Bu düzey düşük kararlılığa işaret eder. Birincilik, makul ağırlık bozulmalarına karşı hassastır; bu nedenle sonuç temkinli sunulmalıdır."
-        action = f"Tek bir kazanana güvenmeyin. Ağırlık mantığını, kriter yapısını ve özellikle <strong>{stable_leader}</strong> ile <strong>{challenger}</strong> gibi rakipleri yeniden değerlendirin."
-    return _compose_commentary(simple, academic, action, example)
+        stability_text = tt("Dayanıklılık düzeyi düşüktür.", "Robustness is low.")
+        action = (
+            f"Do not rely on a single winner yet; compare {stable_leader} and {challenger}, and revisit the weighting logic."
+            if is_en else
+            f"Henüz tek bir kazanana güvenmeyin; {stable_leader} ile {challenger} seçeneklerini birlikte karşılaştırın ve ağırlık mantığını yeniden gözden geçirin."
+        )
+
+    found = (
+        f"{stability_text} The original leader {base_top} remains first in {stab*100:.1f}% of the simulations, while the most frequent simulated leader is {stable_leader}. "
+        + (
+            f"The main challenger is {challenger}. "
+            if challenger != "—" else ""
+        )
+        + (
+            f"The most sensitive local scenario occurs in criterion {sensitive_crit} at {sensitive_delta}, where rank agreement falls to ρ = {sensitive_rho:.3f}. "
+            if np.isfinite(sensitive_rho) else ""
+        )
+        + "This means the reported ranking is being tested both globally and criterion by criterion."
+        if is_en else
+        f"{stability_text} Başlangıç lideri {base_top}, simülasyonların %{stab*100:.1f} bölümünde birinci kalmıştır; simülasyonlarda en sık öne çıkan lider ise {stable_leader} olmuştur. "
+        + (
+            f"Başlıca yakın rakip {challenger} olarak görünmektedir. "
+            if challenger != "—" else ""
+        )
+        + (
+            f"Yerel olarak en hassas senaryo {sensitive_crit} kriterinde {sensitive_delta} değişimde oluşmuş ve sıra uyumu ρ = {sensitive_rho:.3f} düzeyine kadar düşmüştür. "
+            if np.isfinite(sensitive_rho) else ""
+        )
+        + "Bu tablo, sıralamanın hem genel belirsizlik altında hem de kriter bazında tek tek sınandığını gösterir."
+    )
+    example = (
+        f"For example, if a hospital stays first in 85 out of 100 simulations, we say the ranking is durable. If another option frequently takes over when one criterion moves, the conclusion should be read more cautiously. Here the most pressure comes from {sensitive_crit}."
+        if is_en else
+        f"Örneğin bir hastane 100 simülasyonun 85'inde yine birinci kalıyorsa sıralama dayanıklıdır deriz. Bir kriter oynadığında başka bir seçenek sık sık öne geçiyorsa sonuç daha temkinli okunmalıdır. Bu çalışmada en büyük baskı {sensitive_crit} kriterinden gelmektedir."
+    )
+    return _compose_structured_commentary(did, why, found, example, action)
 
 # ---------------------------------------------------------
 # GLOBAL BANNER
@@ -2898,10 +3186,6 @@ with st.sidebar:
             <div class="sidebar-brand-name">Prof. Dr. Ömer Faruk Rençber</div>
         </div>
         """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f"<p style='margin:0 0 0.2rem 0; font-weight:700; font-size:0.78rem; color:#1C1C1E;'>{tt('🌐 Dil / Language', '🌐 Language / Dil')}</p>",
         unsafe_allow_html=True,
     )
     _lang_idx = 1 if st.session_state.get("ui_lang") == "EN" else 0
@@ -2967,30 +3251,64 @@ with st.sidebar:
             st.session_state["raw_data"] = sample_dataset()
             st.session_state["data_source_id"] = "sample_data"
             st.session_state.prep_done = False
+            st.session_state["step1_done"] = False
             st.rerun()
 
         if uploaded is not None and st.session_state.get("data_source_id") != uploaded.name:
             st.session_state["raw_data"] = load_uploaded_file(uploaded)
             st.session_state["data_source_id"] = uploaded.name
             st.session_state.prep_done = False
+            st.session_state["step1_done"] = False
             st.rerun()
 
-    # ── Veri Ön İşleme (always visible when data loaded, no expander) ──
+    # ── Veri Ön İşleme ──
     if is_data_loaded:
         st.markdown(f"<div class='sb-section-label'>🧹 {tt('Veri Ön İşleme', 'Data Preprocessing')}</div>", unsafe_allow_html=True)
-        missing_strategy = st.selectbox(
-            tt("Eksik veri doldurma", "Missing value strategy"),
-            [
-                tt("Medyan", "Median"),
-                tt("Ortalama", "Mean"),
-                tt("Interpolasyon", "Interpolation"),
-                tt("Sıfır", "Zero"),
-            ],
-        )
+
+        # Session state başlat
+        if "impute_mode_open" not in st.session_state:
+            st.session_state["impute_mode_open"] = False
+        if "missing_strategy_saved" not in st.session_state:
+            st.session_state["missing_strategy_saved"] = "Sil"
+
+        _impute_open = st.session_state["impute_mode_open"]
+
+        if not _impute_open:
+            # Kapalı durum: Temizle + Tamamla butonu yan yana
+            _mc1, _mc2 = st.columns(2)
+            with _mc1:
+                if st.button(tt("🗑️ Eksik Veri Temizle", "🗑️ Drop Missing"), use_container_width=True, key="btn_missing_drop"):
+                    st.session_state["missing_strategy_saved"] = "Sil"
+                    st.rerun()
+            with _mc2:
+                if st.button(tt("🔧 Eksik Veri Tamamla", "🔧 Impute Missing"), use_container_width=True, key="btn_impute_open"):
+                    st.session_state["impute_mode_open"] = True
+                    st.rerun()
+        else:
+            # Açık durum: Yöntem seçimi + Uygula/Kapat
+            _impute_method = st.selectbox(
+                tt("Tamamlama yöntemi", "Imputation method"),
+                [tt("Medyan", "Median"), tt("Ortalama", "Mean"), tt("Interpolasyon", "Interpolation"), tt("Sıfır", "Zero")],
+                key="impute_method_select",
+            )
+            _ia1, _ia2 = st.columns(2)
+            with _ia1:
+                if st.button(tt("✅ Uygula", "✅ Apply"), use_container_width=True, key="btn_impute_apply"):
+                    st.session_state["missing_strategy_saved"] = _impute_method
+                    st.session_state["impute_mode_open"] = False
+                    st.rerun()
+            with _ia2:
+                if st.button(tt("✖ Kapat", "✖ Close"), use_container_width=True, key="btn_impute_close"):
+                    st.session_state["impute_mode_open"] = False
+                    st.rerun()
+
+        missing_strategy = st.session_state["missing_strategy_saved"]
         clip_outliers = st.checkbox(tt("Aykırı Değerleri (Outlier) Temizle", "Clean Outliers"), value=False)
-        st.caption(tt("Ön işleme yalnız sayısal kriter sütunlarına uygulanır.", "Preprocessing is applied only to numeric criterion columns."))
+        # Aktif strateji göstergesi
+        _strat_label = tt("Sil", "Drop") if missing_strategy in {"Sil", "Drop"} else missing_strategy
+        st.caption(tt(f"Eksik veri: {_strat_label} · Yalnız sayısal sütunlara uygulanır.", f"Missing: {_strat_label} · Applied to numeric columns only."))
     else:
-        missing_strategy, clip_outliers = tt("Medyan", "Median"), False
+        missing_strategy, clip_outliers = "Sil", False
 
     # ── Aşama Göstergesi ──
     st.markdown("<div style='margin-top:0.5rem;'></div>", unsafe_allow_html=True)
@@ -3001,10 +3319,10 @@ with st.sidebar:
     st.markdown(
         f"""
         <div class="stepper-wrap">
-            <div class="step-item"><span class="step-dot {'step-done' if _step_data_done else 'step-pending'}"></span> 1) {tt('Veri girişi', 'Data input')}</div>
-            <div class="step-item"><span class="step-dot {'step-done' if _step_prep_done else ('step-active' if _step_data_done else 'step-pending')}"></span> 2) {tt('Kriter doğrulama', 'Criteria validation')}</div>
-            <div class="step-item"><span class="step-dot {'step-done' if _step_result_done else ('step-active' if _step_method_active else 'step-pending')}"></span> 3) {tt('Yöntem ve analiz', 'Method and analysis')}</div>
-            <div class="step-item"><span class="step-dot {'step-done' if _step_result_done else 'step-pending'}"></span> 4) {tt('Sonuç ve rapor', 'Results and report')}</div>
+            <div class="step-item"><span class="step-dot {'step-done' if _step_data_done else 'step-pending'}"></span> {tt('1. Adım', 'Step 1')} · {tt('Veri girişi', 'Data input')}{' ✅' if _step_data_done else ''}</div>
+            <div class="step-item"><span class="step-dot {'step-done' if _step_prep_done else ('step-active' if _step_data_done else 'step-pending')}"></span> {tt('2. Adım', 'Step 2')} · {tt('Kriter doğrulama', 'Criteria validation')}{' ✅' if _step_prep_done else ''}</div>
+            <div class="step-item"><span class="step-dot {'step-done' if _step_result_done else ('step-active' if _step_method_active else 'step-pending')}"></span> {tt('3. Adım', 'Step 3')} · {tt('Yöntem ve analiz', 'Method and analysis')}{' ✅' if _step_result_done else ''}</div>
+            <div class="step-item"><span class="step-dot {'step-done' if _step_result_done else 'step-pending'}"></span> {tt('4. Adım', 'Step 4')} · {tt('Sonuç ve rapor', 'Results and report')}{' ✅' if _step_result_done else ''}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -3020,17 +3338,29 @@ with st.sidebar:
 # ANA GÖVDE
 # ---------------------------------------------------------
 raw_data = st.session_state.get("raw_data")
+if raw_data is None:
+    st.markdown(
+        f"""
+        <div style="text-align:center;padding:4.5rem 1rem 3rem 1rem;">
+            <h3 style="color:#1B365D;font-weight:700;font-size:1.6rem;margin-bottom:0.45rem;">{tt("Karar Destek Sistemine Hoş Geldiniz", "Welcome to the Decision Support System")}</h3>
+            <p style="color:#64748B;font-size:1.02rem;max-width:760px;margin:0 auto;line-height:1.65;">{tt("Başlamak için sol panelden veri setinizi yükleyin veya örnek veriyi kullanın. Veri yüklendiğinde analiz amacı, kriter doğrulama ve yöntem seçimi adımları burada görünür olacaktır.", "To begin, upload your dataset from the left panel or use the sample data. Once data is loaded, the analysis objective, criteria validation, and method selection steps will appear here.")}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.stop()
 _needs_ranking_default = bool(st.session_state.get("needs_ranking", True))
 _purpose_options = [
     tt("⚖️ Kriterleri önem düzeyine göre sıralamak (Yalnızca Ağırlık)", "⚖️ Rank criteria by importance level (Weights Only)"),
     tt("🏆 Alternatifleri kriterler ile birlikte sıralamak (Ağırlık + Sıralama)", "🏆 Rank alternatives together with criteria (Weights + Ranking)"),
 ]
 _purpose_default_idx = 1 if _needs_ranking_default else 0
+_step1_done = bool(st.session_state.get("step1_done"))
+_step1_label = f"🎯 {tt('1. Adım: Analizi Amacınız Ne?', 'Step 1: What Is Your Analysis Objective?')}{' ✅' if _step1_done else ''}"
 
-with st.expander(
-    f"🎯 {tt('Analiz Amacınız Ne?', 'What Is Your Analysis Objective?')}",
-    expanded=True,
-):
+with st.expander(_step1_label, expanded=(raw_data is not None) and not _step1_done):
+    st.caption(tt("Bu adımda analiz hedefinizi ve veri yapınızı belirleyin.", "In this step, define your analysis objective and data structure."))
+    st.caption(tt("Tek yıl veya panel veri seçimi, sonraki hesaplama ve çıktı akışını doğrudan değiştirir.", "Your single-year or panel-data choice directly changes the next calculation and output flow."))
     st.markdown(
         f"<p style='font-size:0.82rem; color:#5C5650; margin:0 0 0.5rem 0;'>"
         f"{tt('Lütfen bu analizde yapmak istediğiniz işlemi seçin:', 'Please select what you want to accomplish in this analysis:')}"
@@ -3055,6 +3385,35 @@ with st.expander(
         index=_scope_default,
         horizontal=True,
     )
+    _step1_total_steps = 5 if _purpose_choice == _purpose_options[1] else 4
+    st.caption(
+        tt(
+            f"Bu akış toplam {_step1_total_steps} adımda tamamlanacaktır. Son adım {'3.2. Adım' if _purpose_choice == _purpose_options[1] else '3.1. Adım'} olacaktır.",
+            f"This flow will be completed in {_step1_total_steps} steps. The final step will be {'Step 3.2' if _purpose_choice == _purpose_options[1] else 'Step 3.1'}.",
+        )
+    )
+    _s_done  = "background:#d4efe2; color:#1a5c3a; border:1px solid #b0d8c0;"
+    _s_wait  = "background:#f0f4f8; color:#8a9aaa; border:1px solid #c8d8e8;"
+    _s_arrow = "color:#b0c0d0; font-size:0.7rem; margin:0 2px;"
+    _pill    = "display:inline-block; border-radius:20px; padding:0.18rem 0.55rem; font-size:0.65rem; font-weight:600; white-space:nowrap;"
+    _steps_html = [
+        f'<span style="{_pill} {_s_done if _step1_done else _s_wait}">{tt("① Amaç", "① Objective")}</span>',
+        f'<span style="{_s_arrow}">→</span>',
+        f'<span style="{_pill} {_s_wait}">{tt("② Hazırlık", "② Preparation")}</span>',
+        f'<span style="{_s_arrow}">→</span>',
+        f'<span style="{_pill} {_s_wait}">{tt("③ Yöntem", "③ Method")}</span>',
+        f'<span style="{_s_arrow}">→</span>',
+        f'<span style="{_pill} {_s_wait}">{tt("③.1 Ağırlık", "③.1 Weighting")}</span>',
+    ]
+    if _purpose_choice == _purpose_options[1]:
+        _steps_html += [
+            f'<span style="{_s_arrow}">→</span>',
+            f'<span style="{_pill} {_s_wait}">{tt("③.2 Sıralama", "③.2 Ranking")}</span>',
+        ]
+    st.markdown(
+        f'<div style="display:flex; align-items:center; flex-wrap:wrap; gap:2px; margin:0.4rem 0 0.2rem 0;">{"".join(_steps_html)}</div>',
+        unsafe_allow_html=True,
+    )
 needs_ranking = _purpose_choice == _purpose_options[1]
 st.session_state["needs_ranking"] = needs_ranking
 panel_mode = _scope_choice == _scope_options[1]
@@ -3076,15 +3435,15 @@ if panel_mode and isinstance(raw_data, pd.DataFrame):
         )
         st.session_state["panel_year_column"] = panel_year_col
 
-if raw_data is None:
-    st.markdown(
-        f"""
-        <div style="text-align:center;padding:5rem 1rem;">
-            <h3 style="color:#1B365D;font-weight:700;font-size:1.6rem;">{tt("Karar Destek Sistemine Hoş Geldiniz", "Welcome to the Decision Support System")}</h3>
-            <p style="color:#64748B;font-size:1.05rem;">{tt("Bilimsel ve tarafsız analizler için <b>sol panelden veri setinizi yükleyerek</b> ve amacınızı seçerek başlayabilirsiniz.", "For scientific and objective analyses, start by <b>uploading your dataset from the left panel</b> and selecting your objective.")}</p>
-        </div>
-        """, unsafe_allow_html=True
-    )
+if raw_data is not None and not st.session_state.get("step1_done"):
+    st.caption(tt("Seçiminizi yaptıysanız aşağıdaki butona tıklayın.", "If you made your selection, click the button below."))
+    if st.button(
+        tt("✨ Şimdi verilerimizi hazırlama zamanı.. Hazırsanız devam edelim", "✨ It is time to prepare our data.. If you are ready, let us continue"),
+        use_container_width=True,
+        key="step1_continue_btn",
+    ):
+        st.session_state["step1_done"] = True
+        st.rerun()
     st.stop()
 
 # ── Veri Hazırlığı ──
@@ -3134,120 +3493,107 @@ else:
     _weight_reason = tt("Varsayılan olarak Entropy başlangıç önerisi kullanılıyor.", "Entropy is used as the default initial suggestion.")
     _rank_reason = tt("Varsayılan olarak TOPSIS, VIKOR ve EDAS başlangıç önerileri kullanılıyor.", "TOPSIS, VIKOR, and EDAS are used as the default initial suggestions.")
 
-_prep_label = (
-    f"🔍 {tt('Ön İnceleme · Veri Hazırlığı', 'Preliminary Review · Data Preparation')} "
-    + ("✅" if st.session_state.get("prep_done") else "⏳")
-)
+_prep_label = f"🔍 {tt('2. Adım: Ön inceleme - Veri Ön Hazırlığı', 'Step 2: Preliminary Review - Data Preparation')}{' ✅' if st.session_state.get('prep_done') else ''}"
 with st.expander(_prep_label, expanded=not st.session_state.get("prep_done")):
+    st.caption(tt("Bu adımda veri yapısını inceleyin, ilk görünümü kontrol edin ve kullanılacak kriterleri netleştirin.", "In this step, inspect the data structure, review the first preview, and clarify the criteria to be used."))
+    st.caption(tt("Eksik, uygunsuz veya yanlış yönlü kriter bırakmamaya dikkat edin.", "Be careful not to leave missing, unsuitable, or wrongly directed criteria in the analysis."))
 
     # ── 1) Ön İnceleme Sonuçları ──
     if _has_diag:
-        st.markdown(
-            f"""<div style="border-left:4px solid #5A8DC8; background:#F0F5FC; border-radius:0 8px 8px 0;
-                        padding:0.45rem 0.9rem; margin-bottom:0.6rem;">
-                <span style="font-size:0.76rem; font-weight:700; text-transform:uppercase;
-                             letter-spacing:0.5px; color:#3D6491;">
-                    🧭 {tt("Ön İnceleme Sonuçları", "Preliminary Review Results")}
-                </span>
-                &nbsp;&nbsp;
-                <strong style="font-size:0.88rem; color:#1C1C1E;">{_score}/100</strong>
-                &nbsp;<span class="diag-badge {_badge_cls}">{_label}</span>
-            </div>""",
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f"""<div class="assistant-grid">
-                <div class="assistant-card2">
-                    <div class="assistant-title2">📊 {tt("Veri Profili", "Data Profile")}</div>
-                    <div class="assistant-body2">
-                        {_diag.get('n_alt', 0)} {tt("alternatif", "alternatives")} · {_diag.get('n_crit', 0)} {tt("kriter", "criteria")}<br>
-                        {tt("Ort. CV", "Avg CV")}: <strong>{_diag.get('mean_cv', 0.0):.2f}</strong> &nbsp;·&nbsp;
-                        {tt("Maks. |ρ|", "Max |ρ|")}: <strong>{_diag.get('max_corr', 0.0):.2f}</strong>
-                    </div>
-                </div>
-                <div class="assistant-card2">
-                    <div class="assistant-title2">⚖️ {tt("Ağırlık Önerisi", "Weighting Suggestion")}</div>
-                    <div class="assistant-body2">
-                        {tt("Önerilen:", "Suggested:")} <strong>{_sugg_weight}</strong><br>
-                        <span style="font-size:0.76rem; color:#5C5650;">{_weight_reason}</span>
-                    </div>
-                </div>
-                <div class="assistant-card2">
-                    <div class="assistant-title2">🏆 {tt("Sıralama Önerisi", "Ranking Suggestion")}</div>
-                    <div class="assistant-body2">
-                        {tt("Önerilen:", "Suggested:")} <strong>{_sugg_rank}</strong><br>
-                        <span style="font-size:0.76rem; color:#5C5650;">{_rank_reason}</span>
-                    </div>
-                </div>
-            </div>""",
-            unsafe_allow_html=True,
-        )
-        with st.expander(f"📋 {tt('Detaylı Bulgular ve Öneriler', 'Detailed Findings & Recommendations')}", expanded=False):
-            for idx, rec in enumerate(_rec_items, start=1):
-                _r_text, _r_action = diag_rec_text(rec)
-                st.markdown(
-                    f"""<div class="assistant-card2" style="margin-bottom:0.4rem;">
-                        <div class="assistant-title2">{rec.get("icon","•")} {tt("Bulgu","Finding")} {idx}</div>
-                        <div class="assistant-body2">{_r_text}<br>
-                        <strong>{tt("Öneri:","Recommendation:")}</strong> {_r_action}</div>
-                    </div>""",
-                    unsafe_allow_html=True,
-                )
+        with st.expander(
+            f"🧭 {tt('Ön İnceleme Sonuçları', 'Preliminary Review Results')}  —  {_score}/100  {_label}",
+            expanded=False,
+        ):
             st.markdown(
-                f"""<div class="assistant-box" style="background:#F0F6FF; margin-top:0.5rem;">
-                    <div class="assistant-title2">💡 {tt("Önerilen Yöntem Felsefesi","Recommended Method Philosophy")}</div>
-                    <div class="assistant-body2">
-                        <strong>{tt("Ağırlık:","Weighting:")}</strong> {_sugg_weight} &nbsp;·&nbsp;
-                        <strong>{tt("Sıralama:","Ranking:")}</strong> {_sugg_rank}
+                f"""<div class="assistant-grid">
+                    <div class="assistant-card2">
+                        <div class="assistant-title2">📊 {tt("Veri Profili", "Data Profile")}</div>
+                        <div class="assistant-body2">
+                            {_diag.get('n_alt', 0)} {tt("alternatif", "alternatives")} · {_diag.get('n_crit', 0)} {tt("kriter", "criteria")}<br>
+                            {tt("Ort. VK", "Avg. CV")}: <strong>{_diag.get('mean_cv', 0.0):.2f}</strong> &nbsp;·&nbsp;
+                            {tt("Maks. |ρ|", "Max |ρ|")}: <strong>{_diag.get('max_corr', 0.0):.2f}</strong>
+                        </div>
+                    </div>
+                    <div class="assistant-card2">
+                        <div class="assistant-title2">⚖️ {tt("Ağırlık Önerisi", "Weighting Suggestion")}</div>
+                        <div class="assistant-body2">
+                            {tt("Önerilen:", "Suggested:")} <strong>{_sugg_weight}</strong><br>
+                            <span style="font-size:0.76rem; color:#556070;">{_weight_reason}</span>
+                        </div>
+                    </div>
+                    <div class="assistant-card2">
+                        <div class="assistant-title2">🏆 {tt("Sıralama Önerisi", "Ranking Suggestion")}</div>
+                        <div class="assistant-body2">
+                            {tt("Önerilen:", "Suggested:")} <strong>{_sugg_rank}</strong><br>
+                            <span style="font-size:0.76rem; color:#556070;">{_rank_reason}</span>
+                        </div>
                     </div>
                 </div>""",
                 unsafe_allow_html=True,
             )
-        st.divider()
+            with st.expander(f"📋 {tt('Detaylı Bulgular ve Öneriler', 'Detailed Findings & Recommendations')}", expanded=False):
+                for idx, rec in enumerate(_rec_items, start=1):
+                    _r_text, _r_action = diag_rec_text(rec)
+                    st.markdown(
+                        f"""<div class="assistant-card2" style="margin-bottom:0.4rem;">
+                            <div class="assistant-title2">{rec.get("icon","•")} {tt("Bulgu","Finding")} {idx}</div>
+                            <div class="assistant-body2">{_r_text}<br>
+                            <strong>{tt("Öneri:","Recommendation:")}</strong> {_r_action}</div>
+                        </div>""",
+                        unsafe_allow_html=True,
+                    )
+                st.markdown(
+                    f"""<div class="assistant-box" style="background:#F0F6FF; margin-top:0.5rem;">
+                        <div class="assistant-title2">💡 {tt("Önerilen Yöntem Felsefesi","Recommended Method Philosophy")}</div>
+                        <div class="assistant-body2">
+                            <strong>{tt("Ağırlık:","Weighting:")}</strong> {_sugg_weight} &nbsp;·&nbsp;
+                            <strong>{tt("Sıralama:","Ranking:")}</strong> {_sugg_rank}
+                        </div>
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
 
     # ── 2) Veri Ön İzleme ──
-    st.markdown(
-        f"<p style='font-size:0.76rem; font-weight:700; color:#1C3252; margin:0 0 0.25rem 0;'>"
-        f"📋 {tt('Veri Ön İzleme', 'Data Preview')} — {tt('ilk 3 satır', 'first 3 rows')}</p>",
-        unsafe_allow_html=True,
-    )
-    render_table(working.head(3))
-    st.divider()
+    with st.expander(f"📋 {tt('Veri Ön İzleme', 'Data Preview')} — {tt('ilk 3 satır', 'first 3 rows')}", expanded=False):
+        render_table(working.head(3))
 
     # ── 3) Kriter Yapılandırması ──
-    st.markdown(
-        f'<p style="font-size:0.76rem; font-weight:700; color:#1C3252; margin:0 0 0.2rem 0;">'
-        f'⚙️ {tt("Kriter Yapılandırması", "Criteria Configuration")}</p>'
-        f'<p style="font-size:0.74rem; color:#5C5650; margin:0 0 0.4rem 0;">'
-        + tt("✅ dahil/çıkar · ⬆ Fayda / ⬇ Maliyet yönünü seçin.", "✅ include/exclude · set ⬆ Benefit / ⬇ Cost direction.")
-        + '</p>',
-        unsafe_allow_html=True,
-    )
-    for c in numeric_cols:
-        row_c = st.columns([0.15, 1.8, 2.05])
-        with row_c[0]:
-            st.session_state["crit_include"][c] = st.checkbox(
-                "", value=st.session_state["crit_include"].get(c, True), key=f"inc_{c}"
-            )
-        with row_c[1]:
-            st.markdown(
-                f'<div style="padding-top:0.45rem; font-size:0.87rem; font-weight:600; color:#1C1C1E;">{c}</div>',
-                unsafe_allow_html=True,
-            )
-        with row_c[2]:
-            current_dir = tt("⬆ Fayda", "⬆ Benefit") if st.session_state["crit_dir"].get(c, True) else tt("⬇ Maliyet", "⬇ Cost")
-            choice = st.radio(
-                "", [tt("⬆ Fayda", "⬆ Benefit"), tt("⬇ Maliyet", "⬇ Cost")],
-                index=0 if current_dir == tt("⬆ Fayda", "⬆ Benefit") else 1,
-                key=f"dir_{c}", horizontal=True, label_visibility="collapsed",
-            )
-            st.session_state["crit_dir"][c] = (choice == tt("⬆ Fayda", "⬆ Benefit"))
+    with st.expander(f"⚙️ {tt('Kriter Yapılandırması', 'Criteria Configuration')}", expanded=False):
+        st.markdown(
+            f'<p style="font-size:0.74rem; color:#5C5650; margin:0 0 0.25rem 0;">'
+            + tt("✅ dahil/çıkar · ⬆ Fayda / ⬇ Maliyet yönünü seçin.", "✅ include/exclude · set ⬆ Benefit / ⬇ Cost direction.")
+            + '</p>',
+            unsafe_allow_html=True,
+        )
+        for c in numeric_cols:
+            row_c = st.columns([0.14, 1.85, 2.01], gap="small")
+            with row_c[0]:
+                st.session_state["crit_include"][c] = st.checkbox(
+                    "", value=st.session_state["crit_include"].get(c, True), key=f"inc_{c}"
+                )
+            with row_c[1]:
+                st.markdown(
+                    f'<div style="padding-top:0.18rem; font-size:0.86rem; font-weight:600; color:#1C1C1E; line-height:1.1;">{c}</div>',
+                    unsafe_allow_html=True,
+                )
+            with row_c[2]:
+                current_dir = tt("⬆ Fayda", "⬆ Benefit") if st.session_state["crit_dir"].get(c, True) else tt("⬇ Maliyet", "⬇ Cost")
+                choice = st.radio(
+                    "", [tt("⬆ Fayda", "⬆ Benefit"), tt("⬇ Maliyet", "⬇ Cost")],
+                    index=0 if current_dir == tt("⬆ Fayda", "⬆ Benefit") else 1,
+                    key=f"dir_{c}", horizontal=True, label_visibility="collapsed",
+                )
+                st.session_state["crit_dir"][c] = (choice == tt("⬆ Fayda", "⬆ Benefit"))
+            st.markdown("<div style='margin-top:-0.35rem;'></div>", unsafe_allow_html=True)
 
     if not st.session_state.get("prep_done"):
         st.divider()
-        if st.button(tt("✅ Veri Ön İşleme Bitti (Yöntem Seçimine Geç)", "✅ Preprocessing Complete (Proceed to Method Selection)"), type="primary", use_container_width=True):
-            st.session_state.prep_done = True
-            st.rerun()
+
+if not st.session_state.get("prep_done"):
+    st.markdown(f"**{tt('Harika.. şimdi de yöntemlerimizi seçelim', 'Great.. now let us choose our methods')}**")
+    if st.button(tt("✅ Veri Ön İşleme Bitti (Yöntem Seçimine Geç)", "✅ Preprocessing Complete (Proceed to Method Selection)"), use_container_width=True):
+        st.session_state.prep_done = True
+        st.rerun()
 
 criteria = [c for c in numeric_cols if st.session_state["crit_include"].get(c, True)]
 criteria_types = {c: ("max" if st.session_state["crit_dir"].get(c, True) else "min") for c in criteria}
@@ -3268,303 +3614,395 @@ else:
 # YÖNTEM SEÇİMİ (ALT PANEL)
 # ---------------------------------------------------------
 st.divider()
-st.markdown(f"<h3 style='font-size: 1.2rem;'>⚙️ {tt('Yöntem Seçimi ve Karşılaştırma', 'Method Selection and Comparison')}</h3>", unsafe_allow_html=True)
+with st.expander(tt("⚙️ 3. Adım: Yöntem Seçimi ve Karşılaştırma", "⚙️ Step 3: Method Selection and Comparison"), expanded=True):
+    st.caption(tt("Bu adımda analizin omurgasını kuran yöntem tercihlerini yapın.", "In this step, make the method choices that build the backbone of the analysis."))
+    st.caption(tt("Seçimleriniz, sonuçların nasıl okunacağını ve hangi tablolarda raporlanacağını belirler.", "Your selections determine how results are interpreted and which tables are reported."))
 
-methods_internal = me.OBJECTIVE_WEIGHT_METHODS
-methods_display = [method_display_name(m) for m in methods_internal]
-_default_weight = st.session_state.get("weight_method_pref")
-_default_weight_display = method_display_name(_default_weight) if _default_weight else methods_display[0]
-_weight_idx = methods_display.index(_default_weight_display) if _default_weight_display in methods_display else 0
-
-weight_mode = st.radio(
-    f"**1. {tt('Ağırlıklandırma Modu', 'Weighting Mode')}**",
-    [tt("🎯 Objektif Ağırlık", "🎯 Objective Weights"), tt("⚖️ Eşit Ağırlık", "⚖️ Equal Weights"), tt("✍️ Manuel Ağırlık", "✍️ Manual Weights")],
-    horizontal=True,
-)
-
-manual_weights: Dict[str, float] | None = None
-manual_weights_valid = True
-if "Objektif" in weight_mode or "Objective" in weight_mode:
-    weight_method_display = st.radio(
-        f"**{tt('1.1 Ağırlıklandırma Yöntemini Seçin (Sadece Bir Tane):', '1.1 Select Weighting Method (Choose One):')}**",
-        methods_display,
-        index=_weight_idx,
-        horizontal=True,
-        help=tt(
-            "Kriterlerin sonuca etki gücünü (önemini) nesnel verilerle belirler. Entropi verideki çeşitliliği, CRITIC ise çeşitlilik ve zıtlığı (korelasyonu) baz alır.",
-            "Determines criterion importance objectively. Entropy uses dispersion; CRITIC combines dispersion and conflict (correlation).",
-        )
-    )
-    weight_method = method_internal_name(weight_method_display)
+    weight_mode = ""
+    weight_method = "Entropy"
     weight_mode_key = "objective"
-elif "Eşit" in weight_mode or "Equal" in weight_mode:
-    weight_method = "Eşit Ağırlık"
-    weight_mode_key = "equal"
-    st.caption(tt("Tüm kriterlere eşit önem atanır.", "All criteria are assigned equal importance."))
-else:
-    weight_method = "Manuel Ağırlık"
-    weight_mode_key = "manual"
-    with st.expander(tt("✍️ Manuel Ağırlık Girişi", "✍️ Manual Weight Input"), expanded=True):
-        st.caption(tt("Kriter değerlerini serbest girin; sistem otomatik olarak 1'e normalize eder.", "Enter raw values freely; the system automatically normalizes them to sum to 1."))
-        _mcols = st.columns(min(3, max(1, len(criteria))))
-        manual_raw = {}
-        for i, c in enumerate(criteria):
-            with _mcols[i % len(_mcols)]:
-                manual_raw[c] = st.number_input(
-                    f"{c}",
-                    min_value=0.0,
-                    value=float(st.session_state.get(f"manual_w_{c}", 1.0)),
-                    step=0.1,
-                    key=f"manual_w_{c}",
-                )
-        _sum_raw = sum(manual_raw.values())
-        st.caption(f"{tt('Toplam', 'Total')}: {_sum_raw:.6f}")
-        if _sum_raw <= 0:
-            st.warning(tt("Toplam sıfır olamaz. Sistem geçici olarak eşit ağırlık uygular.", "Sum cannot be zero. System temporarily applies equal weights."))
-            manual_weights = {c: 1.0 / len(criteria) for c in criteria}
-            manual_weights_valid = False
+    manual_weights: Dict[str, float] | None = None
+    manual_weights_valid = True
+    with st.expander(tt("🧩 3.1. Adım: Ağırlıklandırma Modu ve Yöntemi", "🧩 Step 3.1: Weighting Mode and Method"), expanded=False):
+        st.caption(tt("Bu bölümde kriter önemini hangi mantıkla hesaplayacağınızı belirleyin.", "In this section, choose how criterion importance will be calculated."))
+        st.caption(tt("Objektif, eşit veya manuel yaklaşım seçiminin sonuç yorumunu doğrudan etkilediğini unutmayın.", "Remember that objective, equal, or manual weighting directly affects result interpretation."))
+
+        methods_internal = me.OBJECTIVE_WEIGHT_METHODS
+        methods_display = [method_display_name(m) for m in methods_internal]
+        _default_weight = st.session_state.get("weight_method_pref")
+        _default_weight_display = method_display_name(_default_weight) if _default_weight else methods_display[0]
+        _weight_groups = weight_method_groups()
+        _default_weight_internal = method_internal_name(_default_weight_display)
+
+        weight_mode = st.radio(
+            f"**{tt('Ağırlıklandırma Modu', 'Weighting Mode')}**",
+            [tt("🎯 Objektif Ağırlık", "🎯 Objective Weights"), tt("⚖️ Eşit Ağırlık", "⚖️ Equal Weights"), tt("✍️ Manuel Ağırlık", "✍️ Manual Weights")],
+            horizontal=True,
+            help=tt(
+                "Bu seçim, ağırlıkların veriden mi, eşit dağılımdan mı yoksa sizin önceliklerinizden mi üretileceğini belirler.\nKullandığınız ağırlık mantığı, bulguların yorum çerçevesini doğrudan değiştirir.",
+                "This choice determines whether weights come from data, equal distribution, or your own priorities.\nThe weighting logic directly changes the interpretation frame of the findings.",
+            ),
+        )
+
+        if "Objektif" in weight_mode or "Objective" in weight_mode:
+            weight_method = _default_weight_internal if _default_weight_internal in methods_internal else methods_internal[0]
+            weight_mode_key = "objective"
+            st.caption(tt("Tüm yöntemler aşağıda kümelenmiş halde gösterilir. Tek seçim yapılır.", "All methods are grouped below. A single selection is used."))
+            # Checkbox durumlarını ilk açılışta ayarla
+            for _m in methods_internal:
+                if f"weight_cb_{_m}" not in st.session_state:
+                    st.session_state[f"weight_cb_{_m}"] = (_m == weight_method)
+            _new_weight_sel = None
+            for group_label, group_methods in _weight_groups:
+                _filtered_methods = [m for m in group_methods if m in methods_internal]
+                if not _filtered_methods:
+                    continue
+                st.markdown(f"**{group_label}**")
+                method_cols = st.columns(3)
+                for i, method_name in enumerate(_filtered_methods):
+                    with method_cols[i % len(method_cols)]:
+                        _label = method_display_name(method_name)
+                        _cb_key = f"weight_cb_{method_name}"
+                        _checked = st.checkbox(_label, key=_cb_key)
+                        if _checked and method_name != weight_method:
+                            _new_weight_sel = method_name
+            # Seçim değişikliğini işle
+            _all_weight_checked = [m for m in methods_internal if st.session_state.get(f"weight_cb_{m}", False)]
+            if not _all_weight_checked:
+                # Hiçbiri seçili değil — mevcut seçimi koru
+                st.session_state[f"weight_cb_{weight_method}"] = True
+                st.rerun()
+            elif _new_weight_sel is not None:
+                # Yeni seçim yapıldı — diğerlerini sıfırla
+                for _m in methods_internal:
+                    st.session_state[f"weight_cb_{_m}"] = (_m == _new_weight_sel)
+                st.session_state["weight_method_pref"] = _new_weight_sel
+                st.rerun()
+            _weight_help_lines = _method_help_text(weight_method).split("\n", 1)
+            st.caption(_weight_help_lines[0])
+            if len(_weight_help_lines) > 1:
+                st.caption(_weight_help_lines[1])
+        elif "Eşit" in weight_mode or "Equal" in weight_mode:
+            weight_method = "Eşit Ağırlık"
+            weight_mode_key = "equal"
+            st.caption(tt("Tüm kriterlere eşit önem atanır.", "All criteria are assigned equal importance."))
+            _weight_help_lines = _method_help_text(weight_method).split("\n", 1)
+            st.caption(_weight_help_lines[0])
+            if len(_weight_help_lines) > 1:
+                st.caption(_weight_help_lines[1])
         else:
-            manual_weights = {c: float(v) for c, v in manual_raw.items()}
-            if not np.isclose(_sum_raw, 1.0, rtol=0.0, atol=1e-6):
-                st.warning(
+            weight_method = "Manuel Ağırlık"
+            weight_mode_key = "manual"
+            _weight_help_lines = _method_help_text(weight_method).split("\n", 1)
+            st.caption(_weight_help_lines[0])
+            if len(_weight_help_lines) > 1:
+                st.caption(_weight_help_lines[1])
+
+            _mcols = st.columns(min(3, max(1, len(criteria))))
+            manual_raw_text: Dict[str, str] = {}
+            for i, c in enumerate(criteria):
+                with _mcols[i % len(_mcols)]:
+                    manual_raw_text[c] = st.text_input(
+                        c,
+                        value=str(st.session_state.get(f"manual_w_{c}", "")),
+                        placeholder=tt("örn. 7.5", "e.g. 7.5"),
+                        key=f"manual_w_{c}",
+                    ).strip()
+
+            st.caption(
+                tt(
+                    "Seçili kriterler için ham önem puanı girin. Değerlerin toplamının 1 olması gerekmez; sistem analiz anında oranları otomatik normalize eder. Bu alan, AHP veya benzeri bir yaklaşımla dışarıda belirlediğiniz göreli önemleri esnek biçimde girmeniz için tasarlanmıştır.",
+                    "Enter raw importance values for the selected criteria. Their total does not need to be 1; the system automatically normalizes the ratios during analysis. This area is designed for flexibly entering relative priorities produced externally through AHP or a similar approach.",
+                )
+            )
+
+            missing_manual: List[str] = []
+            invalid_manual: List[str] = []
+            parsed_manual: Dict[str, float] = {}
+            for c, raw_val in manual_raw_text.items():
+                if not raw_val:
+                    missing_manual.append(c)
+                    continue
+                try:
+                    val = float(raw_val.replace(",", "."))
+                    if not np.isfinite(val) or val <= 0:
+                        raise ValueError
+                    parsed_manual[c] = val
+                except Exception:
+                    invalid_manual.append(c)
+
+            if missing_manual:
+                st.info(
                     tt(
-                        "Manuel ağırlıklarda toplam 1 olmalıdır. Lütfen değerleri toplam 1 olacak şekilde düzeltin.",
-                        "Manual weights must sum to 1. Please adjust values so the total equals 1.",
+                        "Analize geçmeden önce tüm seçili kriterler için değer girin.",
+                        "Enter values for all selected criteria before running the analysis.",
                     )
                 )
                 manual_weights_valid = False
-        render_table(pd.DataFrame({"Kriter": list(manual_weights.keys()), "Ağırlık": list(manual_weights.values())}))
-
-ranking_methods_selected = []
-primary_rank_method: str | None = None
-vikor_v = float(st.session_state.get("vikor_v", 0.5))
-waspas_lambda = float(st.session_state.get("waspas_lambda", 0.5))
-codas_tau = float(st.session_state.get("codas_tau", 0.02))
-cocoso_lambda = float(st.session_state.get("cocoso_lambda", 0.5))
-gra_rho = float(st.session_state.get("gra_rho", 0.5))
-promethee_pref_func = st.session_state.get("promethee_pref_func", "linear")
-promethee_q = float(st.session_state.get("promethee_q", 0.05))
-promethee_p = float(st.session_state.get("promethee_p", 0.30))
-promethee_s = float(st.session_state.get("promethee_s", 0.20))
-fuzzy_spread = float(st.session_state.get("fuzzy_spread", 0.10))
-sensitivity_iterations = int(st.session_state.get("sensitivity_iterations", 400))
-sensitivity_sigma = float(st.session_state.get("sensitivity_sigma", 0.12))
-
-if needs_ranking:
-    layer_choice = st.radio(
-        f"**2. {tt('Analiz Katmanı:', 'Analysis Layer:')}**",
-        [
-            tt("🎯 Klasik Mantık (Kesin Değerler)", "🎯 Classical (Crisp Values)"),
-            tt("🌫️ Fuzzy Mantık (Bulanık/Esnek Değerler)", "🌫️ Fuzzy (Uncertain/Flexible Values)"),
-        ],
-        horizontal=True,
-        help=tt("Klasik katman kesin sayısal değerlerle, Fuzzy katman ise belirsizlik toleransı (spread) ile çalışır.", "Classical uses crisp numeric values; fuzzy uses uncertainty tolerance (spread)."),
-    )
-    st.write(f"**3. {tt('Sıralama Yöntemlerini Seçin (Karşılaştırmak İçin Birden Fazla Seçebilirsiniz):', 'Select Ranking Methods (You Can Choose Multiple for Comparison):')}**")
-    if "Klasik" in layer_choice or "Classical" in layer_choice:
-        all_ranks = me.CLASSICAL_MCDM_METHODS
-        def_method = "TOPSIS"
-        _layer_key = "classical"
-    else:
-        all_ranks = me.FUZZY_MCDM_METHODS
-        def_method = "Fuzzy TOPSIS"
-        _layer_key = "fuzzy"
-
-    _sugg_rank_raw = st.session_state.get("_sugg_rank", "TOPSIS, VIKOR, EDAS")
-    _sugg_rank_list = st.session_state.get("_sugg_rank_methods") or ["TOPSIS", "VIKOR", "EDAS"]
-    _fallback_recommendations = (
-        ["TOPSIS", "VIKOR", "EDAS"]
-        if _layer_key == "classical"
-        else ["Fuzzy TOPSIS", "Fuzzy VIKOR", "Fuzzy EDAS"]
-    )
-
-    def _resolve_rank_method_name(candidate: str) -> str | None:
-        cand = candidate.strip()
-        if not cand:
-            return None
-        cand_upper = cand.upper().replace("FUZZY ", "").strip()
-        for method_name in all_ranks:
-            method_upper = method_name.upper().replace("FUZZY ", "").strip()
-            if method_upper == cand_upper:
-                return method_name
-        return None
-
-    recommended_rank_methods: List[str] = []
-    for candidate in [*_sugg_rank_list, *_sugg_rank_raw.replace("/", ",").split(","), *_fallback_recommendations]:
-        resolved_method = _resolve_rank_method_name(candidate)
-        if resolved_method and resolved_method not in recommended_rank_methods:
-            recommended_rank_methods.append(resolved_method)
-        if len(recommended_rank_methods) >= 3:
-            break
-    quick_pick_methods = recommended_rank_methods[:3] if recommended_rank_methods else [def_method]
-
-    st.caption(
-        tt(
-            f"Bu katmanda toplam {len(all_ranks)} yöntem kullanılabilir.",
-            f"A total of {len(all_ranks)} methods are available in this layer.",
-        )
-    )
-    _mcol1, _mcol2 = st.columns(2)
-    with _mcol1:
-        if st.button(tt("✅ Önerilen Yöntemleri Çalıştır", "✅ Run Recommended Methods"), use_container_width=True, key=f"btn_select_recommended_{_layer_key}"):
-            st.session_state["ranking_prefs"] = list(quick_pick_methods)
-            for rank_method in all_ranks:
-                st.session_state[f"rank_cb_{rank_method}"] = rank_method in quick_pick_methods
-            st.rerun()
-    with _mcol2:
-        if st.button(tt("🗑️ Temizle", "🗑️ Clear"), use_container_width=True, key=f"btn_clear_all_{_layer_key}"):
-            st.session_state["ranking_prefs"] = []
-            for rank_method in all_ranks:
-                st.session_state[f"rank_cb_{rank_method}"] = False
-            st.rerun()
-    st.caption(
-        tt(
-            f"Önerilen başlangıç yöntemleri: {', '.join(recommended_rank_methods[:3])}.",
-            f"Recommended starter methods: {', '.join(recommended_rank_methods[:3])}.",
-        )
-    )
-
-    _pref_ranks = st.session_state.get("ranking_prefs") or []
-    _has_pref_in_layer = any(m in all_ranks for m in _pref_ranks)
-    rank_cols = st.columns(4)
-    for i, rank_method in enumerate(all_ranks):
-        with rank_cols[i % 4]:
-            if _pref_ranks and _has_pref_in_layer:
-                default_val = rank_method in _pref_ranks
-            else:
-                default_val = (rank_method == def_method)
-            _rank_widget_key = f"rank_cb_{rank_method}"
-            _rank_help = tt(
-                f"{rank_method} yöntemini analize dahil etmek için tıklayınız. Birden fazla seçim sonuçları karşılaştırmanızı sağlar.",
-                f"Click to include {rank_method} in the analysis. Multiple selections enable comparison.",
-            )
-            if _rank_widget_key in st.session_state:
-                _rank_checked = st.checkbox(rank_method, key=_rank_widget_key, help=_rank_help)
-            else:
-                _rank_checked = st.checkbox(rank_method, value=default_val, key=_rank_widget_key, help=_rank_help)
-            if _rank_checked:
-                ranking_methods_selected.append(rank_method)
-    st.session_state["ranking_prefs"] = ranking_methods_selected
-
-    if not ranking_methods_selected:
-        st.warning(tt("Lütfen en az bir sıralama yöntemi seçiniz.", "Please select at least one ranking method."))
-        st.stop()
-
-    # Resolve assistant-suggested primary method
-    _sugg_primary = next(
-        (m for m in ranking_methods_selected
-         if any(m == _resolve_rank_method_name(part) for part in [*_sugg_rank_list, *_sugg_rank_raw.replace("/", ",").split(",")])),
-        ranking_methods_selected[0] if ranking_methods_selected else None,
-    )
-    primary_rank_method = _sugg_primary or (ranking_methods_selected[0] if ranking_methods_selected else None)
-    st.markdown(
-        f"""<div style="display:flex;align-items:center;gap:0.5rem;margin:0.4rem 0;">
-        <span style="font-size:0.85rem;color:#5C5650;">
-            {tt('Analiz Asistanı Önerisi', 'Analysis Assistant Suggestion')}:
-            <strong style="color:#1C3252;">{primary_rank_method}</strong>
-        </span>
-        <span title="{tt('Analiz asistanı, veri yapınıza göre en uygun sıralama yöntemini otomatik olarak önerir. Birden fazla yöntem seçildiğinde öneri, ana çıktı tablosu için kullanılır.', 'The analysis assistant automatically suggests the most suitable ranking method based on your data structure. When multiple methods are selected, the suggestion is used for the main output table.')}"
-              style="cursor:help;background:#EAF2FB;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:0.7rem;color:#5A8DC8;font-weight:700;border:1px solid #5A8DC8;">?</span>
-        </div>""",
-        unsafe_allow_html=True,
-    )
-
-    uses_vikor = ("VIKOR" in ranking_methods_selected) or ("Fuzzy VIKOR" in ranking_methods_selected)
-    uses_waspas = ("WASPAS" in ranking_methods_selected) or ("Fuzzy WASPAS" in ranking_methods_selected)
-    uses_codas = ("CODAS" in ranking_methods_selected) or ("Fuzzy CODAS" in ranking_methods_selected)
-    uses_cocoso = ("CoCoSo" in ranking_methods_selected) or ("Fuzzy CoCoSo" in ranking_methods_selected)
-    uses_gra = ("GRA" in ranking_methods_selected) or ("Fuzzy GRA" in ranking_methods_selected)
-    uses_promethee = ("PROMETHEE" in ranking_methods_selected) or ("Fuzzy PROMETHEE" in ranking_methods_selected)
-    uses_fuzzy = any(m.startswith("Fuzzy") for m in ranking_methods_selected)
-    rec = recommend_parameter_defaults(ranking_methods_selected, len(working), len(criteria), uses_fuzzy)
-
-    with st.expander(tt("⚙️ 4. Parametre Girişi", "⚙️ 4. Parameter Input"), expanded=False):
-        param_mode = st.radio(
-            tt("Parametre Modu", "Parameter Mode"),
-            [tt("🎯 Önerilen Varsayılan", "🎯 Recommended Default"), tt("✍️ Manuel Değiştir", "✍️ Manual Override")],
-            horizontal=True,
-            key="param_mode_choice",
-        )
-        if not any([uses_vikor, uses_waspas, uses_codas, uses_cocoso, uses_gra, uses_promethee, uses_fuzzy]):
-            st.caption(tt("Seçili sıralama yöntemleri ek parametre gerektirmiyor.", "Selected ranking methods do not require extra parameters."))
-        if ("Önerilen" in param_mode) or ("Recommended" in param_mode):
-            vikor_v = float(rec["vikor_v"])
-            waspas_lambda = float(rec["waspas_lambda"])
-            codas_tau = float(rec["codas_tau"])
-            cocoso_lambda = float(rec["cocoso_lambda"])
-            gra_rho = float(rec["gra_rho"])
-            promethee_pref_func = str(rec.get("promethee_pref_func", "linear"))
-            promethee_q = float(rec.get("promethee_q", 0.05))
-            promethee_p = float(rec.get("promethee_p", 0.30))
-            promethee_s = float(rec.get("promethee_s", 0.20))
-            fuzzy_spread = float(rec["fuzzy_spread"])
-            sensitivity_iterations = int(rec["sensitivity_iterations"])
-            sensitivity_sigma = float(rec["sensitivity_sigma"])
-            st.caption(tt("Önerilen değerler otomatik uygulanır. İsterseniz Manuel Değiştir moduna geçebilirsiniz.", "Recommended values are applied automatically. Switch to Manual Override if needed."))
-            rec_rows = []
-            if uses_vikor: rec_rows.append({tt("Parametre", "Parameter"): "VIKOR v", tt("Değer", "Value"): vikor_v})
-            if uses_waspas: rec_rows.append({tt("Parametre", "Parameter"): "WASPAS λ", tt("Değer", "Value"): waspas_lambda})
-            if uses_codas: rec_rows.append({tt("Parametre", "Parameter"): "CODAS τ", tt("Değer", "Value"): codas_tau})
-            if uses_cocoso: rec_rows.append({tt("Parametre", "Parameter"): "CoCoSo λ", tt("Değer", "Value"): cocoso_lambda})
-            if uses_gra: rec_rows.append({tt("Parametre", "Parameter"): "GRA ρ", tt("Değer", "Value"): gra_rho})
-            if uses_promethee:
-                rec_rows.extend([
-                    {tt("Parametre", "Parameter"): "PROMETHEE pref_func", tt("Değer", "Value"): promethee_pref_func},
-                    {tt("Parametre", "Parameter"): "PROMETHEE q", tt("Değer", "Value"): promethee_q},
-                    {tt("Parametre", "Parameter"): "PROMETHEE p", tt("Değer", "Value"): promethee_p},
-                    {tt("Parametre", "Parameter"): "PROMETHEE s", tt("Değer", "Value"): promethee_s},
-                ])
-            if uses_fuzzy: rec_rows.append({tt("Parametre", "Parameter"): "Fuzzy spread", tt("Değer", "Value"): fuzzy_spread})
-            rec_rows.append({tt("Parametre", "Parameter"): tt("Monte Carlo iterasyon", "Monte Carlo iterations"), tt("Değer", "Value"): sensitivity_iterations})
-            rec_rows.append({tt("Parametre", "Parameter"): "Monte Carlo sigma", tt("Değer", "Value"): sensitivity_sigma})
-            rec_df = pd.DataFrame(rec_rows)
-            render_table(rec_df)
-        else:
-            if uses_fuzzy:
-                fuzzy_spread = st.slider(tt("Fuzzy — spread (belirsizlik bandı)", "Fuzzy — spread (uncertainty band)"), 0.01, 0.50, float(fuzzy_spread), 0.01)
-            if uses_vikor:
-                vikor_v = st.slider(tt("VIKOR — v (uzlaşı katsayısı)", "VIKOR — v (compromise factor)"), 0.0, 1.0, float(vikor_v), 0.01)
-            if uses_waspas:
-                waspas_lambda = st.slider(tt("WASPAS — λ (hibrit katsayı)", "WASPAS — λ (hybrid coefficient)"), 0.0, 1.0, float(waspas_lambda), 0.01)
-            if uses_codas:
-                codas_tau = st.slider(tt("CODAS — τ (eşik değeri)", "CODAS — τ (threshold)"), 0.0, 0.20, float(codas_tau), 0.005)
-            if uses_cocoso:
-                cocoso_lambda = st.slider(tt("CoCoSo — λ (birleşim katsayısı)", "CoCoSo — λ (aggregation coefficient)"), 0.0, 1.0, float(cocoso_lambda), 0.01)
-            if uses_gra:
-                gra_rho = st.slider(tt("GRA — ρ (ayırt edici katsayı)", "GRA — ρ (distinguishing coefficient)"), 0.10, 0.90, float(gra_rho), 0.01)
-            if uses_promethee:
-                promethee_pref_func = st.selectbox(
-                    tt("PROMETHEE tercih fonksiyonu", "PROMETHEE preference function"),
-                    ["linear", "usual", "u_shape", "v_shape", "level", "gaussian"],
-                    index=["linear", "usual", "u_shape", "v_shape", "level", "gaussian"].index(str(promethee_pref_func) if str(promethee_pref_func) in ["linear", "usual", "u_shape", "v_shape", "level", "gaussian"] else "linear"),
+            if invalid_manual:
+                st.warning(
+                    tt(
+                        f"Geçerli pozitif sayı beklenen kriterler: {', '.join(invalid_manual)}.",
+                        f"Valid positive numbers are required for: {', '.join(invalid_manual)}.",
+                    )
                 )
-                if promethee_pref_func in {"u_shape", "level", "linear"}:
-                    promethee_q = st.slider("PROMETHEE q", 0.0, 1.0, float(promethee_q), 0.01)
-                if promethee_pref_func in {"v_shape", "level", "linear"}:
-                    promethee_p = st.slider("PROMETHEE p", 0.0, 1.0, float(promethee_p), 0.01)
-                if promethee_pref_func == "gaussian":
-                    promethee_s = st.slider("PROMETHEE s", 0.01, 1.0, float(promethee_s), 0.01)
-            st.markdown("---")
-            sensitivity_iterations = st.slider(tt("Monte Carlo iterasyon", "Monte Carlo iterations"), 100, 5000, int(sensitivity_iterations), 100)
-            sensitivity_sigma = st.slider(tt("Monte Carlo sigma", "Monte Carlo sigma"), 0.01, 0.50, float(sensitivity_sigma), 0.01)
+                manual_weights_valid = False
 
-    st.session_state["vikor_v"] = float(vikor_v)
-    st.session_state["waspas_lambda"] = float(waspas_lambda)
-    st.session_state["codas_tau"] = float(codas_tau)
-    st.session_state["cocoso_lambda"] = float(cocoso_lambda)
-    st.session_state["gra_rho"] = float(gra_rho)
-    st.session_state["promethee_pref_func"] = str(promethee_pref_func)
-    st.session_state["promethee_q"] = float(promethee_q)
-    st.session_state["promethee_p"] = float(promethee_p)
-    st.session_state["promethee_s"] = float(promethee_s)
-    st.session_state["fuzzy_spread"] = float(fuzzy_spread)
-    st.session_state["sensitivity_iterations"] = int(sensitivity_iterations)
-    st.session_state["sensitivity_sigma"] = float(sensitivity_sigma)
+            if parsed_manual:
+                _manual_total = float(sum(parsed_manual.values()))
+                manual_weights = {c: parsed_manual[c] for c in criteria if c in parsed_manual}
+                _manual_preview = pd.DataFrame(
+                    {
+                        "Kriter": criteria,
+                        tt("Girilen Değer", "Entered Value"): [parsed_manual.get(c, np.nan) for c in criteria],
+                        tt("Normalize Ağırlık", "Normalized Weight"): [
+                            (parsed_manual[c] / _manual_total) if c in parsed_manual and _manual_total > 0 else np.nan
+                            for c in criteria
+                        ],
+                    }
+                )
+                render_table(_manual_preview)
+            else:
+                manual_weights = None
+                manual_weights_valid = False
 
+    ranking_methods_selected = []
+    primary_rank_method: str | None = None
+    vikor_v = float(st.session_state.get("vikor_v", 0.5))
+    waspas_lambda = float(st.session_state.get("waspas_lambda", 0.5))
+    codas_tau = float(st.session_state.get("codas_tau", 0.02))
+    cocoso_lambda = float(st.session_state.get("cocoso_lambda", 0.5))
+    gra_rho = float(st.session_state.get("gra_rho", 0.5))
+    promethee_pref_func = st.session_state.get("promethee_pref_func", "linear")
+    promethee_q = float(st.session_state.get("promethee_q", 0.05))
+    promethee_p = float(st.session_state.get("promethee_p", 0.30))
+    promethee_s = float(st.session_state.get("promethee_s", 0.20))
+    fuzzy_spread = float(st.session_state.get("fuzzy_spread", 0.10))
+    sensitivity_iterations = int(st.session_state.get("sensitivity_iterations", 400))
+    sensitivity_sigma = float(st.session_state.get("sensitivity_sigma", 0.12))
 
-if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), type="primary", use_container_width=True):
+    if needs_ranking:
+        with st.expander(tt("🧩 3.2. Adım: Sıralama Yöntemleri", "🧩 Step 3.2: Ranking Methods"), expanded=False):
+            st.caption(tt("Bu bölümde alternatifleri hangi karar mantığıyla sıralayacağınızı belirleyin.", "In this section, choose the decision logic used to rank alternatives."))
+            st.caption(tt("Birden fazla yöntem seçerseniz yöntem uyumunu da karşılaştırabilirsiniz.", "If you select more than one method, you can also compare method agreement."))
+            _layer_options = [
+                tt("Temel Yöntemler (Klasik Mantık)", "Core Methods (Classical Logic)"),
+                tt("İleri Düzey Yöntemler (Fuzzy)", "Advanced Methods (Fuzzy)"),
+            ]
+            layer_choice = st.radio(
+                f"**{tt('Analiz Katmanı', 'Analysis Layer')}**",
+                _layer_options,
+                horizontal=True,
+                help=tt("Klasik katman kesin sayısal değerlerle, Fuzzy katman ise belirsizlik toleransı (spread) ile çalışır.", "Classical uses crisp numeric values; fuzzy uses uncertainty tolerance (spread)."),
+            )
+            if layer_choice == _layer_options[0]:
+                all_ranks = me.CLASSICAL_MCDM_METHODS
+                def_method = "TOPSIS"
+                _layer_key = "classical"
+            else:
+                all_ranks = me.FUZZY_MCDM_METHODS
+                def_method = "Fuzzy TOPSIS"
+                _layer_key = "fuzzy"
+
+            _sugg_rank_raw = st.session_state.get("_sugg_rank", "TOPSIS, VIKOR, EDAS")
+            _sugg_rank_list = st.session_state.get("_sugg_rank_methods") or ["TOPSIS", "VIKOR", "EDAS"]
+            _fallback_recommendations = (
+                ["TOPSIS", "VIKOR", "EDAS"]
+                if _layer_key == "classical"
+                else ["Fuzzy TOPSIS", "Fuzzy VIKOR", "Fuzzy EDAS"]
+            )
+
+            def _resolve_rank_method_name(candidate: str) -> str | None:
+                cand = candidate.strip()
+                if not cand:
+                    return None
+                cand_upper = cand.upper().replace("FUZZY ", "").strip()
+                for method_name in all_ranks:
+                    method_upper = method_name.upper().replace("FUZZY ", "").strip()
+                    if method_upper == cand_upper:
+                        return method_name
+                return None
+
+            recommended_rank_methods: List[str] = []
+            for candidate in [*_sugg_rank_list, *_sugg_rank_raw.replace("/", ",").split(","), *_fallback_recommendations]:
+                resolved_method = _resolve_rank_method_name(candidate)
+                if resolved_method and resolved_method not in recommended_rank_methods:
+                    recommended_rank_methods.append(resolved_method)
+                if len(recommended_rank_methods) >= 3:
+                    break
+            quick_pick_methods = recommended_rank_methods[:3] if recommended_rank_methods else [def_method]
+
+            st.caption(
+                tt(
+                    f"Bu katmanda toplam {len(all_ranks)} yöntem kullanılabilir.",
+                    f"A total of {len(all_ranks)} methods are available in this layer.",
+                )
+            )
+            _mcol1, _mcol2 = st.columns(2)
+            with _mcol1:
+                if st.button(tt("✅ Önerilen Yöntemleri Çalıştır", "✅ Run Recommended Methods"), use_container_width=True, key=f"btn_select_recommended_{_layer_key}"):
+                    st.session_state["ranking_prefs"] = list(quick_pick_methods)
+                    for rank_method in all_ranks:
+                        st.session_state[f"rank_cb_{rank_method}"] = rank_method in quick_pick_methods
+                    st.rerun()
+            with _mcol2:
+                if st.button(tt("🗑️ Temizle", "🗑️ Clear"), use_container_width=True, key=f"btn_clear_all_{_layer_key}"):
+                    st.session_state["ranking_prefs"] = []
+                    for rank_method in all_ranks:
+                        st.session_state[f"rank_cb_{rank_method}"] = False
+                    st.rerun()
+            st.caption(
+                tt(
+                    f"Önerilen başlangıç yöntemleri: {', '.join(recommended_rank_methods[:3])}.",
+                    f"Recommended starter methods: {', '.join(recommended_rank_methods[:3])}.",
+                )
+            )
+            st.caption(
+                tt(
+                    f"Neden bu öneri? {_rank_reason}",
+                    f"Why this recommendation? {_rank_reason}",
+                )
+            )
+
+            _pref_ranks = st.session_state.get("ranking_prefs") or []
+            _has_pref_in_layer = any(m in all_ranks for m in _pref_ranks)
+            for group_label, group_methods in ranking_method_groups(_layer_key):
+                _filtered_methods = [m for m in group_methods if m in all_ranks]
+                if not _filtered_methods:
+                    continue
+                st.markdown(f"**{group_label}**")
+                rank_cols = st.columns(3)
+                for i, rank_method in enumerate(_filtered_methods):
+                    with rank_cols[i % len(rank_cols)]:
+                        if _pref_ranks and _has_pref_in_layer:
+                            default_val = rank_method in _pref_ranks
+                        else:
+                            default_val = rank_method == def_method
+                        _rank_widget_key = f"rank_cb_{rank_method}"
+                        _rank_help = tt(
+                            f"{_method_help_text(rank_method)}\nBu yöntemi seçerseniz karşılaştırma çıktılarında da birlikte değerlendirilir.",
+                            f"{_method_help_text(rank_method)}\nIf you select this method, it will also be evaluated in the comparison outputs.",
+                        )
+                        if _rank_widget_key in st.session_state:
+                            _rank_checked = st.checkbox(rank_method, key=_rank_widget_key, help=_rank_help)
+                        else:
+                            _rank_checked = st.checkbox(rank_method, value=default_val, key=_rank_widget_key, help=_rank_help)
+                        if _rank_checked:
+                            ranking_methods_selected.append(rank_method)
+            st.session_state["ranking_prefs"] = ranking_methods_selected
+
+            if not ranking_methods_selected:
+                st.warning(tt("Lütfen en az bir sıralama yöntemi seçiniz.", "Please select at least one ranking method."))
+                st.stop()
+
+            _sugg_primary = next(
+                (m for m in ranking_methods_selected
+                 if any(m == _resolve_rank_method_name(part) for part in [*_sugg_rank_list, *_sugg_rank_raw.replace("/", ",").split(",")])),
+                ranking_methods_selected[0] if ranking_methods_selected else None,
+            )
+            primary_rank_method = _sugg_primary or (ranking_methods_selected[0] if ranking_methods_selected else None)
+
+            uses_vikor = ("VIKOR" in ranking_methods_selected) or ("Fuzzy VIKOR" in ranking_methods_selected)
+            uses_waspas = ("WASPAS" in ranking_methods_selected) or ("Fuzzy WASPAS" in ranking_methods_selected)
+            uses_codas = ("CODAS" in ranking_methods_selected) or ("Fuzzy CODAS" in ranking_methods_selected)
+            uses_cocoso = ("CoCoSo" in ranking_methods_selected) or ("Fuzzy CoCoSo" in ranking_methods_selected)
+            uses_gra = ("GRA" in ranking_methods_selected) or ("Fuzzy GRA" in ranking_methods_selected)
+            uses_promethee = ("PROMETHEE" in ranking_methods_selected) or ("Fuzzy PROMETHEE" in ranking_methods_selected)
+            uses_fuzzy = any(m.startswith("Fuzzy") for m in ranking_methods_selected)
+            rec = recommend_parameter_defaults(ranking_methods_selected, len(working), len(criteria), uses_fuzzy)
+
+            with st.expander(tt("🧩 3.3. Adım: Parametreler", "🧩 Step 3.3: Parameters"), expanded=False):
+                param_mode = st.radio(
+                    tt("Parametre Modu", "Parameter Mode"),
+                    [tt("🎯 Önerilen Varsayılan", "🎯 Recommended Default"), tt("✍️ Manuel Değiştir", "✍️ Manual Override")],
+                    horizontal=True,
+                    key="param_mode_choice",
+                )
+                if not any([uses_vikor, uses_waspas, uses_codas, uses_cocoso, uses_gra, uses_promethee, uses_fuzzy]):
+                    st.caption(tt("Seçili sıralama yöntemleri ek parametre gerektirmiyor.", "Selected ranking methods do not require extra parameters."))
+                if ("Önerilen" in param_mode) or ("Recommended" in param_mode):
+                    vikor_v = float(rec["vikor_v"])
+                    waspas_lambda = float(rec["waspas_lambda"])
+                    codas_tau = float(rec["codas_tau"])
+                    cocoso_lambda = float(rec["cocoso_lambda"])
+                    gra_rho = float(rec["gra_rho"])
+                    promethee_pref_func = str(rec.get("promethee_pref_func", "linear"))
+                    promethee_q = float(rec.get("promethee_q", 0.05))
+                    promethee_p = float(rec.get("promethee_p", 0.30))
+                    promethee_s = float(rec.get("promethee_s", 0.20))
+                    fuzzy_spread = float(rec["fuzzy_spread"])
+                    sensitivity_iterations = int(rec["sensitivity_iterations"])
+                    sensitivity_sigma = float(rec["sensitivity_sigma"])
+                    st.caption(tt("Önerilen değerler otomatik uygulanır. İsterseniz Manuel Değiştir moduna geçebilirsiniz.", "Recommended values are applied automatically. Switch to Manual Override if needed."))
+                    rec_rows = []
+                    if uses_vikor: rec_rows.append({tt("Parametre", "Parameter"): "VIKOR v", tt("Değer", "Value"): vikor_v})
+                    if uses_waspas: rec_rows.append({tt("Parametre", "Parameter"): "WASPAS λ", tt("Değer", "Value"): waspas_lambda})
+                    if uses_codas: rec_rows.append({tt("Parametre", "Parameter"): "CODAS τ", tt("Değer", "Value"): codas_tau})
+                    if uses_cocoso: rec_rows.append({tt("Parametre", "Parameter"): "CoCoSo λ", tt("Değer", "Value"): cocoso_lambda})
+                    if uses_gra: rec_rows.append({tt("Parametre", "Parameter"): "GRA ρ", tt("Değer", "Value"): gra_rho})
+                    if uses_promethee:
+                        rec_rows.extend([
+                            {tt("Parametre", "Parameter"): "PROMETHEE pref_func", tt("Değer", "Value"): promethee_pref_func},
+                            {tt("Parametre", "Parameter"): "PROMETHEE q", tt("Değer", "Value"): promethee_q},
+                            {tt("Parametre", "Parameter"): "PROMETHEE p", tt("Değer", "Value"): promethee_p},
+                            {tt("Parametre", "Parameter"): "PROMETHEE s", tt("Değer", "Value"): promethee_s},
+                        ])
+                    if uses_fuzzy: rec_rows.append({tt("Parametre", "Parameter"): "Fuzzy spread", tt("Değer", "Value"): fuzzy_spread})
+                    rec_rows.append({tt("Parametre", "Parameter"): tt("Monte Carlo iterasyon", "Monte Carlo iterations"), tt("Değer", "Value"): sensitivity_iterations})
+                    rec_rows.append({tt("Parametre", "Parameter"): "Monte Carlo sigma", tt("Değer", "Value"): sensitivity_sigma})
+                    rec_df = pd.DataFrame(rec_rows)
+                    render_table(rec_df)
+                else:
+                    if uses_fuzzy:
+                        fuzzy_spread = st.slider(tt("Fuzzy — spread (belirsizlik bandı)", "Fuzzy — spread (uncertainty band)"), 0.01, 0.50, float(fuzzy_spread), 0.01)
+                    if uses_vikor:
+                        vikor_v = st.slider(tt("VIKOR — v (uzlaşı katsayısı)", "VIKOR — v (compromise factor)"), 0.0, 1.0, float(vikor_v), 0.01)
+                    if uses_waspas:
+                        waspas_lambda = st.slider(tt("WASPAS — λ (hibrit katsayı)", "WASPAS — λ (hybrid coefficient)"), 0.0, 1.0, float(waspas_lambda), 0.01)
+                    if uses_codas:
+                        codas_tau = st.slider(tt("CODAS — τ (eşik değeri)", "CODAS — τ (threshold)"), 0.0, 0.20, float(codas_tau), 0.005)
+                    if uses_cocoso:
+                        cocoso_lambda = st.slider(tt("CoCoSo — λ (birleşim katsayısı)", "CoCoSo — λ (aggregation coefficient)"), 0.0, 1.0, float(cocoso_lambda), 0.01)
+                    if uses_gra:
+                        gra_rho = st.slider(tt("GRA — ρ (ayırt edici katsayı)", "GRA — ρ (distinguishing coefficient)"), 0.10, 0.90, float(gra_rho), 0.01)
+                    if uses_promethee:
+                        promethee_pref_func = st.selectbox(
+                            tt("PROMETHEE tercih fonksiyonu", "PROMETHEE preference function"),
+                            ["linear", "usual", "u_shape", "v_shape", "level", "gaussian"],
+                            index=["linear", "usual", "u_shape", "v_shape", "level", "gaussian"].index(str(promethee_pref_func) if str(promethee_pref_func) in ["linear", "usual", "u_shape", "v_shape", "level", "gaussian"] else "linear"),
+                        )
+                        if promethee_pref_func in {"u_shape", "level", "linear"}:
+                            promethee_q = st.slider("PROMETHEE q", 0.0, 1.0, float(promethee_q), 0.01)
+                        if promethee_pref_func in {"v_shape", "level", "linear"}:
+                            promethee_p = st.slider("PROMETHEE p", 0.0, 1.0, float(promethee_p), 0.01)
+                        if promethee_pref_func == "gaussian":
+                            promethee_s = st.slider("PROMETHEE s", 0.01, 1.0, float(promethee_s), 0.01)
+                    st.markdown("---")
+                    sensitivity_iterations = st.slider(tt("Monte Carlo iterasyon", "Monte Carlo iterations"), 100, 5000, int(sensitivity_iterations), 100)
+                    sensitivity_sigma = st.slider(tt("Monte Carlo sigma", "Monte Carlo sigma"), 0.01, 0.50, float(sensitivity_sigma), 0.01)
+
+            st.session_state["vikor_v"] = float(vikor_v)
+            st.session_state["waspas_lambda"] = float(waspas_lambda)
+            st.session_state["codas_tau"] = float(codas_tau)
+            st.session_state["cocoso_lambda"] = float(cocoso_lambda)
+            st.session_state["gra_rho"] = float(gra_rho)
+            st.session_state["promethee_pref_func"] = str(promethee_pref_func)
+            st.session_state["promethee_q"] = float(promethee_q)
+            st.session_state["promethee_p"] = float(promethee_p)
+            st.session_state["promethee_s"] = float(promethee_s)
+            st.session_state["fuzzy_spread"] = float(fuzzy_spread)
+            st.session_state["sensitivity_iterations"] = int(sensitivity_iterations)
+            st.session_state["sensitivity_sigma"] = float(sensitivity_sigma)
+
+_weight_step_done = bool(weight_mode)
+_ranking_step_done = bool(ranking_methods_selected) if needs_ranking else False
+_method_step_done = _weight_step_done and ((not needs_ranking) or _ranking_step_done)
+if _method_step_done:
+    st.markdown(f"**{tt('Harika.. Artık analiz yapabiliriz! Hazırsanız başlayalım', 'Great.. We can now run the analysis! If you are ready, let us begin.') }**")
+
+if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), use_container_width=True):
     if ("Manuel" in weight_mode or "Manual" in weight_mode) and (not manual_weights_valid):
-        st.error(tt("Manuel ağırlık toplamı 1 olmalıdır. Lütfen düzeltip tekrar deneyin.", "Manual weight total must be 1. Please correct and try again."))
+        st.error(tt("Manuel ağırlık için her seçili kriterde geçerli bir pozitif ham değer girin.", "Enter a valid positive raw value for every selected criterion in manual weighting."))
         st.stop()
     if panel_mode and (not panel_year_col or panel_year_col not in working.columns):
         st.error(tt("Panel veri için geçerli bir yıl sütunu seçmelisiniz.", "You must select a valid year column for panel data."))
@@ -3769,14 +4207,36 @@ with st.expander(tt("🧮 Hesaplama Detaylarını Gör", "🧮 View Calculation 
         with dt2:
             rm = result.get("ranking", {}).get("method")
             if rm:
-                st.markdown(f"**{tt('Yöntem', 'Method')}:** `{rm}`")
-                st.code(get_method_steps(rm, "ranking"), language="text")
-                r_frames = _extract_detail_tables(result.get("ranking", {}).get("details", {}))
-                if r_frames:
-                    r_key = st.selectbox(tt("Sıralama detay tablosu", "Ranking detail table"), list(r_frames.keys()), key="calc_rank_tbl")
-                    render_table(localize_df(r_frames[r_key].head(250)))
+                comp = result.get("comparison", {}) or {}
+                method_details = dict(comp.get("method_details") or {})
+                method_details.setdefault(str(rm), result.get("ranking", {}).get("details", {}) or {})
+                method_names = [m for m in method_details.keys() if str(m).strip()]
+
+                if len(method_names) > 1:
+                    method_tabs = st.tabs([str(m) for m in method_names])
+                    for meth_name, meth_tab in zip(method_names, method_tabs):
+                        with meth_tab:
+                            st.markdown(f"**{tt('Yöntem', 'Method')}:** `{meth_name}`")
+                            st.code(get_method_steps(str(meth_name), "ranking"), language="text")
+                            r_frames = _extract_detail_tables(method_details.get(str(meth_name), {}))
+                            if r_frames:
+                                r_key = st.selectbox(
+                                    tt("Sıralama detay tablosu", "Ranking detail table"),
+                                    list(r_frames.keys()),
+                                    key=f"calc_rank_tbl_{str(meth_name)}",
+                                )
+                                render_table(localize_df(r_frames[r_key].head(250)))
+                            else:
+                                st.info(tt("Sıralama yöntemi için detay tablo bulunamadı.", "No detail table found for the ranking method."))
                 else:
-                    st.info(tt("Sıralama yöntemi için detay tablo bulunamadı.", "No detail table found for the ranking method."))
+                    st.markdown(f"**{tt('Yöntem', 'Method')}:** `{rm}`")
+                    st.code(get_method_steps(rm, "ranking"), language="text")
+                    r_frames = _extract_detail_tables(result.get("ranking", {}).get("details", {}))
+                    if r_frames:
+                        r_key = st.selectbox(tt("Sıralama detay tablosu", "Ranking detail table"), list(r_frames.keys()), key="calc_rank_tbl")
+                        render_table(localize_df(r_frames[r_key].head(250)))
+                    else:
+                        st.info(tt("Sıralama yöntemi için detay tablo bulunamadı.", "No detail table found for the ranking method."))
             else:
                 st.info(tt("Bu analizde sıralama yöntemi seçilmedi.", "No ranking method was selected in this analysis."))
 
@@ -3803,19 +4263,37 @@ with st.expander(tt("🧮 Hesaplama Detaylarını Gör", "🧮 View Calculation 
                 st.info(tt("Duyarlılık analizi bu çalışmada üretilmedi.", "Sensitivity analysis was not generated in this study."))
 
 tabs_list = [
-    tt("📊 İstatistik & Dağılım", "📊 Statistics & Distribution"),
+    tt("📊 Temel İstatistik", "📊 Basic Statistics"),
     tt("⚖️ Ağırlıklar", "⚖️ Weights"),
-    tt("🛡️ Ağırlık Sağlamlığı", "🛡️ Weight Robustness"),
 ]
 if needs_ranking:
-    tabs_list.extend([tt("🏆 Sıralama & Ağ", "🏆 Ranking & Network"), tt("🔁 Karşılaştırma", "🔁 Comparison"), tt("🎲 Monte Carlo Dayanıklılık", "🎲 Monte Carlo Robustness")])
-tabs_list.append(tt("📥 Çıktı İndir", "📥 Download Outputs"))
+    tabs_list.extend([
+        tt("🏆 Sıralama", "🏆 Ranking"),
+        tt("🔁 Karşılaştırma", "🔁 Comparison"),
+        tt("🛡️ Sağlamlık", "🛡️ Robustness"),
+        tt("🎲 Dayanıklılık", "🎲 Durability"),
+    ])
+else:
+    tabs_list.append(tt("🛡️ Sağlamlık", "🛡️ Robustness"))
+tabs_list.append(tt("📥 Çıktı", "📥 Output"))
 tabs = st.tabs(tabs_list)
 
-with tabs[0]:
+_tab_stats = 0
+_tab_weights = 1
+if needs_ranking:
+    _tab_ranking = 2
+    _tab_comparison = 3
+    _tab_robustness = 4
+    _tab_durability = 5
+    _tab_output = 6
+else:
+    _tab_robustness = 2
+    _tab_output = 3
+
+with tabs[_tab_stats]:
     _stat_comment = gen_stat_commentary(result)
     render_tab_assistant(_stat_comment, key="stat")
-    with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=True):
+    with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=False):
         st.markdown(f"##### 📊 {tt('Betimleyici İstatistikler', 'Descriptive Statistics')}")
         _stats_disp = localize_df(result["stats"]).copy()
         _num_cols = _stats_disp.select_dtypes(include=[np.number]).columns
@@ -3845,13 +4323,13 @@ with tabs[0]:
             else:
                 st.info(tt("Korelasyon matrisi bulunamadı.", "Correlation matrix not available."))
 
-with tabs[1]:
+with tabs[_tab_weights]:
     _weight_comment = gen_weight_commentary(result)
     render_tab_assistant(_weight_comment, key="weight")
     weight_col = col_key(weight_df, "Ağırlık", "Weight")
     top3_weights = weight_df.sort_values(weight_col, ascending=False).head(3).reset_index(drop=True)
 
-    with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=True):
+    with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=False):
         w1, w2 = st.columns(2)
         with w1:
             st.markdown(f"##### 🥇 {tt('İlk 3 Önemli Kriter', 'Top 3 Important Criteria')}")
@@ -3881,9 +4359,9 @@ with tabs[1]:
             with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
                 st.markdown(f'<div class="commentary-box">{tt("Radar grafiği, ağırlıkların çok boyutlu dağılımını görsel olarak sunar. Dengeli bir dağılım, kararın tek bir kritere bağımlı olmadığına işaret eder; asimetrik yapı ise belirli bir kriterin hakimiyetini gösterir.", "The radar chart visually presents the multi-dimensional distribution of weights. A balanced distribution indicates the decision is not dependent on a single criterion; asymmetric structure shows dominance of a specific criterion.")}</div>', unsafe_allow_html=True)
 
-
-with tabs[2]:
+with tabs[_tab_robustness]:
     _wr = result.get("weight_robustness", {}) or {}
+    _rob_comment = gen_weight_robustness_commentary(result)
     st.markdown(f"### 🛡️ {tt('Ağırlık Sağlamlık Testleri', 'Weight Robustness Tests')}")
     if _wr.get("info"):
         st.info(str(_wr.get("info")))
@@ -3902,41 +4380,9 @@ with tabs[2]:
         m3.metric(tt("Lider Kriter Tutarlılığı", "Top-Criterion Consistency"), (f"%{float(_top_match)*100:.1f}" if _top_match is not None and np.isfinite(_top_match) else "—"))
         m4.metric(tt("Etkin Kriter Sayısı", "Effective Criterion Count"), (f"{float(_eff_n):.2f}" if _eff_n is not None and np.isfinite(_eff_n) else "—"))
 
-        # Simple and academic commentary
-        _simple_msg = ""
-        _academic_msg = ""
-        if _loo_mean is not None and np.isfinite(_loo_mean) and _top_match is not None and np.isfinite(_top_match):
-            if (_loo_mean >= 0.90) and (_top_match >= 0.75):
-                _simple_msg = tt(
-                    "✅ Ağırlıklar güçlü biçimde kararlı — bir alternatifi çıkardığınızda bile kriter önceliği büyük ölçüde korunuyor.",
-                    "✅ Weights are strongly stable — even when one alternative is removed, criterion priorities largely remain unchanged."
-                )
-                _academic_msg = tt(
-                    "Leave-one-out Spearman ortalaması ≥ 0.90 ve lider kriter tutarlılığı ≥ %75 değerleri, ağırlık vektörünün örneklem değişimlerine karşı yüksek direniş sergilediğini ortaya koymaktadır. Bootstrap güven aralıkları bu sağlamlığı doğrular niteliktedir.",
-                    "LOO Spearman mean ≥ 0.90 and top-criterion consistency ≥ 75% indicate the weight vector shows high resistance to sample variation. Bootstrap confidence intervals confirm this robustness."
-                )
-            elif (_loo_mean >= 0.75) and (_top_match >= 0.50):
-                _simple_msg = tt(
-                    "⚠️ Ağırlıklar orta düzeyde kararlı — genel yön korunuyor ancak bazı kriterlerde öncelik sırası değişebilir.",
-                    "⚠️ Weights are moderately stable — overall direction is preserved but priority order may shift for some criteria."
-                )
-                _academic_msg = tt(
-                    "Orta düzeydeki LOO uyumu, metodolojik yorumda temkinli bir yaklaşım gerektirmektedir. Kriterlerin göreli ağırlıklarının ve sıralamalarının duyarlılık bölümündeki lokal senaryolarla birlikte raporlanması önerilir.",
-                    "Moderate LOO agreement requires a cautious approach in methodological interpretation. It is recommended that relative criterion weights and rankings be reported alongside local sensitivity scenarios."
-                )
-            else:
-                _simple_msg = tt(
-                    "❌ Ağırlıklar kırılgan görünüyor — veri değiştiğinde kriter öncelikleri hızlı değişiyor; sonucu temkinli yorumlamak gerekir.",
-                    "❌ Weights appear fragile — criterion priorities change quickly when data changes; results should be interpreted cautiously."
-                )
-                _academic_msg = tt(
-                    "Düşük LOO uyumu, seçilen ağırlıklandırma yönteminin bu veri setine karşı kırılgan olduğunu göstermektedir. Farklı ağırlıklandırma yöntemlerini karşılaştırmalı olarak uygulamak ve bulgular için güçlü sınırlılık bildirimi yapmak metodolojik bir zorunluluktur.",
-                    "Low LOO agreement indicates the selected weighting method is fragile against this dataset. Comparing different weighting methods and providing robust limitations disclosure are methodological necessities."
-                )
-
-        if _simple_msg:
-            with st.expander(f"💬 {tt('Sağlamlık Özet Yorumu', 'Robustness Summary Commentary')}", expanded=True):
-                st.markdown(f'<div class="commentary-box"><strong>{tt("Sade Anlatım:", "Plain Language:")}</strong> {_simple_msg}<br><br><strong>{tt("Akademik Yorum:", "Academic Interpretation:")}</strong> {_academic_msg}</div>', unsafe_allow_html=True)
+        with st.expander(f"💬 {tt('Sağlamlık Özet Yorumu', 'Robustness Summary Commentary')}", expanded=True):
+            st.markdown(f'<div class="commentary-box">{_rob_comment}</div>', unsafe_allow_html=True)
+        st.caption(tt("Detaylar için lütfen aşağıdaki tablo ve şekilleri inceleyin.", "For details, please review the tables and figures below."))
 
         _felsefe_msg = tt(
             "📌 Yöntem felsefesi: Bu testler 'seçtiğimiz objektif ağırlıklandırma, veri biraz oynadığında aynı hikâyeyi anlatıyor mu?' sorusunu yanıtlar.",
@@ -4028,9 +4474,8 @@ with tabs[2]:
                     with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
                         st.markdown(f'<div class="commentary-box">{tt("Bootstrap güven aralığı grafiği, her kriterin ağırlığının olası aralığını gösterir. Yatay çizgi uzunluğu belirsizlik düzeyini temsil eder: kısa çizgi = güvenilir ağırlık, uzun çizgi = veri değişimine duyarlı ağırlık.", "The bootstrap confidence interval chart shows the plausible range for each criterion weight. Bar length represents uncertainty level: short bar = reliable weight, long bar = weight sensitive to data changes.")}</div>', unsafe_allow_html=True)
 
-curr_idx = 3
 if needs_ranking:
-    with tabs[curr_idx]:
+    with tabs[_tab_ranking]:
         _rank_comment = gen_ranking_commentary(result, alt_names)
         render_tab_assistant(_rank_comment, key="rank")
         if ranking_table is None or ranking_table.empty:
@@ -4048,7 +4493,7 @@ if needs_ranking:
             top_disp = alt_names.get(str(ranking_table.iloc[0][_rank_alt_col]), str(ranking_table.iloc[0][_rank_alt_col]))
             st.info(f"🏆 {tt('Lider Alternatif', 'Leading Alternative')}: **{top_disp}** — {tt('Yöntem', 'Method')}: {result.get('ranking', {}).get('method')}")
 
-            with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=True):
+            with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=False):
                 r1, r2 = st.columns(2)
                 with r1:
                     st.markdown(f"##### 🥇 {tt('İlk 5 Alternatif', 'Top 5 Alternatives')}")
@@ -4093,14 +4538,12 @@ if needs_ranking:
             with st.expander(f"🧠 {tt('Yöntem-Özel İçgörüler', 'Method-Specific Insights')}", expanded=False):
                 render_method_specific_insights(result, alt_names)
 
-    curr_idx += 1
-
-    with tabs[curr_idx]:
+    with tabs[_tab_comparison]:
         _comp_comment = gen_comparison_commentary(result)
         render_tab_assistant(_comp_comment, key="comp")
         comp = result.get("comparison", {})
         if comp and "rank_table" in comp:
-            with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=True):
+            with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=False):
                 c1, c2 = st.columns(2)
                 with c1:
                     st.markdown(f"##### 🔁 {tt('Yöntem Sıralama Karşılaştırması', 'Method Ranking Comparison')}")
@@ -4140,9 +4583,7 @@ if needs_ranking:
         else:
             st.info(tt("Karşılaştırma için birden fazla yöntem seçilmelidir.", "Select more than one method for comparison."))
 
-    curr_idx += 1
-
-    with tabs[curr_idx]:
+    with tabs[_tab_durability]:
         render_tab_assistant(gen_mc_commentary(result), key="mc")
         sens = result.get("sensitivity")
         if not sens:
@@ -4172,7 +4613,7 @@ if needs_ranking:
 
                 _mc_comment = gen_mc_commentary(result)
 
-                with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=True):
+                with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=False):
                     st.markdown(f"##### 🎲 {tt('Simülasyon Özet Tablosu', 'Simulation Summary Table')}")
                     _mc_table_disp = localize_df(_mc_disp)
                     _fp_col = col_key(_mc_table_disp, "BirincilikOranı", "FirstPlaceRate")
@@ -4202,9 +4643,7 @@ if needs_ranking:
                         with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
                             st.markdown(f'<div class="commentary-box">{tt("Lokal duyarlılık grafiği, her kriterin ağırlığı ±%10 ve ±%20 değiştirildiğinde sıralamanın ne kadar etkilendiğini Spearman korelasyonu ile ölçer. ρ = 1.0\'a yakın çizgiler, o kriterin ağırlık değişimine karşı sıralamanın kararlı kaldığını gösterir; aşağı düşen çizgiler kritik duyarlılık noktalarına işaret eder.", "The local sensitivity chart measures how much the ranking is affected when each criterion weight changes by ±10% and ±20%, using Spearman correlation. Lines close to ρ = 1.0 show the ranking remains stable against that criterion weight change; lines dropping down indicate critical sensitivity points.")}</div>', unsafe_allow_html=True)
 
-    curr_idx += 1
-
-with tabs[curr_idx]:
+with tabs[_tab_output]:
     _out_lang = st.session_state.get("ui_lang", "TR")
     _doc_sections = _build_doc_sections(result, _out_lang)
     _ref_heading = tt("Kaynakça", "References")
