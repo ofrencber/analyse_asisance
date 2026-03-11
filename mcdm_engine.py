@@ -529,7 +529,7 @@ def _weights_entropy(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tupl
 
 def _weights_critic(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tuple[Dict[str, float], Dict[str, Any]]:
     ndata = _normalize_minmax(data, criteria_types)
-    stds = ndata.std(axis=0, ddof=0).to_numpy(dtype=float)
+    stds = ndata.std(axis=0, ddof=1).to_numpy(dtype=float)
     corr = ndata.corr().fillna(0.0).to_numpy(dtype=float)
     contrast = stds * np.sum(1.0 - corr, axis=1)
     weights = _normalize_weights(contrast)
@@ -544,7 +544,7 @@ def _weights_critic(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tuple
 
 def _weights_sd(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tuple[Dict[str, float], Dict[str, Any]]:
     ndata = _normalize_minmax(data, criteria_types)
-    stds = ndata.std(axis=0, ddof=0).to_numpy(dtype=float)
+    stds = ndata.std(axis=0, ddof=1).to_numpy(dtype=float)
     weights = _normalize_weights(stds)
     w = dict(zip(ndata.columns, weights))
     det = {
@@ -585,7 +585,7 @@ def _weights_merec(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tuple[
 
 def _weights_lopcow(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tuple[Dict[str, float], Dict[str, Any]]:
     norm = _normalize_minmax(data, criteria_types)
-    stds = norm.std(axis=0, ddof=0).to_numpy(dtype=float) + EPS
+    stds = norm.std(axis=0, ddof=1).to_numpy(dtype=float) + EPS
     rms = np.sqrt((norm.to_numpy(dtype=float) ** 2).mean(axis=0)) + EPS
     pv = np.abs(np.log(_safe_divide(rms, stds)) * 100.0)
     weights = _normalize_weights(pv)
@@ -1133,8 +1133,8 @@ def _rank_marcos(data: pd.DataFrame, criteria_types: Dict[str, str], weights: Di
     s_alt = s[1:-1]
     k_minus = _safe_divide(s_alt, s_aai)
     k_plus = _safe_divide(s_alt, s_ai)
-    f_k_minus = _safe_divide(k_plus, k_plus + k_minus)
-    f_k_plus = _safe_divide(k_minus, k_plus + k_minus)
+    f_k_plus  = _safe_divide(k_plus,  k_plus + k_minus)
+    f_k_minus = _safe_divide(k_minus, k_plus + k_minus)
     utility = _safe_divide(
         k_plus + k_minus,
         1.0 + _safe_divide(1.0 - f_k_plus, f_k_plus) + _safe_divide(1.0 - f_k_minus, f_k_minus),
@@ -1168,7 +1168,7 @@ def _rank_cocoso(
     s = np.sum(arr * wvec, axis=1)
     p = np.sum(np.power(arr + EPS, wvec), axis=1)
     ka = _safe_divide(s + p, np.sum(s + p))
-    kb = _safe_divide(s, s.min() + EPS) + _safe_divide(p, p.min() + EPS)
+    kb = _safe_divide(s, s.sum() + EPS) + _safe_divide(p, p.sum() + EPS)
     kc = _safe_divide(lambda_param * s + (1.0 - lambda_param) * p, lambda_param * s.max() + (1.0 - lambda_param) * p.max())
     score = np.cbrt(ka * kb * kc) + (ka + kb + kc) / 3.0
     score = _safe_divide(score - score.min(), score.max() - score.min())
@@ -1887,7 +1887,7 @@ def _section_amac(
     ranking_method: Optional[str],
 ) -> str:
     benefit = [c for c in criteria if criteria_types.get(c, "max") == "max"]
-    cost = [c for c in criteria if criteria_types.get(c, "min") == "min"]
+    cost = [c for c in criteria if criteria_types.get(c, "max") == "min"]
     sentence = (
         f"Bu çalışmanın amacı, {len(stats_df)} alternatif ve {len(criteria)} kriterden oluşan karar matrisinde "
         f"alternatiflerin performansını nesnel biçimde değerlendirmek ve kriterler arası bilgi yapısını veri temelli "

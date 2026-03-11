@@ -4,6 +4,7 @@ import base64
 import io
 import re
 import time
+from pathlib import Path
 from typing import Any, Dict, List
 
 import numpy as np
@@ -14,6 +15,8 @@ import streamlit as st
 from scipy.stats import spearmanr
 
 import mcdm_engine as me
+
+APP_DIR = Path(__file__).resolve().parent
 
 try:
     from docx import Document
@@ -321,6 +324,7 @@ st.markdown(
             box-shadow: 0 2px 8px rgba(70, 140, 200, 0.15) !important;
             transition: background 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease !important;
         }
+        .stDownloadButton > button,
         [data-testid="stDownloadButton"] > button {
             border-radius: 8px !important;
             font-weight: 700 !important;
@@ -333,6 +337,11 @@ st.markdown(
             box-shadow: 0 8px 18px rgba(21, 43, 66, 0.16) !important;
             transition: background 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease !important;
         }
+        /* Force download button text white — override generic .stButton black text */
+        .stDownloadButton > button *,
+        [data-testid="stDownloadButton"] > button * {
+            color: #FFFFFF !important;
+        }
         .stButton > button:hover,
         .stButton > button[kind="secondary"]:hover {
             background: #5BB8E0 !important;
@@ -340,6 +349,7 @@ st.markdown(
             border-color: rgba(70, 150, 210, 0.60) !important;
             box-shadow: 0 4px 12px rgba(70, 140, 200, 0.25) !important;
         }
+        .stDownloadButton > button:hover,
         [data-testid="stDownloadButton"] > button:hover {
             background: linear-gradient(180deg, #1E4367 0%, var(--accent-hover) 100%) !important;
             color: #FFFFFF !important;
@@ -921,7 +931,7 @@ def compute_weight_robustness(
                 {
                     "Kriter": c,
                     "OrtalamaAğırlık": float(col.mean()),
-                    "StdSapma": float(col.std(ddof=0)),
+                    "StdSapma": float(col.std(ddof=1)),
                     "AltYuzde5": float(col.quantile(0.05)),
                     "UstYuzde95": float(col.quantile(0.95)),
                 }
@@ -2201,7 +2211,7 @@ def fig_weight_bar(weight_df: pd.DataFrame) -> go.Figure:
     return fig
 
 def fig_rank_bar(rank_df: pd.DataFrame) -> go.Figure:
-    fig = px.bar(rank_df.sort_values("Skor"), x="Skor", y="Alternatif", orientation="h", text_auto=".4f", color="Skor", color_continuous_scale="Blues")
+    fig = px.bar(rank_df.sort_values("Skor", ascending=True), x="Skor", y="Alternatif", orientation="h", text_auto=".4f", color="Skor", color_continuous_scale="Blues")
     fig.update_layout(
         height=450,
         title=tt("Nihai Sıralama Skorları", "Final Ranking Scores"),
@@ -2502,6 +2512,387 @@ def fig_preference_heatmap(pref_df: pd.DataFrame, alt_names: Dict[str, str] | No
     fig.update_layout(height=max(420, len(disp) * 28 + 120), **_THEME)
     return fig
 
+def _live_detail_commentary(method: str, detail_df: pd.DataFrame, alt_names: Dict[str, str], lang: str) -> str:
+    """Tablodaki gerçek değerleri okuyarak yönteme özgü dinamik yorum üretir."""
+    if detail_df is None or not isinstance(detail_df, pd.DataFrame) or detail_df.empty:
+        return ""
+    is_en = (lang == "EN")
+    df = detail_df.copy()
+    alt_col  = next((c for c in df.columns if str(c).lower() in ("alternatif", "alternative")), None)
+    skor_col = next((c for c in df.columns if str(c).lower() in ("skor", "score")), None)
+    if skor_col is None:
+        return ""
+    if alt_col and alt_names:
+        df[alt_col] = df[alt_col].astype(str).map(lambda x: alt_names.get(x, x))
+    scores = pd.to_numeric(df[skor_col], errors="coerce")
+    if scores.isna().all():
+        return ""
+    best_idx  = int(scores.idxmax())
+    worst_idx = int(scores.idxmin())
+    best_name  = str(df.loc[best_idx,  alt_col]) if alt_col else str(best_idx)
+    worst_name = str(df.loc[worst_idx, alt_col]) if alt_col else str(worst_idx)
+    best_score  = float(scores.loc[best_idx])
+    worst_score = float(scores.loc[worst_idx])
+    spread = best_score - worst_score
+    n = len(df)
+
+    def _v(col):
+        """Satır best_idx için o sütundaki yuvarlı değeri döndür."""
+        if col not in df.columns:
+            return None
+        return round(float(pd.to_numeric(df.loc[best_idx, col], errors="coerce")), 4)
+
+    def _vw(col):
+        """Satır worst_idx için yuvarlı değer."""
+        if col not in df.columns:
+            return None
+        return round(float(pd.to_numeric(df.loc[worst_idx, col], errors="coerce")), 4)
+
+    def _col(name):
+        """Sütun ismi tam veya kısmi eşleşme."""
+        for c in df.columns:
+            if str(c) == name:
+                return c
+        return None
+
+    base = method.replace("Fuzzy ", "")
+    fz   = ("Fuzzy" in method)
+
+    # ── TOPSIS ──────────────────────────────────────────────────────────────────
+    if base == "TOPSIS":
+        dp, dm = _v("D+"), _v("D-")
+        wp, wm = _vw("D+"), _vw("D-")
+        if is_en:
+            calc = ("TOPSIS computes two Euclidean distances for each alternative: <b>D⁺</b> (distance to the ideal solution) "
+                    "and <b>D⁻</b> (distance to the negative-ideal). "
+                    f"The closeness coefficient <b>C* = D⁻ / (D⁺ + D⁻)</b> is the final score, ranging from 0 to 1.")
+            found = (f"<b>{best_name}</b> achieved the highest C* = <b>{best_score:.4f}</b>"
+                     + (f" (D⁺={dp}, D⁻={dm})" if dp is not None else "") + ". "
+                     + f"<b>{worst_name}</b> scored lowest at C* = <b>{worst_score:.4f}</b>"
+                     + (f" (D⁺={wp}, D⁻={wm})" if wp is not None else "") + ". "
+                     + f"Score spread across {n} alternatives: <b>{spread:.4f}</b> — "
+                     + ("the field is tightly packed; small differences matter." if spread < 0.15 else
+                        "alternatives are well-differentiated." if spread > 0.35 else
+                        "moderate differentiation between alternatives."))
+            watch = ("Watch: a high C* driven by a very low D⁺ alone (D⁻ also low) may indicate the alternative is mediocre overall. "
+                     "A robust leader has both low D⁺ <em>and</em> high D⁻ simultaneously." if fz is False else
+                     "In the fuzzy extension, C* reflects triangular fuzzy distances; interpret spread relative to the crisp version.")
+        else:
+            calc = ("TOPSIS her alternatif için iki Öklid uzaklığı hesaplar: <b>D⁺</b> (ideal çözüme uzaklık) "
+                    "ve <b>D⁻</b> (negatif-ideal çözüme uzaklık). "
+                    "Kapanım katsayısı <b>C* = D⁻ / (D⁺ + D⁻)</b> 0 ile 1 arasında değer alır ve nihai skoru verir.")
+            found = (f"<b>{best_name}</b> en yüksek C* = <b>{best_score:.4f}</b> değerini elde etti"
+                     + (f" (D⁺={dp}, D⁻={dm})" if dp is not None else "") + ". "
+                     + f"<b>{worst_name}</b> en düşük C* = <b>{worst_score:.4f}</b> ile son sıradadır"
+                     + (f" (D⁺={wp}, D⁻={wm})" if wp is not None else "") + ". "
+                     + f"{n} alternatif arasındaki skor aralığı <b>{spread:.4f}</b> — "
+                     + ("alternatifler birbirine çok yakın; küçük farklılıklar önemlidir." if spread < 0.15 else
+                        "alternatifler belirgin şekilde ayrışmaktadır." if spread > 0.35 else
+                        "orta düzeyde ayrışma gözlemlenmektedir."))
+            watch = ("Dikkat: yüksek C* yalnızca düşük D⁺'dan kaynaklanıyorsa ve D⁻ de düşükse, "
+                     "alternatif genel olarak orta performanslı olabilir. "
+                     "Güçlü bir lider hem düşük D⁺ <em>hem de</em> yüksek D⁻ değerini birlikte taşır.")
+
+    # ── VIKOR ────────────────────────────────────────────────────────────────────
+    elif base == "VIKOR":
+        s_v, r_v, q_v = _v("S"), _v("R"), _v("Q")
+        if is_en:
+            calc = ("<b>S</b> (group utility): weighted sum of normalized deviations from the ideal — lower is better. "
+                    "<b>R</b> (individual regret): maximum weighted deviation for the worst-performing criterion — lower is better. "
+                    "<b>Q</b> (compromise score): combines S and R via λ (balance weight, default 0.5) to rank alternatives. "
+                    "VIKOR declares a stable compromise when the top-ranked alternative satisfies both the <em>advantage</em> "
+                    "condition (ΔQ ≥ 1/(n−1)) and the <em>stability</em> condition.")
+            found = (f"<b>{best_name}</b> leads with Q = <b>{q_v if q_v is not None else best_score:.4f}</b>"
+                     + (f", S = {s_v}, R = {r_v}" if s_v is not None else "") + ". "
+                     + f"<b>{worst_name}</b> has the highest compromise cost (Q = <b>{_vw('Q') if _col('Q') else worst_score:.4f}</b>). "
+                     + ("ΔQ between 1st and 2nd is narrow — verify the advantage condition before declaring a stable compromise."
+                        if spread < 1.0 / max(n - 1, 1) + 0.05 else
+                        "The advantage condition appears satisfied; the leading alternative is a stable compromise."))
+            watch = ("S measures group perspective, R measures the worst-case single criterion. "
+                     "If R of the leader is high despite low Q, the ranking depends heavily on the λ parameter — consider sensitivity analysis.")
+        else:
+            calc = ("<b>S</b> (grup faydası): ağırlıklı normalize sapmaların toplamı — düşük daha iyidir. "
+                    "<b>R</b> (bireysel pişmanlık): en kötü kriterteki maksimum ağırlıklı sapma — düşük daha iyidir. "
+                    "<b>Q</b> (uzlaşı skoru): S ve R, λ parametresiyle (varsayılan 0.5) birleştirilerek alternatifleri sıralar. "
+                    "VIKOR, birinci alternatifin hem <em>avantaj</em> koşulunu (ΔQ ≥ 1/(n−1)) "
+                    "hem de <em>istikrar</em> koşulunu sağlaması durumunda kararlı uzlaşı ilan eder.")
+            found = (f"<b>{best_name}</b> en düşük Q = <b>{q_v if q_v is not None else best_score:.4f}</b> ile öne çıkıyor"
+                     + (f" (S={s_v}, R={r_v})" if s_v is not None else "") + ". "
+                     + f"<b>{worst_name}</b> en yüksek uzlaşı maliyetine sahip (Q = <b>{_vw('Q') if _col('Q') else worst_score:.4f}</b>). "
+                     + ("1. ve 2. sıra arasındaki ΔQ dar — kararlı uzlaşı ilan etmeden önce avantaj koşulunu doğrulayın."
+                        if spread < 1.0 / max(n - 1, 1) + 0.05 else
+                        "Avantaj koşulu sağlanıyor görünüyor; lider alternatif kararlı bir uzlaşıyı temsil ediyor."))
+            watch = ("S grup bakış açısını, R ise en kötü kriterdeki tek taraflı başarısızlığı ölçer. "
+                     "Lider düşük Q'ya rağmen yüksek R taşıyorsa, sıralama λ parametresine duyarlı demektir — duyarlılık analizi önerilebilir.")
+
+    # ── EDAS ─────────────────────────────────────────────────────────────────────
+    elif base == "EDAS":
+        sp, sn = _v("SP"), _v("SN")
+        nsp, nsn = _v("NSP"), _v("NSN")
+        if is_en:
+            calc = ("EDAS measures distances from the <em>average</em> solution (not ideal/anti-ideal). "
+                    "<b>SP</b> = sum of positive deviations weighted — shows how much an alternative exceeds the average. "
+                    "<b>SN</b> = sum of negative deviations weighted — shows how much it falls below the average. "
+                    "<b>NSP</b> and <b>NSN</b> are normalised to [0,1]; the appraisal score <b>AS = 0.5·(NSP + NSN)</b>.")
+            found = (f"<b>{best_name}</b> achieved AS = <b>{best_score:.4f}</b>"
+                     + (f" (NSP={nsp}, NSN={nsn})" if nsp is not None else "")
+                     + (f" with SP={sp}, SN={sn}" if sp is not None else "") + ". "
+                     + (f"NSP close to 1 signals strong above-average performance; NSN close to 1 means below-average deviations are minimal. "
+                        if nsp is not None and nsp > 0.8 else
+                        "Check whether leadership is driven by SP or by NSN — a balanced profile is more robust. ")
+                     + f"<b>{worst_name}</b> scored AS = <b>{worst_score:.4f}</b>.")
+            watch = ("An alternative with high NSP but low NSN may rank well despite significant negative deviations in some criteria — "
+                     "inspect the raw PDA/NDA matrices for hidden weaknesses.")
+        else:
+            calc = ("EDAS alternatifleri <em>ortalama</em> çözüme (ideal/anti-ideal değil) göre değerlendirir. "
+                    "<b>SP</b> = ağırlıklı pozitif sapmalar toplamı — alternatifin ortalamanın ne kadar üstünde kaldığını gösterir. "
+                    "<b>SN</b> = ağırlıklı negatif sapmalar toplamı — ortalamanın altına ne kadar düştüğünü gösterir. "
+                    "<b>NSP</b> ve <b>NSN</b> [0,1]'e normalize edilir; değerlendirme skoru <b>AS = 0,5·(NSP + NSN)</b>.")
+            found = (f"<b>{best_name}</b> AS = <b>{best_score:.4f}</b> ile öne çıkıyor"
+                     + (f" (NSP={nsp}, NSN={nsn})" if nsp is not None else "")
+                     + (f", SP={sp}, SN={sn}" if sp is not None else "") + ". "
+                     + ("NSP 1'e yakın: alternatifte ortalamanın belirgin üstünde bir performans var. "
+                        if nsp is not None and nsp > 0.8 else
+                        "Liderliğin SP mi yoksa NSN'den mi kaynaklandığını kontrol edin — dengeli profil daha güvenilirdir. ")
+                     + f"<b>{worst_name}</b> AS = <b>{worst_score:.4f}</b> ile son sırada yer alıyor.")
+            watch = ("Yüksek NSP ama düşük NSN: bazı kriterlerde ciddi negatif sapmalar gizlenmiş olabilir. "
+                     "Ham PDA/NDA matrislerini inceleyerek gizli zayıflıkları ortaya çıkarabilirsiniz.")
+
+    # ── CODAS ────────────────────────────────────────────────────────────────────
+    elif base == "CODAS":
+        e_v, t_v, h_v = _v("E"), _v("T"), _v("H")
+        if is_en:
+            calc = ("CODAS ranks alternatives by their distance from the <em>negative-ideal</em> (worst) solution — "
+                    "greater distance means better performance. "
+                    "<b>E</b> = Euclidean distance (primary); <b>T</b> = Taxicab (Manhattan) distance (tie-breaker, active when |E_i − E_j| < ψ = 0.02). "
+                    "The assessment score <b>H</b> is derived from a pairwise comparison matrix.")
+            found = (f"<b>{best_name}</b> leads with H = <b>{h_v if h_v is not None else best_score:.4f}</b>"
+                     + (f" (E={e_v}, T={t_v})" if e_v is not None else "") + ". "
+                     + (f"Both Euclidean and Taxicab distances are high, confirming robust separation from the worst. "
+                        if e_v is not None and t_v is not None and e_v > 0.3 and t_v > 0.3 else
+                        "Check T — if T is low relative to E, the leader's advantage narrows under the Taxicab criterion. ")
+                     + f"Score spread: <b>{spread:.4f}</b>.")
+            watch = ("The ψ = 0.02 threshold is the boundary between Euclidean and Taxicab tiebreaking. "
+                     "When E distances are very close, T dominates — pairs near this threshold deserve attention.")
+        else:
+            calc = ("CODAS alternatifleri <em>negatif-ideal</em> (en kötü) çözümden uzaklıklarına göre sıralar — "
+                    "daha uzak olan daha iyidir. "
+                    "<b>E</b> = Öklid uzaklığı (birincil ölçüt); <b>T</b> = Manhattan uzaklığı (eşit durumda devreye girer, eşik ψ = 0.02). "
+                    "Değerlendirme skoru <b>H</b>, ikili karşılaştırma matrisinden türetilir.")
+            found = (f"<b>{best_name}</b> H = <b>{h_v if h_v is not None else best_score:.4f}</b> ile lider"
+                     + (f" (E={e_v}, T={t_v})" if e_v is not None else "") + ". "
+                     + ("Hem Öklid hem Manhattan uzaklıkları yüksek — negatif idealden güçlü ve tutarlı ayrışma var. "
+                        if e_v is not None and t_v is not None and e_v > 0.3 and t_v > 0.3 else
+                        "T'yi kontrol edin — E'ye göre düşükse, lider Manhattan ölçütü altında daha az avantajlıdır. ")
+                     + f"Skor aralığı: <b>{spread:.4f}</b>.")
+            watch = ("ψ = 0.02 eşiği, Öklid ve Manhattan geçiş sınırıdır. "
+                     "E mesafeleri birbirine çok yakın olan alternatif çiftlerinde T belirleyici olur — bu çiftleri ayrıca inceleyin.")
+
+    # ── PROMETHEE ────────────────────────────────────────────────────────────────
+    elif base == "PROMETHEE":
+        pp, pm, pn = _v("PhiPlus"), _v("PhiMinus"), _v("PhiNet")
+        wp_pm = _vw("PhiPlus"); ww_pm = _vw("PhiMinus")
+        if is_en:
+            calc = ("PROMETHEE II builds a complete ranking via pairwise comparisons using a preference function H(d). "
+                    "<b>Φ⁺</b> (positive flow): average preference of this alternative over all others — outranking strength. "
+                    "<b>Φ⁻</b> (negative flow): average preference of all others over this alternative — vulnerability. "
+                    "<b>Φnet = Φ⁺ − Φ⁻</b> is the net flow and the ranking criterion.")
+            found = (f"<b>{best_name}</b> leads with Φnet = <b>{pn if pn is not None else best_score:.4f}</b>"
+                     + (f" (Φ⁺={pp}, Φ⁻={pm})" if pp is not None else "") + ". "
+                     + ("High Φ⁺ and low Φ⁻ together confirm dominance from both sides. "
+                        if pp is not None and pm is not None and pp > 0.5 and pm < 0.3 else
+                        "Note whether Φnet is driven by high Φ⁺ (broad outranking) or low Φ⁻ (few losses). ")
+                     + f"<b>{worst_name}</b> has Φnet = <b>{_vw('PhiNet') if _col('PhiNet') else worst_score:.4f}</b>.")
+            watch = ("Φ⁺ answers 'how much does this alt beat others?'; Φ⁻ answers 'how much is it beaten?'. "
+                     "A leader with moderate Φ⁺ but very low Φ⁻ is a 'safe' consensus candidate rather than a dominator.")
+        else:
+            calc = ("PROMETHEE II ikili karşılaştırmalar ve tercih fonksiyonu H(d) ile tam sıralama oluşturur. "
+                    "<b>Φ⁺</b> (pozitif akış): bu alternatifin diğerlerini ne kadar güçlü geçtiğinin ortalaması. "
+                    "<b>Φ⁻</b> (negatif akış): diğerlerin bu alternatifi ne kadar güçlü geçtiğinin ortalaması. "
+                    "<b>Φnet = Φ⁺ − Φ⁻</b> net akış değeri ve sıralama ölçütüdür.")
+            found = (f"<b>{best_name}</b> Φnet = <b>{pn if pn is not None else best_score:.4f}</b> ile öne çıkıyor"
+                     + (f" (Φ⁺={pp}, Φ⁻={pm})" if pp is not None else "") + ". "
+                     + ("Yüksek Φ⁺ ve düşük Φ⁻ birlikte: lider hem saldırı hem savunma bakımından güçlü. "
+                        if pp is not None and pm is not None and pp > 0.5 and pm < 0.3 else
+                        "Φnet'in yüksek Φ⁺'tan mı yoksa düşük Φ⁻'dan mı geldiğini inceleyin. ")
+                     + f"<b>{worst_name}</b> Φnet = <b>{_vw('PhiNet') if _col('PhiNet') else worst_score:.4f}</b>.")
+            watch = ("Φ⁺ 'bu alternatif diğerlerini ne kadar geçiyor?' sorusunu, Φ⁻ ise 'diğerleri bunu ne kadar geçiyor?' sorusunu yanıtlar. "
+                     "Orta Φ⁺ ama çok düşük Φ⁻: bu alternatif baskın değil ama güvenli bir uzlaşı adayıdır.")
+
+    # ── GRA ──────────────────────────────────────────────────────────────────────
+    elif base == "GRA":
+        grg = _v("GRG") or best_score
+        wgrg = _vw("GRG") or worst_score
+        if is_en:
+            calc = ("Grey Relational Analysis (GRA) measures how closely each alternative matches a reference sequence (ideal profile). "
+                    "The <b>Grey Relational Coefficient (GRC)</b> for each criterion ranges in (0, 1] — "
+                    "ζ = 0.5 (distinguishing coefficient) controls contrast sensitivity. "
+                    "The <b>GRG</b> (Grey Relational Grade) is the weighted average of GRCs.")
+            found = (f"<b>{best_name}</b> achieved GRG = <b>{grg:.4f}</b>, indicating the closest match to the reference ideal. "
+                     f"<b>{worst_name}</b> scored GRG = <b>{wgrg:.4f}</b>. "
+                     f"GRG spread: <b>{spread:.4f}</b> — "
+                     + ("alternatives are tightly clustered; marginal GRC differences in key criteria are decisive." if spread < 0.1 else
+                        "clear differentiation relative to the reference profile." if spread > 0.25 else
+                        "moderate spread along the reference profile."))
+            watch = ("GRC values near 1.0 for all criteria indicate near-perfect alignment with the ideal; "
+                     "GRC near 0.33 (ζ/(1+ζ) at maximum distance) signals poor alignment. "
+                     "Inspect per-criterion GRCs to find which criteria drag the leader's grade down.")
+        else:
+            calc = ("Gri İlişkisel Analiz (GRA), her alternatifin referans diziye (ideal profile) ne kadar yakın olduğunu ölçer. "
+                    "Her kriter için <b>Gri İlişkisel Katsayı (GRC)</b> (0, 1] aralığında yer alır — "
+                    "ζ = 0.5 (ayrım katsayısı) kontrast duyarlılığını kontrol eder. "
+                    "<b>GRG</b> (Gri İlişkisel Derece), GRC değerlerinin ağırlıklı ortalamasıdır.")
+            found = (f"<b>{best_name}</b> GRG = <b>{grg:.4f}</b> ile referans ideale en yakın alternatif. "
+                     f"<b>{worst_name}</b> GRG = <b>{wgrg:.4f}</b>. "
+                     f"GRG aralığı: <b>{spread:.4f}</b> — "
+                     + ("alternatifler birbirine çok yakın; belirleyici fark kriterlerin GRC değerlerinde gizlidir." if spread < 0.1 else
+                        "referans profile göre belirgin ayrışma gözlemleniyor." if spread > 0.25 else
+                        "orta düzey ayrışma."))
+            watch = ("Tüm kriterlerde GRC ≈ 1.0 → idealin neredeyse tam karşılanması; "
+                     "GRC ≈ 0.33 → maksimum uzaklıkta zayıf uyum. "
+                     "Liderin GRG'sini düşüren kriterleri kriter bazlı GRC tablosundan tespit edin.")
+
+    # ── MARCOS ───────────────────────────────────────────────────────────────────
+    elif base == "MARCOS":
+        km, kp, ui = _v("K-"), _v("K+"), _v("U_i")
+        if is_en:
+            calc = ("MARCOS evaluates each alternative against <em>both</em> the ideal (AI) and anti-ideal (AAI) simultaneously. "
+                    "<b>K⁻ = Sᵢ / S_AAI</b>: utility relative to the anti-ideal — higher means the alternative is farther from the worst. "
+                    "<b>K⁺ = Sᵢ / S_AI</b>: utility relative to the ideal — higher means the alternative is closer to the best. "
+                    "The final <b>Uᵢ</b> (utility function) combines K⁻ and K⁺ via f(K⁻) and f(K⁺) weighting fractions.")
+            found = (f"<b>{best_name}</b> achieved Uᵢ = <b>{ui if ui is not None else best_score:.4f}</b>"
+                     + (f" (K⁻={km}, K⁺={kp})" if km is not None else "") + ". "
+                     + ("K⁺ close to 1 indicates near-ideal performance; "
+                        if kp is not None and kp > 0.8 else
+                        "K⁺ below 0.5 means still significant distance from ideal despite leading; " if kp is not None and kp < 0.5 else "")
+                     + f"<b>{worst_name}</b> scored Uᵢ = <b>{_vw('U_i') if _col('U_i') else worst_score:.4f}</b>.")
+            watch = ("K⁻ > 1 means the alternative outperforms the anti-ideal by more than 100% — strong floor-clearing. "
+                     "K⁺ > 1 is theoretically possible only when S_i > S_AI (scores can exceed the augmented ideal row due to weighting).")
+        else:
+            calc = ("MARCOS her alternatifi <em>aynı anda</em> ideal (AI) ve anti-ideal (AAI) referanslara göre değerlendirir. "
+                    "<b>K⁻ = Sᵢ / S_AAI</b>: anti-ideale göre fayda — yüksek olması en kötüden uzaklaşıldığını gösterir. "
+                    "<b>K⁺ = Sᵢ / S_AI</b>: ideale göre fayda — yüksek olması en iyiye yaklaşıldığını gösterir. "
+                    "Nihai <b>Uᵢ</b> (fayda fonksiyonu), K⁻ ve K⁺'yı f(K⁻) ve f(K⁺) ağırlık kesirleriyle birleştirir.")
+            found = (f"<b>{best_name}</b> Uᵢ = <b>{ui if ui is not None else best_score:.4f}</b> ile lider"
+                     + (f" (K⁻={km}, K⁺={kp})" if km is not None else "") + ". "
+                     + ("K⁺ 1'e yakın — lider neredeyse ideal performansta. "
+                        if kp is not None and kp > 0.8 else
+                        "K⁺ < 0.5 — liderin ideale hâlâ uzaklığı var; diğer kriterler baskı altında olabilir. " if kp is not None and kp < 0.5 else "")
+                     + f"<b>{worst_name}</b> Uᵢ = <b>{_vw('U_i') if _col('U_i') else worst_score:.4f}</b>.")
+            watch = ("K⁻ > 1: anti-ideali %100'ün üzerinde geride bırakmak — zemin güçlü. "
+                     "K⁺ > 1: teorik olarak mümkün ama nadir; ağırlıklı skorum S_AI'yi aşıyor demektir.")
+
+    # ── CoCoSo ───────────────────────────────────────────────────────────────────
+    elif base == "CoCoSo":
+        ka, kb, kc = _v("K_a"), _v("K_b"), _v("K_c")
+        si, pi = _v("S_i"), _v("P_i")
+        if is_en:
+            calc = ("CoCoSo combines three compromise strategies from the weighted sum (Sᵢ) and weighted power (Pᵢ): "
+                    "<b>Kₐ</b> = arithmetic–geometric compromise; "
+                    "<b>K_b</b> = sum-relative comparison (Sᵢ/ΣSⱼ + Pᵢ/ΣPⱼ); "
+                    "<b>K_c</b> = max-relative (λ-balanced). "
+                    "Final score = ∛(Kₐ·K_b·K_c) + (Kₐ+K_b+K_c)/3.")
+            found = (f"<b>{best_name}</b> scores Kₐ={ka}, K_b={kb}, K_c={kc} — "
+                     + ("all three strategies agree, confirming robust leadership. " if all(v is not None for v in [ka, kb, kc]) else "")
+                     + f"Final score = <b>{best_score:.4f}</b>. "
+                     + f"<b>{worst_name}</b> final = <b>{worst_score:.4f}</b>.")
+            watch = ("If Kₐ and K_c are high but K_b is low, the alternative performs well in absolute terms "
+                     "but ranks lower within the field — check Sᵢ relative to other alternatives.")
+        else:
+            calc = ("CoCoSo ağırlıklı toplam (Sᵢ) ve ağırlıklı güç (Pᵢ) üzerinden üç uzlaşı stratejisini birleştirir: "
+                    "<b>Kₐ</b> = aritmetik-geometrik uzlaşı; "
+                    "<b>K_b</b> = toplam-göreli karşılaştırma (Sᵢ/ΣSⱼ + Pᵢ/ΣPⱼ); "
+                    "<b>K_c</b> = maksimum-göreli (λ dengeli). "
+                    "Nihai skor = ∛(Kₐ·K_b·K_c) + (Kₐ+K_b+K_c)/3.")
+            found = (f"<b>{best_name}</b>: Kₐ={ka}, K_b={kb}, K_c={kc} — "
+                     + ("üç strateji de aynı fikirde, liderlik tutarlı ve güçlü. " if all(v is not None for v in [ka, kb, kc]) else "")
+                     + f"Nihai skor = <b>{best_score:.4f}</b>. "
+                     + f"<b>{worst_name}</b> nihai skor = <b>{worst_score:.4f}</b>.")
+            watch = ("Kₐ ve K_c yüksek ama K_b düşükse: alternatif mutlak anlamda iyi ama alan içindeki göreli konumu daha zayıf. "
+                     "Sᵢ değerini diğer alternatiflerle karşılaştırarak kontrol edin.")
+
+    # ── ARAS ─────────────────────────────────────────────────────────────────────
+    elif base == "ARAS":
+        si_v, ki_v = _v("S_i"), _v("K_i")
+        s0 = round(float(pd.to_numeric(df["S_i"], errors="coerce").max()), 4) if "S_i" in df.columns else None
+        if is_en:
+            calc = ("ARAS augments the decision matrix with an optimal (ideal) row A₀, then normalises and weights all rows. "
+                    "<b>Sᵢ</b> = weighted normalised performance of alternative i; "
+                    "<b>S₀</b> = performance of the ideal row. "
+                    "<b>Kᵢ = Sᵢ / S₀</b> is the optimality degree, ranging (0, 1] — closer to 1 means near-optimal.")
+            found = (f"<b>{best_name}</b>: Sᵢ = {si_v}, Kᵢ = <b>{ki_v if ki_v is not None else best_score:.4f}</b>"
+                     + (f" (S₀ = {s0})" if s0 else "") + ". "
+                     + (f"Kᵢ = {ki_v:.2f} → achieves {ki_v*100:.1f}% of ideal performance. " if ki_v else "")
+                     + f"<b>{worst_name}</b>: Kᵢ = <b>{_vw('K_i') if _col('K_i') else worst_score:.4f}</b>.")
+            watch = ("Kᵢ < 0.5 across all alternatives signals that none reaches half the ideal — consider redefining the criterion scale or reviewing cost/benefit directions.")
+        else:
+            calc = ("ARAS karar matrisine optimal (ideal) bir A₀ satırı ekler, ardından tüm satırları normalize eder ve ağırlıklandırır. "
+                    "<b>Sᵢ</b> = alternatifin ağırlıklı normalize performansı; "
+                    "<b>S₀</b> = ideal satırın performansı. "
+                    "<b>Kᵢ = Sᵢ / S₀</b> optimallik derecesidir; (0, 1] aralığında — 1'e yakın idealdir.")
+            found = (f"<b>{best_name}</b>: Sᵢ = {si_v}, Kᵢ = <b>{ki_v if ki_v is not None else best_score:.4f}</b>"
+                     + (f" (S₀ = {s0})" if s0 else "") + ". "
+                     + (f"Kᵢ = {ki_v:.2f} → ideal performansın %{ki_v*100:.1f}'ine ulaşıyor. " if ki_v else "")
+                     + f"<b>{worst_name}</b>: Kᵢ = <b>{_vw('K_i') if _col('K_i') else worst_score:.4f}</b>.")
+            watch = ("Tüm alternatiflerde Kᵢ < 0.5 ise hiçbiri idealin yarısına ulaşamıyor — kriter ölçeğini veya maliyet/fayda yönlerini gözden geçirmeniz önerilir.")
+
+    # ── MABAC ────────────────────────────────────────────────────────────────────
+    elif base == "MABAC":
+        if is_en:
+            calc = ("MABAC defines a <em>Border Approximation Area (BAA)</em> for each criterion using the geometric mean of all alternatives. "
+                    "Each cell in the distance matrix = wⱼ·(xᵢⱼ_norm − gⱼ): positive → alternative is above the BAA (upper approximation), "
+                    "negative → below the BAA (lower approximation). "
+                    "The final score <b>G</b> is the row sum of all criterion distances.")
+            found = (f"<b>{best_name}</b> scored G = <b>{best_score:.4f}</b> — positioned above the BAA on more criteria. "
+                     f"<b>{worst_name}</b> scored G = <b>{worst_score:.4f}</b>. "
+                     + ("A negative G means the alternative falls below the BAA on a net basis — structurally weak positioning. "
+                        if worst_score < 0 else ""))
+            watch = ("Inspect per-criterion distances: a high G might be driven by a single criterion. "
+                     "Consistent positive distances across criteria signal more robust leadership.")
+        else:
+            calc = ("MABAC her kriter için tüm alternatiflerin geometrik ortalamasından <em>Sınır Yaklaşım Alanı (BAA)</em> belirler. "
+                    "Mesafe matrisinin her hücresi = wⱼ·(xᵢⱼ_norm − gⱼ): pozitif → BAA'nın üstünde (üst yaklaşım), "
+                    "negatif → altında (alt yaklaşım). "
+                    "Nihai skor <b>G</b>, tüm kriter mesafelerinin satır toplamıdır.")
+            found = (f"<b>{best_name}</b> G = <b>{best_score:.4f}</b> ile daha fazla kriterde BAA üstünde konumlanıyor. "
+                     f"<b>{worst_name}</b> G = <b>{worst_score:.4f}</b>. "
+                     + ("Negatif G: alternatif net olarak BAA'nın altında — yapısal konumlanma zayıf. "
+                        if worst_score < 0 else ""))
+            watch = ("Kriter bazlı mesafeleri inceleyin: yüksek G tek bir kritere bağlıysa gerçek liderlik kırılgandır. "
+                     "Tüm kriterlerde tutarlı pozitif mesafe, daha güvenilir liderliğin göstergesidir.")
+
+    # ── Genel fallback ────────────────────────────────────────────────────────────
+    else:
+        if is_en:
+            calc  = f"This table shows the intermediate calculation steps for the <b>{method}</b> method."
+            found = (f"<b>{best_name}</b> achieved the highest score = <b>{best_score:.4f}</b>; "
+                     f"<b>{worst_name}</b> the lowest = <b>{worst_score:.4f}</b>. "
+                     f"Score spread: <b>{spread:.4f}</b> across {n} alternatives.")
+            watch = "Review the method documentation to interpret each column's contribution to the final ranking."
+        else:
+            calc  = f"Bu tablo <b>{method}</b> yönteminin ara hesaplama adımlarını göstermektedir."
+            found = (f"<b>{best_name}</b> en yüksek skoru = <b>{best_score:.4f}</b> aldı; "
+                     f"<b>{worst_name}</b> en düşük = <b>{worst_score:.4f}</b>. "
+                     f"{n} alternatif arasında skor aralığı: <b>{spread:.4f}</b>.")
+            watch = "Her sütunun nihai sıralamaya katkısını anlamak için yöntem dokümantasyonunu inceleyiniz."
+
+    fuzzy_note = ""
+    if fz:
+        fuzzy_note = (" <em>(Bulanık uzantı: değerler üçgensel bulanık sayılardan durulaştırılmıştır — "
+                      "sonuçları kesin ölçümler yerine aralık temelli değerlendirmeler olarak yorumlayın.)</em>"
+                      if not is_en else
+                      " <em>(Fuzzy extension: values are defuzzified from triangular fuzzy numbers — "
+                      "interpret results as interval-based estimates rather than precise measurements.)</em>")
+
+    label_calc  = "Ne Hesaplandı?" if not is_en else "What Was Calculated?"
+    label_found = "Ne Bulundu?" if not is_en else "What Was Found?"
+    label_watch = "Neye Dikkat?" if not is_en else "What to Watch?"
+
+    return (f"<b>📐 {label_calc}</b> {calc}{fuzzy_note}<br><br>"
+            f"<b>🔍 {label_found}</b> {found}<br><br>"
+            f"<b>⚠️ {label_watch}</b> {watch}")
+
+
 def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str, str]) -> None:
     ranking = result.get("ranking", {}) or {}
     method = ranking.get("method")
@@ -2513,12 +2904,17 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
     base_method = method.replace("Fuzzy ", "")
     shown = False
 
+    _lang = st.session_state.get("ui_lang", "TR")
+
     if base_method == "PROMETHEE":
         flows = details.get("promethee_flows")
         pref = details.get("promethee_pref_matrix")
         if isinstance(flows, pd.DataFrame) and not flows.empty:
             shown = True
             st.markdown(f"##### 🔀 {tt('PROMETHEE Akış Tablosu', 'PROMETHEE Flow Table')}")
+            _live_c = _live_detail_commentary(method, flows, alt_names, _lang)
+            if _live_c:
+                st.markdown(f'<div class="commentary-box">{_live_c}</div>', unsafe_allow_html=True)
             _flows_disp = _map_alt_names_in_df(flows, alt_names)
             for col in ["PhiPlus", "PhiMinus", "PhiNet", "Skor"]:
                 if col in _flows_disp.columns:
@@ -2549,6 +2945,9 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
         if isinstance(dist_df, pd.DataFrame) and not dist_df.empty:
             shown = True
             st.markdown(f"##### 📐 {tt('TOPSIS Uzaklık Tablosu', 'TOPSIS Distance Table')}")
+            _live_c = _live_detail_commentary(method, dist_df, alt_names, _lang)
+            if _live_c:
+                st.markdown(f'<div class="commentary-box">{_live_c}</div>', unsafe_allow_html=True)
             _dist_disp = _map_alt_names_in_df(dist_df, alt_names)
             for col in ["D+", "D-", "Skor"]:
                 if col in _dist_disp.columns:
@@ -2563,6 +2962,9 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
         if isinstance(vikor_df, pd.DataFrame) and not vikor_df.empty:
             shown = True
             st.markdown(f"##### ⚖️ {tt('VIKOR Uzlaşı Tablosu', 'VIKOR Compromise Table')}")
+            _live_c = _live_detail_commentary(method, vikor_df, alt_names, _lang)
+            if _live_c:
+                st.markdown(f'<div class="commentary-box">{_live_c}</div>', unsafe_allow_html=True)
             _vikor_disp = _map_alt_names_in_df(vikor_df, alt_names)
             for col in ["S", "R", "Q", "Skor"]:
                 if col in _vikor_disp.columns:
@@ -2577,6 +2979,9 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
         if isinstance(edas_df, pd.DataFrame) and not edas_df.empty:
             shown = True
             st.markdown(f"##### 📏 {tt('EDAS Sapma Tablosu', 'EDAS Distance Table')}")
+            _live_c = _live_detail_commentary(method, edas_df, alt_names, _lang)
+            if _live_c:
+                st.markdown(f'<div class="commentary-box">{_live_c}</div>', unsafe_allow_html=True)
             _edas_disp = _map_alt_names_in_df(edas_df, alt_names)
             for col in ["SP", "SN", "NSP", "NSN", "Skor"]:
                 if col in _edas_disp.columns:
@@ -2591,6 +2996,9 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
         if isinstance(codas_df, pd.DataFrame) and not codas_df.empty:
             shown = True
             st.markdown(f"##### 🧭 {tt('CODAS Uzaklık Tablosu', 'CODAS Distance Table')}")
+            _live_c = _live_detail_commentary(method, codas_df, alt_names, _lang)
+            if _live_c:
+                st.markdown(f'<div class="commentary-box">{_live_c}</div>', unsafe_allow_html=True)
             _codas_disp = _map_alt_names_in_df(codas_df, alt_names)
             for col in ["E", "T", "H", "Skor"]:
                 if col in _codas_disp.columns:
@@ -2606,7 +3014,11 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
         if _detail_frames:
             st.markdown(f"##### 🧾 {tt('Yöntem-Özel Detay Tablosu', 'Method-Specific Detail Table')}")
             _first_key = next(iter(_detail_frames))
-            render_table(localize_df(_map_alt_names_in_df(_detail_frames[_first_key], alt_names).head(250)))
+            _first_df = _detail_frames[_first_key]
+            _live_c = _live_detail_commentary(method, _first_df, alt_names, _lang)
+            if _live_c:
+                st.markdown(f'<div class="commentary-box">{_live_c}</div>', unsafe_allow_html=True)
+            render_table(localize_df(_map_alt_names_in_df(_first_df, alt_names).head(250)))
         else:
             st.info(tt("Bu yöntem için ek yöntem-özel görsel bulunmuyor.", "No additional method-specific visualization is available for this method."))
 
@@ -3201,7 +3613,7 @@ st.markdown(
 # SOL PANEL: KONTROL, AMAC VE TEMİZLİK
 # ---------------------------------------------------------
 with st.sidebar:
-    with open("logo.png", "rb") as _logo_file:
+    with open(APP_DIR / "logo.png", "rb") as _logo_file:
         _sidebar_logo_b64 = base64.b64encode(_logo_file.read()).decode("utf-8")
     st.markdown(
         f"""
@@ -3406,7 +3818,7 @@ with st.expander(_step1_label, expanded=(raw_data is not None) and not _step1_do
         horizontal=True,
     )
     _scope_options = [
-        tt("📅 Tek Yıl", "📅 Single Year"),
+        tt("📅 Yıl verisi yok / önemsiz", "📅 No / irrelevant year data"),
         tt("🗂️ Panel Veri", "🗂️ Panel Data"),
     ]
     _scope_default = 1 if st.session_state.get("analysis_scope") == "panel" else 0
@@ -3568,7 +3980,7 @@ if len(numeric_cols) < 2:
 
 _existing_crits = set(st.session_state.get("crit_dir", {}).keys())
 if _existing_crits != set(numeric_cols):
-    st.session_state["crit_dir"]     = {c: (guess_direction(c) == "Max (Fayda)") for c in numeric_cols}
+    st.session_state["crit_dir"]     = {c: True for c in numeric_cols}  # varsayılan: tümü Fayda
     st.session_state["crit_include"] = {c: True for c in numeric_cols}
 
 
@@ -3666,94 +4078,142 @@ with st.expander(_prep_label, expanded=not st.session_state.get("prep_done")):
     # ── 3) Kriter Yapılandırması ──
     with st.expander(f"⚙️ {tt('Kriter Yapılandırması', 'Criteria Configuration')}", expanded=False):
         st.markdown("""<style>
-        .ct-wrap { border:1px solid #C8D8E8; border-radius:8px; overflow:hidden; margin-top:0.1rem; }
-        .ct-head {
-            display:grid; grid-template-columns:32px 1fr 170px;
-            background:#E8F0F8; padding:0.18rem 0.6rem;
-            font-size:0.67rem; font-weight:700; color:#3A5A78;
-            text-transform:uppercase; letter-spacing:0.3px;
-            border-bottom:2px solid #C8D8E8;
+        .ct-wrap {
+            border:1px solid #D0D8E4;
+            border-radius:8px;
+            overflow:hidden;
+            margin-top:0.15rem;
         }
-        /* Row borders */
+        .ct-head {
+            display:grid;
+            grid-template-columns:34px minmax(0, 1fr) 92px 92px;
+            align-items:center;
+            background:#EEF3F8;
+            padding:0.22rem 0.55rem;
+            font-size:0.66rem;
+            font-weight:700;
+            color:#4A6070;
+            text-transform:uppercase;
+            letter-spacing:0.4px;
+            border-bottom:1px solid #C8D4E0;
+        }
+        .ct-head > span:nth-child(1),
+        .ct-head > span:nth-child(3),
+        .ct-head > span:nth-child(4) {
+            text-align:center;
+        }
         .ct-wrap .stHorizontalBlock {
-            border-bottom:1px solid #E0EAF2 !important;
-            margin:0 !important; padding:0 0.35rem !important;
+            border-bottom:1px solid #E8EEF4 !important;
+            margin:0 !important;
+            padding:0.08rem 0.45rem !important;
             align-items:center !important;
+            min-height:2.05rem !important;
         }
         .ct-wrap .stHorizontalBlock:last-of-type { border-bottom:none !important; }
-        .ct-wrap .stHorizontalBlock:nth-of-type(even) { background:#F6FAFD; }
-        /* Compact columns */
-        .ct-wrap [data-testid="column"] { padding:0.05rem 0.2rem !important; }
+        .ct-wrap .stHorizontalBlock:nth-of-type(odd) { background:#FFFFFF; }
+        .ct-wrap .stHorizontalBlock:nth-of-type(even) { background:#F7FAFE; }
+        .ct-wrap [data-testid="column"] { padding:0 0.10rem !important; }
         .ct-wrap .element-container { margin:0 !important; padding:0 !important; }
-        /* Checkbox */
-        .ct-wrap .stCheckbox { margin:0 !important; min-height:1.6rem !important; }
-        .ct-wrap .stCheckbox > label { padding:0 !important; }
-        /* Criterion name */
-        .ct-crit-name { font-size:0.79rem; font-weight:600; color:#1C1C1E; line-height:1.8; }
-        /* Direction radio — pill style */
-        .ct-wrap .stRadio > label { display:none !important; }
-        .ct-wrap .stRadio > div[role="radiogroup"] {
-            flex-direction:row !important; gap:4px !important;
-            margin:0 !important; padding:0 !important; flex-wrap:nowrap !important;
+        .ct-wrap .stCheckbox {
+            margin:0 !important;
+            min-height:1.35rem !important;
+            display:flex !important;
+            align-items:center !important;
+            justify-content:center !important;
         }
-        .ct-wrap .stRadio label {
-            padding:0.08rem 0.55rem !important;
-            border-radius:12px !important;
-            font-size:0.70rem !important; font-weight:600 !important;
-            border:1.5px solid #ccc !important;
-            cursor:pointer !important; white-space:nowrap !important;
-            transition:background 0.15s, color 0.15s !important;
-            line-height:1.7 !important;
+        .ct-wrap .stCheckbox > label {
+            padding:0 !important;
+            margin:0 !important;
+            min-height:auto !important;
         }
-        /* Fayda pill — green tones */
-        .ct-wrap .stRadio label:first-of-type {
-            border-color:#27704A !important; color:#27704A !important; background:#fff !important;
+        .ct-wrap .stCheckbox p { font-size:0 !important; }
+        .ct-crit-name {
+            font-size:0.77rem;
+            font-weight:600;
+            color:#1C2A38;
+            line-height:1.25;
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
+            padding-top:0.06rem;
         }
-        .ct-wrap .stRadio label:first-of-type:has(input:checked) {
-            background:#27704A !important; color:#fff !important;
+        .ct-wrap .stButton {
+            display:flex !important;
+            align-items:center !important;
         }
-        /* Maliyet pill — red tones */
-        .ct-wrap .stRadio label:last-of-type {
-            border-color:#B02A2A !important; color:#B02A2A !important; background:#fff !important;
+        .ct-wrap .stButton > button {
+            width:100% !important;
+            min-height:1.58rem !important;
+            padding:0.10rem 0.22rem !important;
+            font-size:0.67rem !important;
+            font-weight:600 !important;
+            border-radius:6px !important;
+            border:1px solid #CCD6E2 !important;
+            background:#F3F6F9 !important;
+            color:#566678 !important;
+            box-shadow:none !important;
+            letter-spacing:0 !important;
         }
-        .ct-wrap .stRadio label:last-of-type:has(input:checked) {
-            background:#B02A2A !important; color:#fff !important;
+        .ct-wrap .stButton > button:hover {
+            background:#EAF0F5 !important;
+            border-color:#B7C6D6 !important;
+            color:#2F4358 !important;
         }
-        /* Hide radio circle dot */
-        .ct-wrap .stRadio input[type="radio"] {
-            position:absolute !important; opacity:0 !important; width:0 !important; height:0 !important;
+        .ct-wrap .stButton > button[kind="primary"] {
+            background:linear-gradient(180deg, #274F78 0%, #1F4A73 100%) !important;
+            color:#FFFFFF !important;
+            border-color:#1F4A73 !important;
+            box-shadow:0 4px 10px rgba(31, 74, 115, 0.14) !important;
+        }
+        .ct-wrap .stButton > button[kind="primary"]:hover {
+            background:linear-gradient(180deg, #21476D 0%, #173754 100%) !important;
+            color:#FFFFFF !important;
+            border-color:#173754 !important;
         }
         </style>""", unsafe_allow_html=True)
 
-        _dir_benefit = tt("⬆ Fayda", "⬆ Benefit")
-        _dir_cost    = tt("⬇ Maliyet", "⬇ Cost")
+        _dir_benefit = tt("Fayda", "Benefit")
+        _dir_cost = tt("Maliyet", "Cost")
 
-        # Header
+        # Tablo başlığı (HTML div)
         st.markdown(
             f'<div class="ct-wrap"><div class="ct-head">'
-            f'<span></span>'
+            f'<span>✓</span>'
             f'<span>{tt("Kriter", "Criterion")}</span>'
-            f'<span>{tt("Yön", "Direction")}</span>'
+            f'<span>{tt("Fayda", "Benefit")}</span>'
+            f'<span>{tt("Maliyet", "Cost")}</span>'
             f'</div></div>',
             unsafe_allow_html=True,
         )
+        # Veri satırları
         st.markdown('<div class="ct-wrap">', unsafe_allow_html=True)
         for _c in numeric_cols:
-            _rc = st.columns([0.35, 3.5, 2.1], gap="small")
+            _rc = st.columns([0.42, 4.5, 1.15, 1.15], gap="small")
             with _rc[0]:
                 st.session_state["crit_include"][_c] = st.checkbox(
                     "", value=st.session_state["crit_include"].get(_c, True), key=f"inc_{_c}"
                 )
             with _rc[1]:
                 st.markdown(f'<div class="ct-crit-name">{_c}</div>', unsafe_allow_html=True)
+            _is_benefit = st.session_state["crit_dir"].get(_c, True)
             with _rc[2]:
-                _is_benefit = st.session_state["crit_dir"].get(_c, True)
-                _choice = st.radio(
-                    "", [_dir_benefit, _dir_cost],
-                    index=0 if _is_benefit else 1,
-                    key=f"dir_{_c}", horizontal=True, label_visibility="collapsed",
-                )
-                st.session_state["crit_dir"][_c] = (_choice == _dir_benefit)
+                if st.button(
+                    _dir_benefit,
+                    key=f"dir_benefit_{_c}",
+                    use_container_width=True,
+                    type="primary" if _is_benefit else "secondary",
+                ):
+                    st.session_state["crit_dir"][_c] = True
+                    st.rerun()
+            with _rc[3]:
+                if st.button(
+                    _dir_cost,
+                    key=f"dir_cost_{_c}",
+                    use_container_width=True,
+                    type="primary" if not _is_benefit else "secondary",
+                ):
+                    st.session_state["crit_dir"][_c] = False
+                    st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
     if not st.session_state.get("prep_done"):
@@ -4231,7 +4691,8 @@ if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), use_container_width
                 if not year_labels:
                     year_labels = _all_year_labels
                 if len(year_labels) < 2:
-                    raise ValueError(tt("Panel veri seçildi ancak yıl sütununda en az iki farklı dönem bulunamadı.", "Panel data was selected, but the year column does not contain at least two distinct periods."))
+                    st.warning(tt("Yıl sütununda yalnızca tek dönem bulundu. Panel trend analizi en az iki dönem gerektirir; analiz tek dönem olarak devam ediyor.", "Only one period found in the year column. Panel trend analysis requires at least two periods; analysis continues as single-period."))
+                    panel_mode = False
                 panel_results: Dict[str, Dict[str, Any]] = {}
                 for year_label in year_labels:
                     year_slice = working.loc[_panel_mask(working, panel_year_col, year_label), criteria].copy()
