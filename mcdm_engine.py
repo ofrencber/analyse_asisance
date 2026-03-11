@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -1119,7 +1119,6 @@ def _rank_marcos(data: pd.DataFrame, criteria_types: Dict[str, str], weights: Di
     norm = pd.DataFrame(index=ext.index, columns=ext.columns, dtype=float)
     for c in ext.columns:
         ai = float(ideal[c])
-        aai = float(anti_ideal[c])
         col = ext[c].to_numpy(dtype=float)
         if criteria_types.get(c, "max") == "max":
             norm[c] = _safe_divide(col, ai)
@@ -1858,11 +1857,9 @@ def _report_references(weight_method: str, ranking_method: Optional[str]) -> Lis
     refs = {REFERENCE_LIBRARY["GENERAL_MCDM"], MANDATORY_MCDM_REFERENCE}
     refs.add(REFERENCE_LIBRARY.get(weight_method, REFERENCE_LIBRARY["GENERAL_MCDM"]))
 
-    publication_added = False
     weight_pubs = RENCBER_PUBLICATIONS_BY_METHOD.get(weight_method, [])
     if weight_pubs:
         refs.update(weight_pubs)
-        publication_added = True
 
     if ranking_method:
         refs.add(REFERENCE_LIBRARY.get(ranking_method, REFERENCE_LIBRARY["GENERAL_MCDM"]))
@@ -1875,7 +1872,6 @@ def _report_references(weight_method: str, ranking_method: Optional[str]) -> Lis
             ranking_pubs.extend(RENCBER_PUBLICATIONS_BY_METHOD.get(base, []))
         if ranking_pubs:
             refs.update(ranking_pubs)
-            publication_added = True
 
     return sorted(refs)
 
@@ -2884,8 +2880,8 @@ def generate_3layer_ranking(
         f"**{top_alt}** öne çıktı."
     ) if is_fuzzy else ""
     fuzzy_normative_suffix = (
-        f" Yüksek belirsizlik ortamlarında (oynaklık, eksik veri, dilsel değerlendirme) "
-        f"bulanık yaklaşım klasik yönteme kıyasla daha güçlü akademik meşruiyet sağlar."
+        " Yüksek belirsizlik ortamlarında (oynaklık, eksik veri, dilsel değerlendirme) "
+        "bulanık yaklaşım klasik yönteme kıyasla daha güçlü akademik meşruiyet sağlar."
     ) if is_fuzzy else ""
 
     return {

@@ -24,7 +24,6 @@ try:
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
     from docx.shared import Inches, Pt
-    from docx.enum.section import WD_SECTION
     DOCX_AVAILABLE = True
 except Exception:
     DOCX_AVAILABLE = False
@@ -617,6 +616,7 @@ def init_state() -> None:
         "panel_results": None,
         "panel_years": [],
         "panel_view_choice": None,
+        "panel_run_warnings": [],
         "step1_done": False,
         "direction_notice": None,
     }
@@ -1239,11 +1239,28 @@ def get_math_formulation(w_method: str, r_methods: List[str]) -> str:
 
 # ── EKRAN VE ÇIKTI FONKSİYONLARI ──────────────────────────────────────────────
 def render_3layer(layers: Dict[str, str], title: str = "") -> None:
-    if not any(layers.values()): return
-    if title: st.markdown(f'<p style="font-size:0.8rem;font-weight:700;color:#718096;text-transform:uppercase;">{title}</p>', unsafe_allow_html=True)
-    if layers.get("descriptive"): st.markdown(f'<div class="layer-card layer-desc"><div class="layer-label" style="color:#3182CE">🔵 {tt("Tanımlayıcı — Ne bulundu?", "Descriptive — What was found?")}</div><p class="layer-text">{layers["descriptive"]}</p></div>', unsafe_allow_html=True)
-    if layers.get("analytic"): st.markdown(f'<div class="layer-card layer-analytic"><div class="layer-label" style="color:#38A169">🟢 {tt("Analitik — Ne anlama gelir?", "Analytic — What does it mean?")}</div><p class="layer-text">{layers["analytic"]}</p></div>', unsafe_allow_html=True)
-    if layers.get("normative"): st.markdown(f'<div class="layer-card layer-norm"><div class="layer-label" style="color:#D69E2E">🟡 {tt("Normatif — Ne yapılmalı?", "Normative — What should be done?")}</div><p class="layer-text">{layers["normative"]}</p></div>', unsafe_allow_html=True)
+    if not any(layers.values()):
+        return
+    if title:
+        st.markdown(
+            f'<p style="font-size:0.8rem;font-weight:700;color:#718096;text-transform:uppercase;">{title}</p>',
+            unsafe_allow_html=True,
+        )
+    if layers.get("descriptive"):
+        st.markdown(
+            f'<div class="layer-card layer-desc"><div class="layer-label" style="color:#3182CE">🔵 {tt("Tanımlayıcı — Ne bulundu?", "Descriptive — What was found?")}</div><p class="layer-text">{layers["descriptive"]}</p></div>',
+            unsafe_allow_html=True,
+        )
+    if layers.get("analytic"):
+        st.markdown(
+            f'<div class="layer-card layer-analytic"><div class="layer-label" style="color:#38A169">🟢 {tt("Analitik — Ne anlama gelir?", "Analytic — What does it mean?")}</div><p class="layer-text">{layers["analytic"]}</p></div>',
+            unsafe_allow_html=True,
+        )
+    if layers.get("normative"):
+        st.markdown(
+            f'<div class="layer-card layer-norm"><div class="layer-label" style="color:#D69E2E">🟡 {tt("Normatif — Ne yapılmalı?", "Normative — What should be done?")}</div><p class="layer-text">{layers["normative"]}</p></div>',
+            unsafe_allow_html=True,
+        )
 
 def load_uploaded_file(uploaded_file) -> pd.DataFrame:
     return pd.read_csv(uploaded_file) if uploaded_file.name.lower().endswith(".csv") else pd.read_excel(uploaded_file)
@@ -1293,6 +1310,12 @@ def _sorted_panel_years(series: pd.Series) -> List[str]:
 def _panel_mask(df: pd.DataFrame, year_col: str, year_label: str) -> pd.Series:
     return df[year_col].map(_panel_label) == year_label
 
+def _short_error_text(exc: Exception, max_len: int = 180) -> str:
+    msg = str(exc).replace("\n", " | ").strip()
+    if not msg:
+        return "Unknown error"
+    return msg if len(msg) <= max_len else (msg[: max_len - 3] + "...")
+
 def _set_docx_run_style(
     run,
     lang_code: str = "tr-TR",
@@ -1328,7 +1351,8 @@ def _configure_apa_doc(doc: Document) -> None:
     normal_style.font.size = Pt(12)
 
 def add_table_to_doc(doc: Document, df: pd.DataFrame, max_rows: int = 25, lang_code: str = "tr-TR") -> None:
-    if df is None or df.empty: return
+    if df is None or df.empty:
+        return
     use_df = df.copy().head(max_rows)
     table = doc.add_table(rows=1, cols=len(use_df.columns))
     table.style = "Table Grid"
@@ -1479,7 +1503,7 @@ def _build_doc_sections(result: Dict[str, Any], lang: str) -> Dict[str, Any]:
             ),
             "Philosophy of the Study": "\n\n".join([line for line in philosophy_lines if line.strip()]),
             "Methodology": (
-                f"The workflow was kept application-focused: data profile review, weighting, ranking"
+                "The workflow was kept application-focused: data profile review, weighting, ranking"
                 + (", cross-method comparison" if n_comp >= 2 else "")
                 + (", and robustness testing" if sens else "")
                 + ". This report intentionally excludes theoretical formulas and focuses on the chosen methods, their findings, and the supporting tables."
@@ -1881,7 +1905,8 @@ def _preferred_doc_detail_table(result: Dict[str, Any], lang: str) -> tuple[str,
     return None
 
 def generate_apa_docx(result: Dict[str, Any], selected_data: pd.DataFrame, lang: str = "TR") -> bytes | None:
-    if not DOCX_AVAILABLE: return None
+    if not DOCX_AVAILABLE:
+        return None
     doc = Document()
     _configure_apa_doc(doc)
     for section in doc.sections:
@@ -2566,7 +2591,7 @@ def _live_detail_commentary(method: str, detail_df: pd.DataFrame, alt_names: Dic
         if is_en:
             calc = ("TOPSIS computes two Euclidean distances for each alternative: <b>D⁺</b> (distance to the ideal solution) "
                     "and <b>D⁻</b> (distance to the negative-ideal). "
-                    f"The closeness coefficient <b>C* = D⁻ / (D⁺ + D⁻)</b> is the final score, ranging from 0 to 1.")
+                    "The closeness coefficient <b>C* = D⁻ / (D⁺ + D⁻)</b> is the final score, ranging from 0 to 1.")
             found = (f"<b>{best_name}</b> achieved the highest C* = <b>{best_score:.4f}</b>"
                      + (f" (D⁺={dp}, D⁻={dm})" if dp is not None else "") + ". "
                      + f"<b>{worst_name}</b> scored lowest at C* = <b>{worst_score:.4f}</b>"
@@ -2638,7 +2663,7 @@ def _live_detail_commentary(method: str, detail_df: pd.DataFrame, alt_names: Dic
             found = (f"<b>{best_name}</b> achieved AS = <b>{best_score:.4f}</b>"
                      + (f" (NSP={nsp}, NSN={nsn})" if nsp is not None else "")
                      + (f" with SP={sp}, SN={sn}" if sp is not None else "") + ". "
-                     + (f"NSP close to 1 signals strong above-average performance; NSN close to 1 means below-average deviations are minimal. "
+                     + ("NSP close to 1 signals strong above-average performance; NSN close to 1 means below-average deviations are minimal. "
                         if nsp is not None and nsp > 0.8 else
                         "Check whether leadership is driven by SP or by NSN — a balanced profile is more robust. ")
                      + f"<b>{worst_name}</b> scored AS = <b>{worst_score:.4f}</b>.")
@@ -2669,7 +2694,7 @@ def _live_detail_commentary(method: str, detail_df: pd.DataFrame, alt_names: Dic
                     "The assessment score <b>H</b> is derived from a pairwise comparison matrix.")
             found = (f"<b>{best_name}</b> leads with H = <b>{h_v if h_v is not None else best_score:.4f}</b>"
                      + (f" (E={e_v}, T={t_v})" if e_v is not None else "") + ". "
-                     + (f"Both Euclidean and Taxicab distances are high, confirming robust separation from the worst. "
+                     + ("Both Euclidean and Taxicab distances are high, confirming robust separation from the worst. "
                         if e_v is not None and t_v is not None and e_v > 0.3 and t_v > 0.3 else
                         "Check T — if T is low relative to E, the leader's advantage narrows under the Taxicab criterion. ")
                      + f"Score spread: <b>{spread:.4f}</b>.")
@@ -2692,7 +2717,6 @@ def _live_detail_commentary(method: str, detail_df: pd.DataFrame, alt_names: Dic
     # ── PROMETHEE ────────────────────────────────────────────────────────────────
     elif base == "PROMETHEE":
         pp, pm, pn = _v("PhiPlus"), _v("PhiMinus"), _v("PhiNet")
-        wp_pm = _vw("PhiPlus"); ww_pm = _vw("PhiMinus")
         if is_en:
             calc = ("PROMETHEE II builds a complete ranking via pairwise comparisons using a preference function H(d). "
                     "<b>Φ⁺</b> (positive flow): average preference of this alternative over all others — outranking strength. "
@@ -2786,7 +2810,6 @@ def _live_detail_commentary(method: str, detail_df: pd.DataFrame, alt_names: Dic
     # ── CoCoSo ───────────────────────────────────────────────────────────────────
     elif base == "CoCoSo":
         ka, kb, kc = _v("K_a"), _v("K_b"), _v("K_c")
-        si, pi = _v("S_i"), _v("P_i")
         if is_en:
             calc = ("CoCoSo combines three compromise strategies from the weighted sum (Sᵢ) and weighted power (Pᵢ): "
                     "<b>Kₐ</b> = arithmetic–geometric compromise; "
@@ -3039,7 +3062,8 @@ def _max_corr_pair(result: Dict[str, Any]) -> tuple[str, str, float]:
         return ("—", "—", 0.0)
     mask = ~np.eye(len(corr), dtype=bool)
     vals = corr.abs().where(mask).stack()
-    if vals.empty: return ("—", "—", 0.0)
+    if vals.empty:
+        return ("—", "—", 0.0)
     pair = vals.idxmax()
     return pair[0], pair[1], float(vals.max())
 
@@ -3329,7 +3353,7 @@ def gen_stat_commentary(result: Dict[str, Any]) -> str:
         example = (
             f"For a non-technical reading: if two criteria move almost together, the model may be hearing the same story twice. Here the strongest overlap is between <strong>{c1}</strong> and <strong>{c2}</strong>."
             if max_rho > 0.75 else
-            f"For a non-technical reading: the criteria are not strongly repeating each other, so the model can look at the problem from multiple angles."
+            "For a non-technical reading: the criteria are not strongly repeating each other, so the model can look at the problem from multiple angles."
         )
         if max_rho > 0.75:
             academic = f"<strong>{cv_crit}</strong> has the highest coefficient of variation (Coeff. of Variation ≈{cv_val:.2f}), so it carries the strongest separating signal. At the same time, the high correlation between <strong>{c1}</strong> and <strong>{c2}</strong> (|ρ| = {max_rho:.2f}) suggests partial information overlap."
@@ -3363,7 +3387,7 @@ def gen_weight_commentary(result: Dict[str, Any]) -> str:
     if st.session_state.get("ui_lang") == "EN":
         if mode == "equal":
             simple = "All criteria were given equal importance. In other words, the model was instructed not to privilege any one criterion over the others."
-            academic = f"This is a normative baseline rather than a data-derived weighting scheme. It is useful when you want the ranking to reflect balanced treatment across all criteria."
+            academic = "This is a normative baseline rather than a data-derived weighting scheme. It is useful when you want the ranking to reflect balanced treatment across all criteria."
             example = "Example: if price, quality, and speed are all treated equally, none of them gets special leverage in the final score."
             action = "Use this mode when you want a neutral baseline, then compare it with an objective weighting result to see whether the story changes."
         elif mode == "manual":
@@ -3406,7 +3430,6 @@ def gen_ranking_commentary(result: Dict[str, Any], alt_names: Dict[str, str] = N
     rt = result["ranking"]["table"]
     if rt is None or rt.empty:
         return tt("Sıralama tablosu mevcut değil.", "Ranking table is not available.")
-    method   = result["ranking"]["method"]
     alt_col  = col_key(rt, "Alternatif", "Alternative")
     score_col = col_key(rt, "Skor", "Score")
     top_alt  = rt.iloc[0][alt_col]
@@ -3792,6 +3815,21 @@ if raw_data is None:
         """,
         unsafe_allow_html=True,
     )
+    st.markdown(
+        f"""
+        <div style="display:flex;justify-content:center;gap:0.65rem;flex-wrap:wrap;margin-top:-1.4rem;margin-bottom:1.4rem;">
+            <a href="https://youtu.be/kaYR2TR0NJY?si=XKGKzCYxC-ad2-bx" target="_blank"
+               style="display:inline-block;background:#0F5D91;color:#FFFFFF;text-decoration:none;padding:0.6rem 1.05rem;border-radius:8px;font-size:0.92rem;font-weight:600;">
+               {tt("🎥 Uygulama Tanıtım Videosu (YouTube)", "🎥 Application Demo Video (YouTube)")}
+            </a>
+            <a href="https://www.instagram.com/mcdm_dss/" target="_blank"
+               style="display:inline-block;background:#C13584;color:#FFFFFF;text-decoration:none;padding:0.6rem 1.05rem;border-radius:8px;font-size:0.92rem;font-weight:600;">
+               {tt("📸 Instagram: @mcdm_dss", "📸 Instagram: @mcdm_dss")}
+            </a>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.stop()
 _needs_ranking_default = bool(st.session_state.get("needs_ranking", True))
 _purpose_options = [
@@ -3860,10 +3898,42 @@ with st.expander(_step1_label, expanded=(raw_data is not None) and not _step1_do
             st.session_state["panel_year_column"] = _panel_col_inner
             _det_years = _sorted_panel_years(raw_data[_panel_col_inner])
             if _det_years:
-                if "panel_selected_years" not in st.session_state or \
-                        set(st.session_state.get("panel_selected_years_all", [])) != set(_det_years):
-                    st.session_state["panel_selected_years"]     = list(_det_years)
+                _known_years = st.session_state.get("panel_selected_years_all", [])
+                _years_changed = set(_known_years) != set(_det_years)
+                if "panel_selected_years" not in st.session_state or _years_changed:
+                    st.session_state["panel_selected_years"] = []
                     st.session_state["panel_selected_years_all"] = list(_det_years)
+                    for _yr in _det_years:
+                        st.session_state[f"panel_yr_cb_{_yr}"] = False
+
+                _sel_all_col, _clr_all_col = st.columns(2, gap="small")
+                with _sel_all_col:
+                    _select_all_clicked = st.button(
+                        tt("✅ Tümünü Seç", "✅ Select All"),
+                        key="panel_years_select_all",
+                        use_container_width=True,
+                    )
+                with _clr_all_col:
+                    _clear_all_clicked = st.button(
+                        tt("🧹 Tümünü Temizle", "🧹 Clear All"),
+                        key="panel_years_clear_all",
+                        use_container_width=True,
+                    )
+
+                if _select_all_clicked:
+                    st.session_state["panel_selected_years"] = list(_det_years)
+                    st.session_state["panel_selected_years_all"] = list(_det_years)
+                    for _yr in _det_years:
+                        st.session_state[f"panel_yr_cb_{_yr}"] = True
+                    st.rerun()
+
+                if _clear_all_clicked:
+                    st.session_state["panel_selected_years"] = []
+                    st.session_state["panel_selected_years_all"] = list(_det_years)
+                    for _yr in _det_years:
+                        st.session_state[f"panel_yr_cb_{_yr}"] = False
+                    st.rerun()
+
                 _sel_yrs_now = []
                 st.markdown(
                     f'<p style="font-size:0.64rem; color:#4A6070; margin:0.1rem 0 0.05rem 0; line-height:1.2;">'
@@ -3874,7 +3944,7 @@ with st.expander(_step1_label, expanded=(raw_data is not None) and not _step1_do
                 for _yi, _yr in enumerate(_det_years):
                     with _yr_sel_cols[_yi % min(10, len(_det_years))]:
                         _yr_key = f"panel_yr_cb_{_yr}"
-                        _yr_def = _yr in st.session_state.get("panel_selected_years", _det_years)
+                        _yr_def = _yr in st.session_state.get("panel_selected_years", [])
                         if st.checkbox(str(_yr), value=_yr_def, key=_yr_key):
                             _sel_yrs_now.append(_yr)
                 st.session_state["panel_selected_years"] = _sel_yrs_now
@@ -4020,7 +4090,7 @@ with st.expander(_prep_label, expanded=not st.session_state.get("prep_done")):
     # ── 1) Ön İnceleme Sonuçları ──
     if _has_diag:
         with st.expander(
-            f"🧭 {tt(f'Ön İnceleme Sonuçları  —  %{_score} Veri Uygunluğu Hesaplanmıştır', f'Preliminary Review  —  {_score}% Data Suitability Calculated')}",
+            f"🧭 {tt('Ön İnceleme Sonuçları', 'Preliminary Review Results')}",
             expanded=False,
         ):
             st.markdown(
@@ -4614,11 +4684,16 @@ with st.expander(tt("⚙️ 3. Adım: Yöntem Seçimi ve Karşılaştırma", "�
                     sensitivity_sigma = float(rec["sensitivity_sigma"])
                     st.caption(tt("Önerilen değerler otomatik uygulanır. İsterseniz Manuel Değiştir moduna geçebilirsiniz.", "Recommended values are applied automatically. Switch to Manual Override if needed."))
                     rec_rows = []
-                    if uses_vikor: rec_rows.append({tt("Parametre", "Parameter"): "VIKOR v", tt("Değer", "Value"): vikor_v})
-                    if uses_waspas: rec_rows.append({tt("Parametre", "Parameter"): "WASPAS λ", tt("Değer", "Value"): waspas_lambda})
-                    if uses_codas: rec_rows.append({tt("Parametre", "Parameter"): "CODAS τ", tt("Değer", "Value"): codas_tau})
-                    if uses_cocoso: rec_rows.append({tt("Parametre", "Parameter"): "CoCoSo λ", tt("Değer", "Value"): cocoso_lambda})
-                    if uses_gra: rec_rows.append({tt("Parametre", "Parameter"): "GRA ρ", tt("Değer", "Value"): gra_rho})
+                    if uses_vikor:
+                        rec_rows.append({tt("Parametre", "Parameter"): "VIKOR v", tt("Değer", "Value"): vikor_v})
+                    if uses_waspas:
+                        rec_rows.append({tt("Parametre", "Parameter"): "WASPAS λ", tt("Değer", "Value"): waspas_lambda})
+                    if uses_codas:
+                        rec_rows.append({tt("Parametre", "Parameter"): "CODAS τ", tt("Değer", "Value"): codas_tau})
+                    if uses_cocoso:
+                        rec_rows.append({tt("Parametre", "Parameter"): "CoCoSo λ", tt("Değer", "Value"): cocoso_lambda})
+                    if uses_gra:
+                        rec_rows.append({tt("Parametre", "Parameter"): "GRA ρ", tt("Değer", "Value"): gra_rho})
                     if uses_promethee:
                         rec_rows.extend([
                             {tt("Parametre", "Parameter"): "PROMETHEE pref_func", tt("Değer", "Value"): promethee_pref_func},
@@ -4626,7 +4701,8 @@ with st.expander(tt("⚙️ 3. Adım: Yöntem Seçimi ve Karşılaştırma", "�
                             {tt("Parametre", "Parameter"): "PROMETHEE p", tt("Değer", "Value"): promethee_p},
                             {tt("Parametre", "Parameter"): "PROMETHEE s", tt("Değer", "Value"): promethee_s},
                         ])
-                    if uses_fuzzy: rec_rows.append({tt("Parametre", "Parameter"): "Fuzzy spread", tt("Değer", "Value"): fuzzy_spread})
+                    if uses_fuzzy:
+                        rec_rows.append({tt("Parametre", "Parameter"): "Fuzzy spread", tt("Değer", "Value"): fuzzy_spread})
                     rec_rows.append({tt("Parametre", "Parameter"): tt("Monte Carlo iterasyon", "Monte Carlo iterations"), tt("Değer", "Value"): sensitivity_iterations})
                     rec_rows.append({tt("Parametre", "Parameter"): "Monte Carlo sigma", tt("Değer", "Value"): sensitivity_sigma})
                     rec_df = pd.DataFrame(rec_rows)
@@ -4680,6 +4756,7 @@ if _method_step_done:
     st.markdown(f"**{tt('Harika.. Artık analiz yapabiliriz! Hazırsanız başlayalım', 'Great.. We can now run the analysis! If you are ready, let us begin.') }**")
 
 if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), use_container_width=True):
+    st.session_state["panel_run_warnings"] = []
     if ("Manuel" in weight_mode or "Manual" in weight_mode) and (not manual_weights_valid):
         st.error(tt("Manuel ağırlık için her seçili kriterde geçerli bir pozitif ham değer girin.", "Enter a valid positive raw value for every selected criterion in manual weighting."))
         st.stop()
@@ -4721,21 +4798,81 @@ if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), use_container_width
         try:
             if panel_mode:
                 _all_year_labels = _sorted_panel_years(working[panel_year_col])
-                _user_sel_years  = st.session_state.get("panel_selected_years") or _all_year_labels
+                _user_sel_years  = st.session_state.get("panel_selected_years", [])
                 year_labels = [y for y in _all_year_labels if y in _user_sel_years]
                 if not year_labels:
-                    year_labels = _all_year_labels
-                if len(year_labels) < 2:
-                    st.warning(tt("Yıl sütununda yalnızca tek dönem bulundu. Panel trend analizi en az iki dönem gerektirir; analiz tek dönem olarak devam ediyor.", "Only one period found in the year column. Panel trend analysis requires at least two periods; analysis continues as single-period."))
-                    panel_mode = False
+                    raise ValueError(tt("Panel analiz için en az bir dönem seçmelisiniz.", "Select at least one period for panel analysis."))
                 panel_results: Dict[str, Dict[str, Any]] = {}
+                panel_failures: List[str] = []
+                if len(year_labels) < 2:
+                    st.session_state["panel_run_warnings"] = [
+                        tt(
+                            "Panel analizde yalnızca tek dönem seçildi. Trend yorumları sınırlı olacaktır.",
+                            "Only one period is selected in panel analysis. Trend interpretation will be limited.",
+                        )
+                    ]
                 for year_label in year_labels:
                     year_slice = working.loc[_panel_mask(working, panel_year_col, year_label), criteria].copy()
                     if year_slice.empty:
+                        panel_failures.append(
+                            tt(
+                                f"{year_label}: veri bulunamadı.",
+                                f"{year_label}: no rows found.",
+                            )
+                        )
+                        continue
+                    if len(year_slice) < 2:
+                        panel_failures.append(
+                            tt(
+                                f"{year_label}: en az 2 alternatif gerekli.",
+                                f"{year_label}: at least 2 alternatives are required.",
+                            )
+                        )
                         continue
                     year_slice.index = [f"A{idx+1}" for idx in range(len(year_slice))]
-                    year_result = _run_single_analysis_bundle(
-                        data_slice=year_slice,
+                    try:
+                        year_result = _run_single_analysis_bundle(
+                            data_slice=year_slice,
+                            criteria=criteria,
+                            criteria_types=criteria_types,
+                            config=config,
+                            weight_mode_key=weight_mode_key,
+                            weight_method=weight_method,
+                            main_rank=main_rank,
+                        )
+                    except Exception as year_exc:
+                        panel_failures.append(
+                            tt(
+                                f"{year_label}: {_short_error_text(year_exc)}",
+                                f"{year_label}: {_short_error_text(year_exc)}",
+                            )
+                        )
+                        continue
+                    year_result["panel_year"] = year_label
+                    year_result["panel_year_column"] = panel_year_col
+                    panel_results[year_label] = year_result
+                if panel_failures:
+                    _n_fail = len(panel_failures)
+                    _preview = "; ".join(panel_failures[:3])
+                    _more = tt(f" (+{_n_fail-3} dönem daha)", f" (+{_n_fail-3} more periods)") if _n_fail > 3 else ""
+                    st.session_state["panel_run_warnings"] = list(st.session_state.get("panel_run_warnings", [])) + [
+                        tt(
+                            f"Panel analizde {_n_fail} dönem atlandı: {_preview}{_more}",
+                            f"{_n_fail} period(s) were skipped in panel analysis: {_preview}{_more}",
+                        )
+                    ]
+                if not panel_results:
+                    st.session_state["panel_results"] = None
+                    st.session_state["panel_years"] = []
+                    st.session_state["panel_view_choice"] = None
+                    st.session_state["panel_run_warnings"] = list(st.session_state.get("panel_run_warnings", [])) + [
+                        tt(
+                            "Seçili yıllarda panel sonuç üretilemedi; analiz tek dönem modunda tüm veriyle çalıştırıldı.",
+                            "No valid panel result could be produced for selected years; analysis was run in single-period mode on full data.",
+                        )
+                    ]
+                    result = _run_single_analysis_bundle(
+                        data_slice=working,
                         criteria=criteria,
                         criteria_types=criteria_types,
                         config=config,
@@ -4743,16 +4880,12 @@ if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), use_container_width
                         weight_method=weight_method,
                         main_rank=main_rank,
                     )
-                    year_result["panel_year"] = year_label
-                    year_result["panel_year_column"] = panel_year_col
-                    panel_results[year_label] = year_result
-                if not panel_results:
-                    raise ValueError(tt("Yıl bazında analiz üretilemedi. Seçilen yıl sütununu kontrol edin.", "Year-based analysis could not be produced. Please verify the selected year column."))
-                default_year = list(panel_results.keys())[-1]
-                st.session_state["panel_results"] = panel_results
-                st.session_state["panel_years"] = list(panel_results.keys())
-                st.session_state["panel_view_choice"] = default_year
-                result = panel_results[default_year]
+                else:
+                    default_year = list(panel_results.keys())[-1]
+                    st.session_state["panel_results"] = panel_results
+                    st.session_state["panel_years"] = list(panel_results.keys())
+                    st.session_state["panel_view_choice"] = default_year
+                    result = panel_results[default_year]
             else:
                 result = _run_single_analysis_bundle(
                     data_slice=working,
@@ -4766,27 +4899,37 @@ if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), use_container_width
                 st.session_state["panel_results"] = None
                 st.session_state["panel_years"] = []
                 st.session_state["panel_view_choice"] = None
+                st.session_state["panel_run_warnings"] = []
         except Exception as exc:
             st.error(f"{tt('Analiz Hatası', 'Analysis Error')}: {exc}")
             st.stop()
 
         result["analysis_time"] = time.time() - start
-        if panel_mode and st.session_state.get("panel_results"):
+        if st.session_state.get("panel_results"):
             for year_result in st.session_state["panel_results"].values():
                 year_result["analysis_time"] = result["analysis_time"]
         st.session_state["analysis_result"] = result
         if DOCX_AVAILABLE:
-            if panel_mode and st.session_state.get("panel_results"):
-                st.session_state["report_docx"] = generate_panel_apa_docx(
-                    st.session_state["panel_results"],
-                    lang=st.session_state.get("ui_lang", "TR"),
-                )
-            else:
-                st.session_state["report_docx"] = generate_apa_docx(
-                    result,
-                    working[criteria].copy(),
-                    lang=st.session_state.get("ui_lang", "TR"),
-                )
+            try:
+                if st.session_state.get("panel_results"):
+                    st.session_state["report_docx"] = generate_panel_apa_docx(
+                        st.session_state["panel_results"],
+                        lang=st.session_state.get("ui_lang", "TR"),
+                    )
+                else:
+                    st.session_state["report_docx"] = generate_apa_docx(
+                        result,
+                        working[criteria].copy(),
+                        lang=st.session_state.get("ui_lang", "TR"),
+                    )
+            except Exception as docx_exc:
+                st.session_state["report_docx"] = None
+                st.session_state["panel_run_warnings"] = list(st.session_state.get("panel_run_warnings", [])) + [
+                    tt(
+                        f"Rapor üretimi atlandı: {_short_error_text(docx_exc)}",
+                        f"Report generation skipped: {_short_error_text(docx_exc)}",
+                    )
+                ]
 
 # ---------------------------------------------------------
 # SONUÇLARIN GÖSTERİMİ
@@ -4811,6 +4954,10 @@ if result is None:
     st.stop()
 
 st.markdown(f"<h3 style='font-size: 1.2rem; margin-top:1rem;'>📥 {tt('Analiz Sonuçları ve Raporlar', 'Analysis Results and Reports')}</h3>", unsafe_allow_html=True)
+_panel_run_warnings = st.session_state.get("panel_run_warnings", [])
+if isinstance(_panel_run_warnings, list) and _panel_run_warnings:
+    for _warn in _panel_run_warnings:
+        st.warning(str(_warn))
 
 weight_df     = result["weights"]["table"]
 ranking_table = result.get("ranking", {}).get("table")
@@ -5178,21 +5325,65 @@ if needs_ranking:
             st.info(f"🏆 {tt('Lider Alternatif', 'Leading Alternative')}: **{top_disp}** — {tt('Yöntem', 'Method')}: {result.get('ranking', {}).get('method')}")
 
             with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=False):
-                r1, r2 = st.columns(2)
-                with r1:
-                    st.markdown(f"##### 🥇 {tt('İlk 5 Alternatif', 'Top 5 Alternatives')}")
-                    _rt_top5 = localize_df(_rt_disp.head(5))
-                    _rt_top5_score_col = col_key(_rt_top5, "Skor", "Score")
-                    if _rt_top5_score_col in _rt_top5.columns:
-                        _rt_top5[_rt_top5_score_col] = pd.to_numeric(_rt_top5[_rt_top5_score_col], errors="coerce").round(4)
-                    render_table(_rt_top5)
-                with r2:
-                    st.markdown(f"##### 📊 {tt('Nihai Sıralama', 'Final Ranking')}")
-                    _rt_table_disp = localize_df(_rt_disp)
-                    _rt_table_score_col = col_key(_rt_table_disp, "Skor", "Score")
-                    if _rt_table_score_col in _rt_table_disp.columns:
-                        _rt_table_disp[_rt_table_score_col] = pd.to_numeric(_rt_table_disp[_rt_table_score_col], errors="coerce").round(4)
-                    render_table(_rt_table_disp)
+                comp = result.get("comparison", {}) or {}
+                _method_tables = dict(comp.get("method_tables") or {})
+                _primary_method_name = str(result.get("ranking", {}).get("method") or "").strip()
+                if _primary_method_name:
+                    _method_tables.setdefault(_primary_method_name, ranking_table.copy())
+                _method_names = [
+                    str(_m) for _m, _tbl in _method_tables.items()
+                    if str(_m).strip() and isinstance(_tbl, pd.DataFrame) and not _tbl.empty
+                ]
+
+                if len(_method_names) > 1:
+                    st.caption(tt("Çoklu yöntem seçimi algılandı. Aşağıdaki alt sekmelerde her yöntemin sıralamasını görebilirsiniz.", "Multiple methods detected. Use the subtabs below to view each method's ranking table."))
+                    _rank_method_tabs = st.tabs(_method_names)
+                    for _meth_name, _meth_tab in zip(_method_names, _rank_method_tabs):
+                        with _meth_tab:
+                            _meth_df = _method_tables.get(_meth_name)
+                            if not isinstance(_meth_df, pd.DataFrame) or _meth_df.empty:
+                                st.info(tt("Bu yöntem için sıralama tablosu bulunamadı.", "Ranking table not found for this method."))
+                                continue
+                            _meth_disp = _meth_df.copy()
+                            _meth_alt_col = col_key(_meth_disp, "Alternatif", "Alternative")
+                            _meth_rank_col = col_key(_meth_disp, "Sıra", "Rank")
+                            if _meth_rank_col in _meth_disp.columns:
+                                _meth_disp = _meth_disp.sort_values(_meth_rank_col, ascending=True).reset_index(drop=True)
+                            if alt_names and _meth_alt_col in _meth_disp.columns:
+                                _meth_disp[_meth_alt_col] = _meth_disp[_meth_alt_col].astype(str).map(
+                                    lambda x: alt_names.get(x, x)
+                                )
+                            _m1, _m2 = st.columns(2)
+                            with _m1:
+                                st.markdown(f"##### 🥇 {tt('İlk 5 Alternatif', 'Top 5 Alternatives')}")
+                                _meth_top5 = localize_df(_meth_disp.head(5))
+                                _meth_top5_score_col = col_key(_meth_top5, "Skor", "Score")
+                                if _meth_top5_score_col in _meth_top5.columns:
+                                    _meth_top5[_meth_top5_score_col] = pd.to_numeric(_meth_top5[_meth_top5_score_col], errors="coerce").round(4)
+                                render_table(_meth_top5)
+                            with _m2:
+                                st.markdown(f"##### 📊 {tt('Nihai Sıralama', 'Final Ranking')}")
+                                _meth_full_disp = localize_df(_meth_disp)
+                                _meth_full_score_col = col_key(_meth_full_disp, "Skor", "Score")
+                                if _meth_full_score_col in _meth_full_disp.columns:
+                                    _meth_full_disp[_meth_full_score_col] = pd.to_numeric(_meth_full_disp[_meth_full_score_col], errors="coerce").round(4)
+                                render_table(_meth_full_disp)
+                else:
+                    r1, r2 = st.columns(2)
+                    with r1:
+                        st.markdown(f"##### 🥇 {tt('İlk 5 Alternatif', 'Top 5 Alternatives')}")
+                        _rt_top5 = localize_df(_rt_disp.head(5))
+                        _rt_top5_score_col = col_key(_rt_top5, "Skor", "Score")
+                        if _rt_top5_score_col in _rt_top5.columns:
+                            _rt_top5[_rt_top5_score_col] = pd.to_numeric(_rt_top5[_rt_top5_score_col], errors="coerce").round(4)
+                        render_table(_rt_top5)
+                    with r2:
+                        st.markdown(f"##### 📊 {tt('Nihai Sıralama', 'Final Ranking')}")
+                        _rt_table_disp = localize_df(_rt_disp)
+                        _rt_table_score_col = col_key(_rt_table_disp, "Skor", "Score")
+                        if _rt_table_score_col in _rt_table_disp.columns:
+                            _rt_table_disp[_rt_table_score_col] = pd.to_numeric(_rt_table_disp[_rt_table_score_col], errors="coerce").round(4)
+                        render_table(_rt_table_disp)
                 with st.expander(f"💬 {tt('Tablo Yorumu', 'Table Commentary')}", expanded=False):
                     st.markdown(f'<div class="commentary-box">{_html_to_plain(_rank_comment).replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
 
