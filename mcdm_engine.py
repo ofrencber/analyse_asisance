@@ -1648,6 +1648,9 @@ def compare_methods(
     promethee_p: float = 0.30,
     promethee_s: float = 0.20,
     fuzzy_spread: float = 0.10,
+    base_method: Optional[str] = None,
+    base_table: Optional[pd.DataFrame] = None,
+    base_details: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     if not methods:
         return {}
@@ -1656,23 +1659,32 @@ def compare_methods(
     method_tables: Dict[str, pd.DataFrame] = {}
     method_details: Dict[str, Dict[str, Any]] = {}
     for method in methods:
-        res, det = rank_alternatives(
-            data,
-            criteria,
-            criteria_types,
-            weights,
-            method,
-            vikor_v=vikor_v,
-            waspas_lambda=waspas_lambda,
-            codas_tau=codas_tau,
-            cocoso_lambda=cocoso_lambda,
-            gra_rho=gra_rho,
-            promethee_pref_func=promethee_pref_func,
-            promethee_q=promethee_q,
-            promethee_p=promethee_p,
-            promethee_s=promethee_s,
-            fuzzy_spread=fuzzy_spread,
-        )
+        if (
+            base_method
+            and method == base_method
+            and isinstance(base_table, pd.DataFrame)
+            and not base_table.empty
+        ):
+            res = base_table.copy()
+            det = dict(base_details or {})
+        else:
+            res, det = rank_alternatives(
+                data,
+                criteria,
+                criteria_types,
+                weights,
+                method,
+                vikor_v=vikor_v,
+                waspas_lambda=waspas_lambda,
+                codas_tau=codas_tau,
+                cocoso_lambda=cocoso_lambda,
+                gra_rho=gra_rho,
+                promethee_pref_func=promethee_pref_func,
+                promethee_q=promethee_q,
+                promethee_p=promethee_p,
+                promethee_s=promethee_s,
+                fuzzy_spread=fuzzy_spread,
+            )
         method_tables[str(method)] = res.copy()
         method_details[str(method)] = det
         s = res[["Alternatif", "Skor"]].rename(columns={"Skor": method})
@@ -2090,6 +2102,9 @@ def run_full_analysis(data: pd.DataFrame, config: AnalysisConfig) -> Dict[str, A
         promethee_p=config.promethee_p,
         promethee_s=config.promethee_s,
         fuzzy_spread=config.fuzzy_spread,
+        base_method=config.ranking_method,
+        base_table=ranking_table,
+        base_details=ranking_details,
     ) if config.compare_methods else {}
 
     sensitivity = None

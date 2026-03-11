@@ -623,6 +623,8 @@ def init_state() -> None:
         "panel_run_warnings": [],
         "step1_done": False,
         "direction_notice": None,
+        "download_blob_cache": {},
+        "download_blob_sig": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -2289,6 +2291,18 @@ def generate_panel_apa_docx(panel_results: Dict[str, Dict[str, Any]], lang: str 
     buffer = io.BytesIO()
     doc.save(buffer)
     return buffer.getvalue()
+
+def _download_signature(result: Dict[str, Any] | None, panel_results: Dict[str, Dict[str, Any]] | None) -> tuple:
+    if isinstance(panel_results, dict) and panel_results:
+        years = tuple(str(y) for y in panel_results.keys())
+        base_time = result.get("analysis_time") if isinstance(result, dict) else None
+        return ("panel", years, base_time)
+    if not isinstance(result, dict):
+        return ("none",)
+    wm = (result.get("weights") or {}).get("method")
+    rm = (result.get("ranking") or {}).get("method")
+    shape = tuple(result.get("selected_data", pd.DataFrame()).shape)
+    return ("single", wm, rm, result.get("analysis_time"), shape)
 
 def _run_single_analysis_bundle(
     data_slice: pd.DataFrame,
@@ -5044,27 +5058,9 @@ if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), use_container_width
             for year_result in st.session_state["panel_results"].values():
                 year_result["analysis_time"] = result["analysis_time"]
         st.session_state["analysis_result"] = result
-        if DOCX_AVAILABLE:
-            try:
-                if st.session_state.get("panel_results"):
-                    st.session_state["report_docx"] = generate_panel_apa_docx(
-                        st.session_state["panel_results"],
-                        lang=st.session_state.get("ui_lang", "TR"),
-                    )
-                else:
-                    st.session_state["report_docx"] = generate_apa_docx(
-                        result,
-                        working[criteria].copy(),
-                        lang=st.session_state.get("ui_lang", "TR"),
-                    )
-            except Exception as docx_exc:
-                st.session_state["report_docx"] = None
-                st.session_state["panel_run_warnings"] = list(st.session_state.get("panel_run_warnings", [])) + [
-                    tt(
-                        f"Rapor üretimi atlandı: {_short_error_text(docx_exc)}",
-                        f"Report generation skipped: {_short_error_text(docx_exc)}",
-                    )
-                ]
+        st.session_state["report_docx"] = None
+        st.session_state["download_blob_cache"] = {}
+        st.session_state["download_blob_sig"] = None
 
 # ---------------------------------------------------------
 # SONUÇLARIN GÖSTERİMİ
@@ -5661,21 +5657,36 @@ with tabs[_tab_output]:
     _ref_heading = tt("Kaynakça", "References")
     _refs = _doc_sections.get(_ref_heading, [])
     _is_panel_download = isinstance(panel_results, dict) and bool(panel_results)
+    _dl_sig = _download_signature(result, panel_results)
+    if st.session_state.get("download_blob_sig") != _dl_sig:
+        st.session_state["download_blob_sig"] = _dl_sig
+        st.session_state["download_blob_cache"] = {}
+    _blob_cache = st.session_state.get("download_blob_cache") or {}
+    _excel_key = f"excel::{_out_lang}"
+    if _excel_key not in _blob_cache:
+        _blob_cache[_excel_key] = (
+            generate_panel_excel(panel_results, lang=_out_lang)
+            if _is_panel_download
+            else generate_excel(result, result["selected_data"], lang=_out_lang)
+        )
     dl1, dl2 = st.columns(2)
     with dl1:
         st.download_button(
             tt("📊 Tüm Sonuçları İndir (Excel)", "📊 Download All Results (Excel)"),
-            data=(generate_panel_excel(panel_results, lang=_out_lang) if _is_panel_download else generate_excel(result, result["selected_data"], lang=_out_lang)),
+            data=_blob_cache[_excel_key],
             file_name=tt("MCDM_Sonuclari.xlsx", "MCDM_Results.xlsx"),
             use_container_width=True,
         )
     with dl2:
         if DOCX_AVAILABLE:
-            _doc_bytes = (
-                generate_panel_apa_docx(panel_results, lang=_out_lang)
-                if _is_panel_download
-                else generate_apa_docx(result, result["selected_data"], lang=_out_lang)
-            )
+            _doc_key = f"docx::{_out_lang}"
+            if _doc_key not in _blob_cache:
+                _blob_cache[_doc_key] = (
+                    generate_panel_apa_docx(panel_results, lang=_out_lang)
+                    if _is_panel_download
+                    else generate_apa_docx(result, result["selected_data"], lang=_out_lang)
+                )
+            _doc_bytes = _blob_cache[_doc_key]
             st.session_state["report_docx"] = _doc_bytes
             st.download_button(
                 tt("📄 Akademik Raporu İndir — APA Word", "📄 Download Academic Report — APA Word"),
@@ -5686,6 +5697,7 @@ with tabs[_tab_output]:
             )
         else:
             st.warning(tt("Word çıktısı için python-docx kurulu olmalıdır.", "python-docx must be installed for Word output."))
+    st.session_state["download_blob_cache"] = _blob_cache
 
     st.markdown(_reference_notice_html(_out_lang), unsafe_allow_html=True)
     st.markdown(f"### 📚 {_ref_heading}")
