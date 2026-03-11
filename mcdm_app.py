@@ -3841,7 +3841,7 @@ if raw_data is None:
         unsafe_allow_html=True,
     )
     _guide_text = _load_user_guide_text()
-    with st.expander(tt("📘 Kullanım Kılavuzu", "📘 User Guide"), expanded=True):
+    with st.expander(tt("📘 Kullanım Kılavuzu", "📘 User Guide"), expanded=False):
         if _guide_text:
             st.markdown(_guide_text)
         else:
