@@ -308,6 +308,15 @@ st.markdown(
             color: #5C5650 !important;
             letter-spacing: 0.2px;
         }
+        .sidebar-footer-mail {
+            display: block;
+            margin-top: 0.18rem;
+            font-size: 0.64rem;
+            font-weight: 500;
+            color: #5C5650 !important;
+            text-decoration: none !important;
+            letter-spacing: 0;
+        }
 
         /* ────── CARDS ────── */
         .section-card {
@@ -752,6 +761,7 @@ def _method_help_text(method_name: str) -> str:
 _COL_TR_EN = {
     "Kriter": "Criterion",
     "Ağırlık": "Weight",
+    "ÖnemSırası": "ImportanceRank",
     "HamAğırlık": "RawWeight",
     "Alternatif": "Alternative",
     "Skor": "Score",
@@ -784,6 +794,10 @@ _COL_TR_EN = {
     "LiderKararlılığı": "LeaderStability",
     "GözlenenYılSayısı": "ObservedYears",
     "OrtalamaSkor": "MeanScore",
+    "AçıklananVaryansOranı": "ExplainedVarianceRatio",
+    "Bileşen": "Component",
+    "DeltaX": "DeltaX",
+    "DeltaY": "DeltaY",
     "EnİyiAlternatif": "BestAlternative",
     "EntropyAğırlığı": "EntropyWeight",
     "CILOSAğırlığı": "CILOSWeight",
@@ -2895,6 +2909,103 @@ def fig_promethee_flows(prom_df: pd.DataFrame, alt_names: Dict[str, str] | None 
     )
     return fig
 
+def fig_promethee_gaia(
+    gaia_alt_df: pd.DataFrame,
+    gaia_crit_df: pd.DataFrame | None = None,
+    gaia_decision_df: pd.DataFrame | None = None,
+    alt_names: Dict[str, str] | None = None,
+) -> go.Figure:
+    fig = go.Figure()
+    if not isinstance(gaia_alt_df, pd.DataFrame) or gaia_alt_df.empty:
+        fig.update_layout(height=520, title=tt("PROMETHEE GAIA Düzlemi", "PROMETHEE GAIA Plane"), **_THEME)
+        return fig
+
+    sdf = gaia_alt_df.copy()
+    alt_col = col_key(sdf, "Alternatif", "Alternative")
+    if alt_col not in sdf.columns or "GAIA1" not in sdf.columns or "GAIA2" not in sdf.columns:
+        fig.update_layout(height=520, title=tt("PROMETHEE GAIA Düzlemi", "PROMETHEE GAIA Plane"), **_THEME)
+        return fig
+
+    sdf["AltLabel"] = _map_alt_names(sdf[alt_col].astype(str).tolist(), alt_names)
+    color_col = "PhiNet" if "PhiNet" in sdf.columns else ("Skor" if "Skor" in sdf.columns else None)
+    marker_kwargs: Dict[str, Any] = dict(size=12, line=dict(color="#0B2239", width=1.0), symbol="circle")
+    if color_col:
+        marker_kwargs.update(dict(color=sdf[color_col], colorscale="RdBu", cmid=0, colorbar=dict(title=color_col)))
+    else:
+        marker_kwargs.update(dict(color="#2E7D9E"))
+
+    fig.add_trace(
+        go.Scatter(
+            x=sdf["GAIA1"],
+            y=sdf["GAIA2"],
+            mode="markers+text",
+            text=sdf["AltLabel"],
+            textposition="top center",
+            marker=marker_kwargs,
+            name=tt("Alternatifler", "Alternatives"),
+        )
+    )
+
+    max_abs = float(np.nanmax(np.abs(np.r_[sdf["GAIA1"].to_numpy(dtype=float), sdf["GAIA2"].to_numpy(dtype=float)]))) if len(sdf) else 0.0
+
+    if isinstance(gaia_crit_df, pd.DataFrame) and not gaia_crit_df.empty and {"GAIA1", "GAIA2"}.issubset(gaia_crit_df.columns):
+        cdf = gaia_crit_df.copy()
+        crit_col = col_key(cdf, "Kriter", "Criterion")
+        if crit_col not in cdf.columns:
+            crit_col = cdf.columns[0]
+        for _, row in cdf.iterrows():
+            cx = float(pd.to_numeric(row.get("GAIA1"), errors="coerce"))
+            cy = float(pd.to_numeric(row.get("GAIA2"), errors="coerce"))
+            if not (np.isfinite(cx) and np.isfinite(cy)):
+                continue
+            cname = str(row.get(crit_col, "C"))
+            fig.add_trace(
+                go.Scatter(
+                    x=[0.0, cx],
+                    y=[0.0, cy],
+                    mode="lines",
+                    line=dict(color="#1B365D", width=1.6, dash="dot"),
+                    showlegend=False,
+                    hoverinfo="skip",
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=[cx],
+                    y=[cy],
+                    mode="text",
+                    text=[cname],
+                    textposition="top center",
+                    textfont=dict(color="#1B365D", size=11),
+                    showlegend=False,
+                    hovertemplate=f"{cname}<extra></extra>",
+                )
+            )
+            max_abs = max(max_abs, abs(cx), abs(cy))
+
+    if isinstance(gaia_decision_df, pd.DataFrame) and not gaia_decision_df.empty and {"DeltaX", "DeltaY"}.issubset(gaia_decision_df.columns):
+        dx = float(pd.to_numeric(gaia_decision_df.iloc[0]["DeltaX"], errors="coerce"))
+        dy = float(pd.to_numeric(gaia_decision_df.iloc[0]["DeltaY"], errors="coerce"))
+        if np.isfinite(dx) and np.isfinite(dy):
+            fig.add_trace(
+                go.Scatter(
+                    x=[0.0, dx],
+                    y=[0.0, dy],
+                    mode="lines+text",
+                    text=["", tt("Karar Ekseni (Δ)", "Decision Axis (Δ)")],
+                    textposition="top right",
+                    line=dict(color="#B22222", width=3),
+                    name=tt("Karar Ekseni", "Decision Axis"),
+                )
+            )
+            max_abs = max(max_abs, abs(dx), abs(dy))
+
+    lim = max(0.25, max_abs * 1.25)
+    fig.update_xaxes(range=[-lim, lim], zeroline=True, zerolinewidth=1.0, zerolinecolor="#A8B7C7", title=tt("GAIA 1", "GAIA 1"), scaleanchor="y", scaleratio=1)
+    fig.update_yaxes(range=[-lim, lim], zeroline=True, zerolinewidth=1.0, zerolinecolor="#A8B7C7", title=tt("GAIA 2", "GAIA 2"))
+    fig.update_layout(height=520, title=tt("PROMETHEE GAIA Düzlemi", "PROMETHEE GAIA Plane"), **_THEME)
+    return fig
+
 def fig_preference_heatmap(pref_df: pd.DataFrame, alt_names: Dict[str, str] | None = None, title: str | None = None) -> go.Figure:
     disp = _map_alt_names_in_matrix(pref_df, alt_names)
     fig = px.imshow(
@@ -3307,6 +3418,10 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
     if base_method == "PROMETHEE":
         flows = details.get("promethee_flows")
         pref = details.get("promethee_pref_matrix")
+        gaia_alt = details.get("promethee_gaia_alternatives")
+        gaia_crit = details.get("promethee_gaia_criteria")
+        gaia_axes = details.get("promethee_gaia_axes")
+        gaia_dec = details.get("promethee_gaia_decision_axis")
         if isinstance(flows, pd.DataFrame) and not flows.empty:
             shown = True
             st.markdown(f"##### 🔀 {tt('PROMETHEE Akış Tablosu', 'PROMETHEE Flow Table')}")
@@ -3331,12 +3446,31 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
                     )
                     with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
                         st.markdown(f'<div class="commentary-box">{tt("Tercih matrisi ısı haritası, her alternatifin diğerine karşı ne kadar güçlü tercih ürettiğini gösterir. Satırdaki koyu hücreler baskınlığı, sütundaki koyu hücreler ise zayıf kalınan eşleşmeleri ortaya çıkarır.", "The preference matrix heatmap shows how strongly each alternative is preferred over another. Dark cells across a row indicate dominance, while dark cells down a column reveal pairings where the alternative is weak.")}</div>', unsafe_allow_html=True)
+            if isinstance(gaia_alt, pd.DataFrame) and not gaia_alt.empty:
+                st.markdown(f"##### 🧭 {tt('PROMETHEE GAIA Düzlemi', 'PROMETHEE GAIA Plane')}")
+                if isinstance(gaia_axes, pd.DataFrame) and not gaia_axes.empty and "AçıklananVaryansOranı" in gaia_axes.columns:
+                    _exp_vals = pd.to_numeric(gaia_axes["AçıklananVaryansOranı"], errors="coerce").fillna(0.0).tolist()
+                    if len(_exp_vals) >= 2:
+                        st.caption(
+                            tt(
+                                f"GAIA1+GAIA2 açıklanan varyans: %{(_exp_vals[0] + _exp_vals[1]) * 100:.1f}",
+                                f"GAIA1+GAIA2 explained variance: {(_exp_vals[0] + _exp_vals[1]) * 100:.1f}%",
+                            )
+                        )
+                st.plotly_chart(fig_promethee_gaia(gaia_alt, gaia_crit, gaia_dec, alt_names), width="stretch")
+                with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
+                    st.markdown(
+                        f'<div class="commentary-box">{tt("GAIA nasıl okunur? 1) Noktalar alternatifleri gösterir; birbirine yakın noktalar benzer davranır. 2) Oklar kriter yönünü gösterir; bir alternatif okun ucuna yakınsa o kriterde daha güçlüdür, ters yöndeyse daha zayıftır. 3) Ok ne kadar uzunsa kriterin ayırt ediciliği o kadar yüksektir. 4) Kırmızı Δ oku modelin genel tercih yönüdür; bu yöne yakın alternatifler genelde üst sıralarda yer alır.", "How to read GAIA: 1) Points are alternatives; nearby points behave similarly. 2) Arrows are criterion directions; an alternative near an arrow tip is stronger on that criterion, opposite direction is weaker. 3) Longer arrows mean stronger discriminating power. 4) The red Δ arrow is the overall preference direction; alternatives close to it usually rank higher.")}</div>',
+                        unsafe_allow_html=True,
+                    )
         elif isinstance(pref, pd.DataFrame) and not pref.empty:
             shown = True
             st.plotly_chart(
                 fig_preference_heatmap(pref, alt_names, tt("PROMETHEE Tercih Matrisi", "PROMETHEE Preference Matrix")),
                 width="stretch",
             )
+            if isinstance(gaia_alt, pd.DataFrame) and not gaia_alt.empty:
+                st.plotly_chart(fig_promethee_gaia(gaia_alt, gaia_crit, gaia_dec, alt_names), width="stretch")
 
     elif base_method == "TOPSIS":
         dist_df = details.get("distance_table")
@@ -4221,7 +4355,10 @@ with st.sidebar:
 
     # ── Sidebar Footer ──
     st.markdown(
-        "<div class='sidebar-footer'>Prof. Dr. Ömer Faruk Rençber</div>",
+        "<div class='sidebar-footer'>"
+        "Prof. Dr. Ömer Faruk Rençber"
+        "<a class='sidebar-footer-mail' href='mailto:dr.ofrencber@gaziantep.edu.tr'>dr.ofrencber@gaziantep.edu.tr</a>"
+        "</div>",
         unsafe_allow_html=True,
     )
 
@@ -4326,14 +4463,9 @@ with st.expander(_step1_label, expanded=(raw_data is not None) and not _step1_do
                 _entity_default = st.session_state.get("panel_entity_column")
                 if _entity_default not in _entity_opts:
                     _entity_default = _entity_candidates[0] if _entity_candidates else _entity_opts[0]
-                _panel_entity_inner = st.selectbox(
-                    tt("Alternatif/Birim sütunu", "Alternative/entity column"),
-                    _entity_opts,
-                    index=_entity_opts.index(_entity_default),
-                    key="panel_entity_col_select",
-                    label_visibility="collapsed",
-                )
-                st.session_state["panel_entity_column"] = _panel_entity_inner
+                st.session_state["panel_entity_column"] = _entity_default
+            else:
+                st.session_state["panel_entity_column"] = None
             _panel_strategy_opts = [
                 tt("📆 Yıl Bazlı Ağırlık", "📆 Year-Specific Weights"),
                 tt("🌐 Global Ağırlık", "🌐 Global Weights"),

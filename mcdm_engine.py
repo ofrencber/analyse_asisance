@@ -775,7 +775,9 @@ def compute_objective_weights(
         raise ValueError(f"Desteklenmeyen ağırlıklandırma yöntemi: {method}")
     weights, details = dispatch[method](df, criteria_types)
     table = pd.DataFrame({"Kriter": list(weights.keys()), "Ağırlık": list(weights.values())}).sort_values("Ağırlık", ascending=False)
-    details["weight_table"] = table.reset_index(drop=True)
+    table = table.reset_index(drop=True)
+    table.insert(1, "ÖnemSırası", np.arange(1, len(table) + 1, dtype=int))
+    details["weight_table"] = table
     return weights, details
 
 
@@ -1210,6 +1212,7 @@ def _rank_promethee(
     # Vectorized PROMETHEE preference matrix construction:
     # iterate criteria only, compute all (i,k) pairs at once.
     pref = np.zeros((m, m), dtype=float)
+    unicriterion_pref = np.zeros((n, m, m), dtype=float)
     for j in range(n):
         d = (arr[:, j][:, np.newaxis] - arr[:, j][np.newaxis, :]) * direction[j]
         pj = np.maximum(0.0, d) / ranges[j]
@@ -1228,7 +1231,10 @@ def _rank_promethee(
         else:  # linear (V-shape with indifference)
             pj = np.where(pj <= qn, 0.0, np.where(pj >= pn, 1.0, (pj - qn) / (pn - qn + EPS)))
 
-        pref += wvec[j] * np.clip(pj, 0.0, 1.0)
+        pj = np.clip(pj, 0.0, 1.0)
+        np.fill_diagonal(pj, 0.0)
+        unicriterion_pref[j] = pj
+        pref += wvec[j] * pj
 
     np.fill_diagonal(pref, 0.0)
 
@@ -1237,6 +1243,70 @@ def _rank_promethee(
     phi_minus = pref.sum(axis=0) / denom
     phi_net = phi_plus - phi_minus
     score = _safe_divide(phi_net - phi_net.min(), phi_net.max() - phi_net.min())
+
+    # GAIA plane: build unicriterion net-flow matrix (alternatives x criteria),
+    # then project into 2D with PCA.
+    phi_criterion = np.zeros((m, n), dtype=float)
+    for j in range(n):
+        pj = unicriterion_pref[j]
+        phi_criterion[:, j] = (pj.sum(axis=1) - pj.sum(axis=0)) / denom
+
+    gaia_alt_df = pd.DataFrame()
+    gaia_crit_df = pd.DataFrame()
+    gaia_axes_df = pd.DataFrame()
+    gaia_decision_df = pd.DataFrame()
+    try:
+        if m >= 2 and n >= 1 and np.isfinite(phi_criterion).any():
+            n_comp = min(2, m, n)
+            pca = PCA(n_components=n_comp)
+            alt_coords = pca.fit_transform(phi_criterion)
+            crit_coords = pca.components_.T * np.sqrt(np.maximum(pca.explained_variance_, EPS))
+            expl = np.asarray(pca.explained_variance_ratio_, dtype=float)
+
+            if alt_coords.shape[1] == 1:
+                alt_coords = np.column_stack([alt_coords[:, 0], np.zeros(m)])
+            if crit_coords.shape[1] == 1:
+                crit_coords = np.column_stack([crit_coords[:, 0], np.zeros(n)])
+            if expl.size == 1:
+                expl = np.array([expl[0], 0.0], dtype=float)
+
+            decision_vec = np.sum(wvec[:, np.newaxis] * crit_coords[:, :2], axis=0)
+            crit_norms = np.sqrt(np.sum(np.square(crit_coords[:, :2]), axis=1))
+            target_len = float(np.nanmax(crit_norms)) if crit_norms.size else 0.0
+            d_norm = float(np.linalg.norm(decision_vec))
+            if d_norm > EPS and target_len > EPS:
+                decision_vec = (decision_vec / d_norm) * (1.15 * target_len)
+            else:
+                decision_vec = np.zeros(2, dtype=float)
+
+            gaia_alt_df = pd.DataFrame({
+                "Alternatif": data.index.astype(str),
+                "GAIA1": alt_coords[:, 0],
+                "GAIA2": alt_coords[:, 1],
+                "PhiNet": phi_net,
+                "Skor": score,
+            })
+            gaia_crit_df = pd.DataFrame({
+                "Kriter": data.columns.astype(str),
+                "GAIA1": crit_coords[:, 0],
+                "GAIA2": crit_coords[:, 1],
+                "Ağırlık": wvec,
+            })
+            gaia_axes_df = pd.DataFrame({
+                "Bileşen": ["GAIA1", "GAIA2"],
+                "AçıklananVaryansOranı": [float(expl[0]), float(expl[1])],
+            })
+            gaia_decision_df = pd.DataFrame({
+                "DeltaX": [float(decision_vec[0])],
+                "DeltaY": [float(decision_vec[1])],
+            })
+    except Exception:
+        # Keep PROMETHEE ranking robust even if GAIA projection fails.
+        gaia_alt_df = pd.DataFrame()
+        gaia_crit_df = pd.DataFrame()
+        gaia_axes_df = pd.DataFrame()
+        gaia_decision_df = pd.DataFrame()
+
     det = {
         "promethee_pref_matrix": pd.DataFrame(pref, index=data.index.astype(str), columns=data.index.astype(str)),
         "promethee_flows": pd.DataFrame({
@@ -1246,6 +1316,10 @@ def _rank_promethee(
             "PhiNet": phi_net,
             "Skor": score,
         }).sort_values("PhiNet", ascending=False).reset_index(drop=True),
+        "promethee_gaia_alternatives": gaia_alt_df,
+        "promethee_gaia_criteria": gaia_crit_df,
+        "promethee_gaia_axes": gaia_axes_df,
+        "promethee_gaia_decision_axis": gaia_decision_df,
         "parameters": {
             "pref_func": str(pref_func),
             "q": float(q),
@@ -2043,16 +2117,20 @@ def run_full_analysis(data: pd.DataFrame, config: AnalysisConfig) -> Dict[str, A
     if config.weight_mode == "equal":
         ew = np.ones(len(criteria), dtype=float) / max(len(criteria), 1)
         weights = dict(zip(criteria, ew))
+        _equal_table = pd.DataFrame({"Kriter": criteria, "Ağırlık": ew}).sort_values("Ağırlık", ascending=False).reset_index(drop=True)
+        _equal_table.insert(1, "ÖnemSırası", np.arange(1, len(_equal_table) + 1, dtype=int))
         weight_details = {
-            "weight_table": pd.DataFrame({"Kriter": criteria, "Ağırlık": ew}).sort_values("Ağırlık", ascending=False).reset_index(drop=True),
+            "weight_table": _equal_table,
             "mode": "equal",
         }
     elif config.weight_mode == "manual":
         user_w = config.manual_weights or {}
         wvec = _normalize_weights([float(user_w.get(c, 0.0)) for c in criteria])
         weights = dict(zip(criteria, wvec))
+        _manual_table = pd.DataFrame({"Kriter": criteria, "Ağırlık": wvec}).sort_values("Ağırlık", ascending=False).reset_index(drop=True)
+        _manual_table.insert(1, "ÖnemSırası", np.arange(1, len(_manual_table) + 1, dtype=int))
         weight_details = {
-            "weight_table": pd.DataFrame({"Kriter": criteria, "Ağırlık": wvec}).sort_values("Ağırlık", ascending=False).reset_index(drop=True),
+            "weight_table": _manual_table,
             "manual_input": pd.DataFrame({"Kriter": criteria, "GirilenDeğer": [float(user_w.get(c, 0.0)) for c in criteria]}),
             "mode": "manual",
         }
