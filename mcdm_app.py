@@ -613,6 +613,9 @@ def init_state() -> None:
         "ui_lang": "TR",
         "analysis_scope": "single",
         "panel_year_column": None,
+        "panel_selected_years": [],
+        "panel_selected_years_all": [],
+        "panel_selected_years_col": None,
         "panel_results": None,
         "panel_years": [],
         "panel_view_choice": None,
@@ -1264,6 +1267,13 @@ def render_3layer(layers: Dict[str, str], title: str = "") -> None:
 
 def load_uploaded_file(uploaded_file) -> pd.DataFrame:
     return pd.read_csv(uploaded_file) if uploaded_file.name.lower().endswith(".csv") else pd.read_excel(uploaded_file)
+
+def _load_user_guide_text() -> str:
+    guide_path = APP_DIR / "KULLANIM_KILAVUZU.md"
+    try:
+        return guide_path.read_text(encoding="utf-8").strip()
+    except Exception:
+        return ""
 
 def _panel_label(value: Any) -> str:
     if pd.isna(value):
@@ -3830,6 +3840,17 @@ if raw_data is None:
         """,
         unsafe_allow_html=True,
     )
+    _guide_text = _load_user_guide_text()
+    with st.expander(tt("📘 Kullanım Kılavuzu", "📘 User Guide"), expanded=True):
+        if _guide_text:
+            st.markdown(_guide_text)
+        else:
+            st.info(
+                tt(
+                    "Kılavuz dosyası bulunamadı (`KULLANIM_KILAVUZU.md`).",
+                    "Guide file was not found (`KULLANIM_KILAVUZU.md`).",
+                )
+            )
     st.stop()
 _needs_ranking_default = bool(st.session_state.get("needs_ranking", True))
 _purpose_options = [
@@ -3899,12 +3920,16 @@ with st.expander(_step1_label, expanded=(raw_data is not None) and not _step1_do
             _det_years = _sorted_panel_years(raw_data[_panel_col_inner])
             if _det_years:
                 _known_years = st.session_state.get("panel_selected_years_all", [])
+                _known_col = st.session_state.get("panel_selected_years_col")
                 _years_changed = set(_known_years) != set(_det_years)
-                if "panel_selected_years" not in st.session_state or _years_changed:
+                _year_col_changed = _known_col != _panel_col_inner
+                _yr_key_prefix = f"panel_yr_cb::{_panel_col_inner}::"
+                if ("panel_selected_years" not in st.session_state) or _years_changed or _year_col_changed:
                     st.session_state["panel_selected_years"] = []
                     st.session_state["panel_selected_years_all"] = list(_det_years)
+                    st.session_state["panel_selected_years_col"] = _panel_col_inner
                     for _yr in _det_years:
-                        st.session_state[f"panel_yr_cb_{_yr}"] = False
+                        st.session_state[f"{_yr_key_prefix}{_yr}"] = False
 
                 _sel_all_col, _clr_all_col = st.columns(2, gap="small")
                 with _sel_all_col:
@@ -3923,15 +3948,17 @@ with st.expander(_step1_label, expanded=(raw_data is not None) and not _step1_do
                 if _select_all_clicked:
                     st.session_state["panel_selected_years"] = list(_det_years)
                     st.session_state["panel_selected_years_all"] = list(_det_years)
+                    st.session_state["panel_selected_years_col"] = _panel_col_inner
                     for _yr in _det_years:
-                        st.session_state[f"panel_yr_cb_{_yr}"] = True
+                        st.session_state[f"{_yr_key_prefix}{_yr}"] = True
                     st.rerun()
 
                 if _clear_all_clicked:
                     st.session_state["panel_selected_years"] = []
                     st.session_state["panel_selected_years_all"] = list(_det_years)
+                    st.session_state["panel_selected_years_col"] = _panel_col_inner
                     for _yr in _det_years:
-                        st.session_state[f"panel_yr_cb_{_yr}"] = False
+                        st.session_state[f"{_yr_key_prefix}{_yr}"] = False
                     st.rerun()
 
                 _sel_yrs_now = []
@@ -3943,11 +3970,13 @@ with st.expander(_step1_label, expanded=(raw_data is not None) and not _step1_do
                 _yr_sel_cols = st.columns(min(10, len(_det_years)), gap="small")
                 for _yi, _yr in enumerate(_det_years):
                     with _yr_sel_cols[_yi % min(10, len(_det_years))]:
-                        _yr_key = f"panel_yr_cb_{_yr}"
-                        _yr_def = _yr in st.session_state.get("panel_selected_years", [])
-                        if st.checkbox(str(_yr), value=_yr_def, key=_yr_key):
+                        _yr_key = f"{_yr_key_prefix}{_yr}"
+                        if _yr_key not in st.session_state:
+                            st.session_state[_yr_key] = _yr in st.session_state.get("panel_selected_years", [])
+                        if st.checkbox(str(_yr), key=_yr_key):
                             _sel_yrs_now.append(_yr)
                 st.session_state["panel_selected_years"] = _sel_yrs_now
+                st.session_state["panel_selected_years_col"] = _panel_col_inner
                 if not _sel_yrs_now:
                     st.warning(tt("En az bir dönem seçin.", "Select at least one period."))
                 elif len(_sel_yrs_now) < 2:
