@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import html
 import io
 import re
 import time
@@ -632,7 +633,87 @@ init_state()
 def tt(tr_text: str, en_text: str) -> str:
     return en_text if st.session_state.get("ui_lang", "TR") == "EN" else tr_text
 
+_TR_HINTS = (
+    " ve ",
+    " ile ",
+    " için ",
+    " kriter",
+    " yöntem",
+    " ağırlık",
+    " sıralama",
+    " çalışma",
+    " bulgu",
+    " çözüm",
+    " olarak ",
+    " göre ",
+)
+_EN_HINTS = (
+    " the ",
+    " and ",
+    " with ",
+    " method",
+    " criterion",
+    " weight",
+    " ranking",
+    " analysis",
+    " result",
+    " should ",
+    " therefore ",
+    " according ",
+)
+
+def _looks_turkish_text(text: str) -> bool:
+    raw = str(text or "")
+    if not raw.strip():
+        return False
+    if any(ch in raw for ch in "çğıöşüÇĞİÖŞÜ"):
+        return True
+    low = f" {raw.lower()} "
+    return any(tok in low for tok in _TR_HINTS)
+
+def _looks_english_text(text: str) -> bool:
+    raw = str(text or "")
+    if not raw.strip():
+        return False
+    low = f" {raw.lower()} "
+    return any(tok in low for tok in _EN_HINTS)
+
+def _lang_text(text: str, lang: str, fallback: str) -> str:
+    val = str(text or "").strip()
+    if not val:
+        return fallback
+    if lang == "EN":
+        return fallback if _looks_turkish_text(val) else val
+    if _looks_english_text(val) and not _looks_turkish_text(val):
+        return fallback
+    return val
+
+def _method_fallback_lines(method_label: str, lang: str) -> tuple[str, str]:
+    if lang == "EN":
+        return (
+            f"{method_label} evaluates the problem through its own decision logic.",
+            f"The findings from {method_label} should be interpreted within this method's assumptions.",
+        )
+    return (
+        f"{method_label} yöntemi problemi kendi karar mantığıyla değerlendirir.",
+        f"{method_label} bulguları bu yöntemin varsayımları içinde yorumlanmalıdır.",
+    )
+
+def _normalize_references(refs: List[Any], lang: str) -> List[str]:
+    out: List[str] = []
+    for ref in refs or []:
+        txt = str(ref).strip()
+        if not txt:
+            continue
+        if lang == "EN":
+            txt = txt.replace("Kaynak:", "Source:")
+        else:
+            txt = txt.replace("Source:", "Kaynak:")
+        out.append(txt)
+    return out
+
 def _method_help_text(method_name: str) -> str:
+    lang = "EN" if st.session_state.get("ui_lang") == "EN" else "TR"
     base_method = str(method_name or "").replace("Fuzzy ", "").strip()
     fallback = {
         "Eşit Ağırlık": {
@@ -650,8 +731,10 @@ def _method_help_text(method_name: str) -> str:
         or fallback.get(str(method_name), {})
         or fallback.get(base_method, {})
     )
-    simple = ph.get("simple", tt("Seçilen yöntem, problemi kendi değerlendirme mantığıyla okur.", "The selected method reads the problem through its own evaluation logic."))
-    academic = ph.get("academic", tt("Bu nedenle sonuçlar, seçilen yöntemin varsayımları içinde yorumlanmalıdır.", "Therefore, results should be interpreted within the assumptions of the selected method."))
+    method_label = method_display_name(str(method_name or base_method or tt("Seçilen yöntem", "Selected method")))
+    simple_fb, academic_fb = _method_fallback_lines(method_label, lang)
+    simple = _lang_text(ph.get("simple", ""), lang, simple_fb)
+    academic = _lang_text(ph.get("academic", ""), lang, academic_fb)
     return f"{simple}\n{academic}"
 
 _COL_TR_EN = {
@@ -872,6 +955,7 @@ def _safe_spearman(x: np.ndarray, y: np.ndarray) -> float:
     except Exception:
         return 0.0
 
+@st.cache_data(show_spinner=False)
 def compute_weight_robustness(
     data: pd.DataFrame,
     criteria: List[str],
@@ -954,6 +1038,10 @@ def compute_weight_robustness(
         "bootstrap_summary": boot_summary,
         "bootstrap_n": len(boot_df),
     }
+
+@st.cache_data(show_spinner=False)
+def run_full_analysis_cached(data_slice: pd.DataFrame, config_payload: Dict[str, Any]) -> Dict[str, Any]:
+    return me.run_full_analysis(data_slice, me.AnalysisConfig(**config_payload))
 
 def build_ranking_robustness_table(result: Dict[str, Any]) -> pd.DataFrame:
     ranking = result.get("ranking", {})
@@ -1105,7 +1193,7 @@ def get_method_steps(method: str, stage: str) -> str:
         return weight_steps.get(method, "Ağırlık yöntemi için detay adımlar mevcut.")
     if method.startswith("Fuzzy "):
         base = method.replace("Fuzzy ", "")
-        return "1) Veriyi bulanıklaştır (TFN)\n2) Durulaştırılmış temsil üret\n3) " + ranking_steps.get(base, "Temel sıralama adımları") + "\n4) Sonuçları yorumla"
+        return "1) Veriyi bulanıklaştır (TFN)\n2) Lower/Middle/Upper senaryolarını hesapla\n3) " + ranking_steps.get(base, "Temel sıralama adımları") + "\n4) Senaryo sonuçlarını birleştir ve yorumla"
     return ranking_steps.get(method, "Sıralama yöntemi için detay adımlar mevcut.")
 
 def _extract_detail_tables(details: Dict[str, Any]) -> Dict[str, pd.DataFrame]:
@@ -1246,22 +1334,22 @@ def render_3layer(layers: Dict[str, str], title: str = "") -> None:
         return
     if title:
         st.markdown(
-            f'<p style="font-size:0.8rem;font-weight:700;color:#718096;text-transform:uppercase;">{title}</p>',
+            f'<p style="font-size:0.8rem;font-weight:700;color:#718096;text-transform:uppercase;">{_safe_html_text(title)}</p>',
             unsafe_allow_html=True,
         )
     if layers.get("descriptive"):
         st.markdown(
-            f'<div class="layer-card layer-desc"><div class="layer-label" style="color:#3182CE">🔵 {tt("Tanımlayıcı — Ne bulundu?", "Descriptive — What was found?")}</div><p class="layer-text">{layers["descriptive"]}</p></div>',
+            f'<div class="layer-card layer-desc"><div class="layer-label" style="color:#3182CE">🔵 {tt("Tanımlayıcı — Ne bulundu?", "Descriptive — What was found?")}</div><p class="layer-text">{_safe_plain_commentary_html(layers["descriptive"])}</p></div>',
             unsafe_allow_html=True,
         )
     if layers.get("analytic"):
         st.markdown(
-            f'<div class="layer-card layer-analytic"><div class="layer-label" style="color:#38A169">🟢 {tt("Analitik — Ne anlama gelir?", "Analytic — What does it mean?")}</div><p class="layer-text">{layers["analytic"]}</p></div>',
+            f'<div class="layer-card layer-analytic"><div class="layer-label" style="color:#38A169">🟢 {tt("Analitik — Ne anlama gelir?", "Analytic — What does it mean?")}</div><p class="layer-text">{_safe_plain_commentary_html(layers["analytic"])}</p></div>',
             unsafe_allow_html=True,
         )
     if layers.get("normative"):
         st.markdown(
-            f'<div class="layer-card layer-norm"><div class="layer-label" style="color:#D69E2E">🟡 {tt("Normatif — Ne yapılmalı?", "Normative — What should be done?")}</div><p class="layer-text">{layers["normative"]}</p></div>',
+            f'<div class="layer-card layer-norm"><div class="layer-label" style="color:#D69E2E">🟡 {tt("Normatif — Ne yapılmalı?", "Normative — What should be done?")}</div><p class="layer-text">{_safe_plain_commentary_html(layers["normative"])}</p></div>',
             unsafe_allow_html=True,
         )
 
@@ -1441,6 +1529,13 @@ def _html_to_plain(text: str) -> str:
     txt = re.sub(r"<[^>]+>", "", txt)
     return txt.strip()
 
+def _safe_html_text(value: Any) -> str:
+    return html.escape("" if value is None else str(value), quote=True)
+
+def _safe_plain_commentary_html(text: str) -> str:
+    plain = _html_to_plain(text or "")
+    return _safe_html_text(plain).replace("\n", "<br>")
+
 def get_math_formulation_en(w_method: str, r_methods: List[str]) -> str:
     lines: List[str] = ["Mathematical and Algorithmic Framework", ""]
     lines.append(f"Objective weighting method: {method_display_name(w_method)}")
@@ -1487,7 +1582,14 @@ def _build_doc_sections(result: Dict[str, Any], lang: str) -> Dict[str, Any]:
     if sens:
         findings_parts.append(("Robustness", "Sağlamlık"))
         findings_texts.append(_html_to_plain(gen_mc_commentary(result)))
-    refs = base.get("Kaynakça", []) or base.get("References", [])
+    refs = _normalize_references(base.get("Kaynakça", []) or base.get("References", []), lang)
+
+    w_simple_fb, w_academic_fb = _method_fallback_lines(w_method_disp or ("Selected method" if lang == "EN" else "Seçilen yöntem"), lang)
+    r_simple_fb, r_academic_fb = _method_fallback_lines(r_method_disp or ("Selected method" if lang == "EN" else "Seçilen yöntem"), lang)
+    w_simple = _lang_text(w_ph.get("simple", ""), lang, w_simple_fb)
+    w_academic = _lang_text(w_ph.get("academic", ""), lang, w_academic_fb)
+    r_simple = _lang_text(r_ph.get("simple", ""), lang, r_simple_fb)
+    r_academic = _lang_text(r_ph.get("academic", ""), lang, r_academic_fb)
 
     if lang == "EN":
         findings_body = []
@@ -1495,14 +1597,14 @@ def _build_doc_sections(result: Dict[str, Any], lang: str) -> Dict[str, Any]:
             if text:
                 findings_body.append(f"{en_title}\n{text}")
         philosophy_lines = [
-            f"Weighting approach: {w_method_disp}. {w_ph.get('simple', '').strip()}",
+            f"Weighting approach: {w_method_disp}. {w_simple}",
         ]
-        if w_ph.get("academic"):
-            philosophy_lines.append(w_ph["academic"].strip())
+        if w_academic:
+            philosophy_lines.append(w_academic)
         if r_method:
-            philosophy_lines.append(f"Ranking approach: {r_method_disp}. {r_ph.get('simple', '').strip()}")
-            if r_ph.get("academic"):
-                philosophy_lines.append(r_ph["academic"].strip())
+            philosophy_lines.append(f"Ranking approach: {r_method_disp}. {r_simple}")
+            if r_academic:
+                philosophy_lines.append(r_academic)
         return {
             "Objective of the Study": (
                 f"This report evaluates {n_alt} alternatives across {n_crit} criteria. "
@@ -1527,14 +1629,14 @@ def _build_doc_sections(result: Dict[str, Any], lang: str) -> Dict[str, Any]:
         if text:
             findings_body.append(f"{tr_title}\n{text}")
     philosophy_lines = [
-        f"Ağırlıklandırma yaklaşımı: {w_method_disp}. {w_ph.get('simple', '').strip()}",
+        f"Ağırlıklandırma yaklaşımı: {w_method_disp}. {w_simple}",
     ]
-    if w_ph.get("academic"):
-        philosophy_lines.append(w_ph["academic"].strip())
+    if w_academic:
+        philosophy_lines.append(w_academic)
     if r_method:
-        philosophy_lines.append(f"Sıralama yaklaşımı: {r_method_disp}. {r_ph.get('simple', '').strip()}")
-        if r_ph.get("academic"):
-            philosophy_lines.append(r_ph["academic"].strip())
+        philosophy_lines.append(f"Sıralama yaklaşımı: {r_method_disp}. {r_simple}")
+        if r_academic:
+            philosophy_lines.append(r_academic)
     return {
         "Çalışmanın Amacı": (
             f"Bu rapor {n_alt} alternatif ve {n_crit} kriterden oluşan veri setini değerlendirmektedir. "
@@ -1661,7 +1763,10 @@ def _docx_detail_interpretation(method: str | None, lang: str) -> str:
 
 def _build_academic_doc_sections(result: Dict[str, Any], selected_data: pd.DataFrame, lang: str) -> Dict[str, Any]:
     headings = _docx_heading_map(lang)
-    refs = (result.get("report_sections", {}) or {}).get("Kaynakça", []) or (result.get("report_sections", {}) or {}).get("References", [])
+    refs = _normalize_references(
+        (result.get("report_sections", {}) or {}).get("Kaynakça", []) or (result.get("report_sections", {}) or {}).get("References", []),
+        lang,
+    )
     data = selected_data if isinstance(selected_data, pd.DataFrame) else result.get("selected_data", pd.DataFrame())
     validation = result.get("validation", {}) or {}
     shape = validation.get("shape", (0, 0))
@@ -1677,6 +1782,12 @@ def _build_academic_doc_sections(result: Dict[str, Any], selected_data: pd.DataF
     ranking_name = _docx_method_name(ranking_method, lang) if ranking_method else None
     w_ph = (result.get("method_philosophy", {}) or {}).get("weight", {}) or {}
     r_ph = (result.get("method_philosophy", {}) or {}).get("ranking", {}) or {}
+    w_simple_fb, w_academic_fb = _method_fallback_lines(weight_name or ("Selected method" if lang == "EN" else "Seçilen yöntem"), lang)
+    r_simple_fb, r_academic_fb = _method_fallback_lines(ranking_name or ("Selected method" if lang == "EN" else "Seçilen yöntem"), lang)
+    w_simple = _lang_text(w_ph.get("simple", ""), lang, w_simple_fb)
+    w_academic = _lang_text(w_ph.get("academic", ""), lang, w_academic_fb)
+    r_simple = _lang_text(r_ph.get("simple", ""), lang, r_simple_fb)
+    r_academic = _lang_text(r_ph.get("academic", ""), lang, r_academic_fb)
 
     weight_df = result.get("weights", {}).get("table")
     ranking_df = result.get("ranking", {}).get("table")
@@ -1711,7 +1822,8 @@ def _build_academic_doc_sections(result: Dict[str, Any], selected_data: pd.DataF
         if len(r_sorted) > 1:
             second_alt = str(r_sorted.iloc[1][alt_col])
             second_score = float(pd.to_numeric(r_sorted.iloc[1][score_col], errors="coerce"))
-            score_gap = top_score - second_score
+            _lower_is_better = isinstance(ranking_name, str) and ("VIKOR" in ranking_name)
+            score_gap = (second_score - top_score) if _lower_is_better else (top_score - second_score)
 
     if lang == "EN":
         objective = (
@@ -1738,15 +1850,9 @@ def _build_academic_doc_sections(result: Dict[str, Any], selected_data: pd.DataF
         scope = " ".join(scope_parts)
 
         philosophy_parts = []
-        if w_ph.get("academic"):
-            philosophy_parts.append(w_ph["academic"].strip())
-        else:
-            philosophy_parts.append(f"{weight_name} serves as the weighting backbone of the analysis.")
+        philosophy_parts.append(w_academic or f"{weight_name} serves as the weighting backbone of the analysis.")
         if ranking_name:
-            if r_ph.get("academic"):
-                philosophy_parts.append(r_ph["academic"].strip())
-            else:
-                philosophy_parts.append(f"{ranking_name} provides the final ranking logic of the analysis.")
+            philosophy_parts.append(r_academic or f"{ranking_name} provides the final ranking logic of the analysis.")
             philosophy_parts.append("Taken together, the selected weighting and ranking stages separate criterion importance from alternative dominance and thereby improve interpretability at the reporting stage.")
         philosophy_parts.append("Accordingly, the findings should be interpreted within the epistemic assumptions of the selected method set rather than as method-independent truths.")
         philosophy = "\n\n".join(philosophy_parts)
@@ -1824,15 +1930,9 @@ def _build_academic_doc_sections(result: Dict[str, Any], selected_data: pd.DataF
         scope = " ".join(scope_parts)
 
         philosophy_parts = []
-        if w_ph.get("academic"):
-            philosophy_parts.append(w_ph["academic"].strip())
-        else:
-            philosophy_parts.append(f"{weight_name} bu raporda ağırlıklandırma omurgasını oluşturmaktadır.")
+        philosophy_parts.append(w_academic or f"{weight_name} bu raporda ağırlıklandırma omurgasını oluşturmaktadır.")
         if ranking_name:
-            if r_ph.get("academic"):
-                philosophy_parts.append(r_ph["academic"].strip())
-            else:
-                philosophy_parts.append(f"{ranking_name} bu raporda nihai sıralama mantığını üretmektedir.")
+            philosophy_parts.append(r_academic or f"{ranking_name} bu raporda nihai sıralama mantığını üretmektedir.")
             philosophy_parts.append("Seçilen ağırlıklandırma ve sıralama aşamalarının birlikte kullanılması, kriter önemini alternatif üstünlüğünden ayırarak yorum izlenebilirliğini artırmaktadır.")
         philosophy_parts.append("Bu nedenle bulgular, yöntemden bağımsız mutlak doğrular olarak değil, seçilen yöntem setinin epistemik varsayımları içinde okunmalıdır.")
         philosophy = "\n\n".join(philosophy_parts)
@@ -2199,7 +2299,8 @@ def _run_single_analysis_bundle(
     weight_method: str,
     main_rank: str | None,
 ) -> Dict[str, Any]:
-    result = me.run_full_analysis(data_slice, config)
+    config_payload = dict(config.__dict__)
+    result = run_full_analysis_cached(data_slice, config_payload)
     if main_rank:
         actual_method = result.get("ranking", {}).get("method")
         if actual_method != main_rank:
@@ -2567,10 +2668,13 @@ def _live_detail_commentary(method: str, detail_df: pd.DataFrame, alt_names: Dic
     worst_idx = int(scores.idxmin())
     best_name  = str(df.loc[best_idx,  alt_col]) if alt_col else str(best_idx)
     worst_name = str(df.loc[worst_idx, alt_col]) if alt_col else str(worst_idx)
+    best_name = _safe_html_text(best_name)
+    worst_name = _safe_html_text(worst_name)
     best_score  = float(scores.loc[best_idx])
     worst_score = float(scores.loc[worst_idx])
     spread = best_score - worst_score
     n = len(df)
+    method_safe = _safe_html_text(method)
 
     def _v(col):
         """Satır best_idx için o sütundaki yuvarlı değeri döndür."""
@@ -2898,13 +3002,13 @@ def _live_detail_commentary(method: str, detail_df: pd.DataFrame, alt_names: Dic
     # ── Genel fallback ────────────────────────────────────────────────────────────
     else:
         if is_en:
-            calc  = f"This table shows the intermediate calculation steps for the <b>{method}</b> method."
+            calc  = f"This table shows the intermediate calculation steps for the <b>{method_safe}</b> method."
             found = (f"<b>{best_name}</b> achieved the highest score = <b>{best_score:.4f}</b>; "
                      f"<b>{worst_name}</b> the lowest = <b>{worst_score:.4f}</b>. "
                      f"Score spread: <b>{spread:.4f}</b> across {n} alternatives.")
             watch = "Review the method documentation to interpret each column's contribution to the final ranking."
         else:
-            calc  = f"Bu tablo <b>{method}</b> yönteminin ara hesaplama adımlarını göstermektedir."
+            calc  = f"Bu tablo <b>{method_safe}</b> yönteminin ara hesaplama adımlarını göstermektedir."
             found = (f"<b>{best_name}</b> en yüksek skoru = <b>{best_score:.4f}</b> aldı; "
                      f"<b>{worst_name}</b> en düşük = <b>{worst_score:.4f}</b>. "
                      f"{n} alternatif arasında skor aralığı: <b>{spread:.4f}</b>.")
@@ -2948,7 +3052,7 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
             st.markdown(f"##### 🔀 {tt('PROMETHEE Akış Tablosu', 'PROMETHEE Flow Table')}")
             _live_c = _live_detail_commentary(method, flows, alt_names, _lang)
             if _live_c:
-                st.markdown(f'<div class="commentary-box">{_live_c}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_live_c)}</div>', unsafe_allow_html=True)
             _flows_disp = _map_alt_names_in_df(flows, alt_names)
             for col in ["PhiPlus", "PhiMinus", "PhiNet", "Skor"]:
                 if col in _flows_disp.columns:
@@ -2981,7 +3085,7 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
             st.markdown(f"##### 📐 {tt('TOPSIS Uzaklık Tablosu', 'TOPSIS Distance Table')}")
             _live_c = _live_detail_commentary(method, dist_df, alt_names, _lang)
             if _live_c:
-                st.markdown(f'<div class="commentary-box">{_live_c}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_live_c)}</div>', unsafe_allow_html=True)
             _dist_disp = _map_alt_names_in_df(dist_df, alt_names)
             for col in ["D+", "D-", "Skor"]:
                 if col in _dist_disp.columns:
@@ -2998,7 +3102,7 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
             st.markdown(f"##### ⚖️ {tt('VIKOR Uzlaşı Tablosu', 'VIKOR Compromise Table')}")
             _live_c = _live_detail_commentary(method, vikor_df, alt_names, _lang)
             if _live_c:
-                st.markdown(f'<div class="commentary-box">{_live_c}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_live_c)}</div>', unsafe_allow_html=True)
             _vikor_disp = _map_alt_names_in_df(vikor_df, alt_names)
             for col in ["S", "R", "Q", "Skor"]:
                 if col in _vikor_disp.columns:
@@ -3015,7 +3119,7 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
             st.markdown(f"##### 📏 {tt('EDAS Sapma Tablosu', 'EDAS Distance Table')}")
             _live_c = _live_detail_commentary(method, edas_df, alt_names, _lang)
             if _live_c:
-                st.markdown(f'<div class="commentary-box">{_live_c}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_live_c)}</div>', unsafe_allow_html=True)
             _edas_disp = _map_alt_names_in_df(edas_df, alt_names)
             for col in ["SP", "SN", "NSP", "NSN", "Skor"]:
                 if col in _edas_disp.columns:
@@ -3032,7 +3136,7 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
             st.markdown(f"##### 🧭 {tt('CODAS Uzaklık Tablosu', 'CODAS Distance Table')}")
             _live_c = _live_detail_commentary(method, codas_df, alt_names, _lang)
             if _live_c:
-                st.markdown(f'<div class="commentary-box">{_live_c}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_live_c)}</div>', unsafe_allow_html=True)
             _codas_disp = _map_alt_names_in_df(codas_df, alt_names)
             for col in ["E", "T", "H", "Skor"]:
                 if col in _codas_disp.columns:
@@ -3051,14 +3155,14 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
             _first_df = _detail_frames[_first_key]
             _live_c = _live_detail_commentary(method, _first_df, alt_names, _lang)
             if _live_c:
-                st.markdown(f'<div class="commentary-box">{_live_c}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_live_c)}</div>', unsafe_allow_html=True)
             render_table(localize_df(_map_alt_names_in_df(_first_df, alt_names).head(250)))
         else:
             st.info(tt("Bu yöntem için ek yöntem-özel görsel bulunmuyor.", "No additional method-specific visualization is available for this method."))
 
 def render_tab_assistant(commentary: str, key: str = "") -> None:
     with st.expander(tt("💬 Analiz Asistanı — Yorum", "💬 Analysis Assistant — Commentary"), expanded=True):
-        st.markdown(f'<div class="tab-assistant">{commentary}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="tab-assistant">{_safe_plain_commentary_html(commentary)}</div>', unsafe_allow_html=True)
     st.caption(tt("Detaylar için lütfen aşağıdaki tablo ve şekilleri inceleyin.", "For details, please review the tables and figures below."))
 
 def _top_cv_crit(result: Dict[str, Any]) -> tuple[str, float]:
@@ -3341,15 +3445,28 @@ def _ranking_method_commentary(result: Dict[str, Any], top_alt: str, top_disp: s
             )
 
     ph = result.get("method_philosophy", {}).get("ranking", {}) or {}
+    method_lbl = method_display_name(method)
+    _, academic_fb_en = _method_fallback_lines(method_lbl or "Selected method", "EN")
+    _, academic_fb_tr = _method_fallback_lines(method_lbl or "Seçilen yöntem", "TR")
     if is_en:
         return (
             f"{method} places {top_disp} in the first position for this dataset.",
-            ph.get("academic", "The selected method interprets the same data through its own ranking logic and identifies the strongest candidate accordingly."),
+            _lang_text(
+                ph.get("academic", ""),
+                "EN",
+                "The selected method interprets the same data through its own ranking logic and identifies the strongest candidate accordingly."
+                if not academic_fb_en else academic_fb_en,
+            ),
             "Read this result together with the score gap, comparison, and robustness outputs before turning it into a final decision.",
         )
     return (
         f"{method} bu veri setinde {top_disp} alternatifini ilk sıraya yerleştirmiştir.",
-        ph.get("academic", "Seçilen yöntem aynı veriyi kendi karar mantığıyla okuyarak en güçlü adayı belirlemiştir."),
+        _lang_text(
+            ph.get("academic", ""),
+            "TR",
+            "Seçilen yöntem aynı veriyi kendi karar mantığıyla okuyarak en güçlü adayı belirlemiştir."
+            if not academic_fb_tr else academic_fb_tr,
+        ),
         "Bu sonucu son karara dönüştürmeden önce skor farkı, yöntem karşılaştırması ve sağlamlık çıktılarıyla birlikte okuyun.",
     )
 
@@ -3840,17 +3957,6 @@ if raw_data is None:
         """,
         unsafe_allow_html=True,
     )
-    _guide_text = _load_user_guide_text()
-    with st.expander(tt("📘 Kullanım Kılavuzu", "📘 User Guide"), expanded=False):
-        if _guide_text:
-            st.markdown(_guide_text)
-        else:
-            st.info(
-                tt(
-                    "Kılavuz dosyası bulunamadı (`KULLANIM_KILAVUZU.md`).",
-                    "Guide file was not found (`KULLANIM_KILAVUZU.md`).",
-                )
-            )
     st.stop()
 _needs_ranking_default = bool(st.session_state.get("needs_ranking", True))
 _purpose_options = [
@@ -4326,7 +4432,7 @@ with st.expander(_prep_label, expanded=not st.session_state.get("prep_done")):
                     "", value=st.session_state["crit_include"].get(_c, True), key=f"inc_{_c}"
                 )
             with _rc[1]:
-                st.markdown(f'<div class="ct-crit-name">{_c}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="ct-crit-name">{_safe_html_text(_c)}</div>', unsafe_allow_html=True)
             _is_benefit = st.session_state["crit_dir"].get(_c, True)
             with _rc[2]:
                 if st.button(
@@ -4998,6 +5104,8 @@ if isinstance(ranking_table, pd.DataFrame) and not ranking_table.empty:
     _raw_lead = str(ranking_table.iloc[0][_alt_col])
     _lead_alt = alt_names.get(_raw_lead, _raw_lead)
 _rank_method = result.get("ranking", {}).get("method") or "—"
+_lead_alt_safe = _safe_html_text(_lead_alt)
+_rank_method_safe = _safe_html_text(_rank_method)
 _sensitivity_payload = result.get("sensitivity") or {}
 _stability = _sensitivity_payload.get("top_stability")
 _stability_txt = f"%{float(_stability) * 100:.1f}" if _stability is not None else "—"
@@ -5008,8 +5116,8 @@ st.markdown(
     f"""
     <div class="kpi-strip">
         <div class="kpi-grid">
-            <div class="kpi-item"><div class="kpi-label">{tt('Lider Alternatif', 'Leading Alternative')}</div><div class="kpi-value">{_lead_alt}</div></div>
-            <div class="kpi-item"><div class="kpi-label">{tt('Sıralama Yöntemi', 'Ranking Method')}</div><div class="kpi-value">{_rank_method}</div></div>
+            <div class="kpi-item"><div class="kpi-label">{tt('Lider Alternatif', 'Leading Alternative')}</div><div class="kpi-value">{_lead_alt_safe}</div></div>
+            <div class="kpi-item"><div class="kpi-label">{tt('Sıralama Yöntemi', 'Ranking Method')}</div><div class="kpi-value">{_rank_method_safe}</div></div>
             <div class="kpi-item"><div class="kpi-label">{tt('Kararlılık', 'Stability')}</div><div class="kpi-value">{_stability_txt}</div></div>
             <div class="kpi-item"><div class="kpi-label">{tt('Analiz Süresi', 'Analysis Time')}</div><div class="kpi-value">{_runtime_txt}</div></div>
             <div class="kpi-item"><div class="kpi-label">{tt('Veri Boyutu', 'Data Size')}</div><div class="kpi-value">{_shape[0]}×{_shape[1]}</div></div>
@@ -5160,7 +5268,7 @@ with tabs[_tab_stats]:
         _stats_disp[_num_cols] = _stats_disp[_num_cols].round(3)
         render_table(_stats_disp)
         with st.expander(f"💬 {tt('Tablo Yorumu', 'Table Commentary')}", expanded=False):
-            st.markdown(f'<div class="commentary-box">{_html_to_plain(_stat_comment).replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_stat_comment)}</div>', unsafe_allow_html=True)
 
     with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=False):
         s1, s2 = st.columns([1, 1])
@@ -5206,7 +5314,7 @@ with tabs[_tab_weights]:
                 _weight_disp[_weight_disp_col] = pd.to_numeric(_weight_disp[_weight_disp_col], errors="coerce").round(6)
             render_table(_weight_disp)
         with st.expander(f"💬 {tt('Tablo Yorumu', 'Table Commentary')}", expanded=False):
-            st.markdown(f'<div class="commentary-box">{_html_to_plain(_weight_comment).replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_weight_comment)}</div>', unsafe_allow_html=True)
 
     with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=False):
         fig_col1, fig_col2 = st.columns(2)
@@ -5241,7 +5349,7 @@ with tabs[_tab_robustness]:
         m4.metric(tt("Etkin Kriter Sayısı", "Effective Criterion Count"), (f"{float(_eff_n):.2f}" if _eff_n is not None and np.isfinite(_eff_n) else "—"))
 
         with st.expander(f"💬 {tt('Sağlamlık Özet Yorumu', 'Robustness Summary Commentary')}", expanded=True):
-            st.markdown(f'<div class="commentary-box">{_rob_comment}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_rob_comment)}</div>', unsafe_allow_html=True)
         st.caption(tt("Detaylar için lütfen aşağıdaki tablo ve şekilleri inceleyin.", "For details, please review the tables and figures below."))
 
         _felsefe_msg = tt(
@@ -5414,7 +5522,7 @@ if needs_ranking:
                             _rt_table_disp[_rt_table_score_col] = pd.to_numeric(_rt_table_disp[_rt_table_score_col], errors="coerce").round(4)
                         render_table(_rt_table_disp)
                 with st.expander(f"💬 {tt('Tablo Yorumu', 'Table Commentary')}", expanded=False):
-                    st.markdown(f'<div class="commentary-box">{_html_to_plain(_rank_comment).replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_rank_comment)}</div>', unsafe_allow_html=True)
 
             with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=False):
                 fig_r1, fig_r2 = st.columns(2)
@@ -5469,7 +5577,7 @@ if needs_ranking:
                         ))
                         render_table(_method_rob_df)
                 with st.expander(f"💬 {tt('Tablo Yorumu', 'Table Commentary')}", expanded=False):
-                    st.markdown(f'<div class="commentary-box">{_html_to_plain(_comp_comment).replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_comp_comment)}</div>', unsafe_allow_html=True)
 
             with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=False):
                 if isinstance(comp.get("spearman_matrix"), pd.DataFrame):
@@ -5529,7 +5637,7 @@ if needs_ranking:
                         _mc_table_disp[_mr_col] = pd.to_numeric(_mc_table_disp[_mr_col], errors="coerce").round(2)
                     render_table(_mc_table_disp)
                     with st.expander(f"💬 {tt('Tablo Yorumu', 'Table Commentary')}", expanded=False):
-                        st.markdown(f'<div class="commentary-box">{_html_to_plain(_mc_comment).replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_mc_comment)}</div>', unsafe_allow_html=True)
 
                 with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=False):
                     mg1, mg2 = st.columns(2)

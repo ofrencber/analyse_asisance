@@ -414,10 +414,17 @@ def _normalize_vector(data: pd.DataFrame) -> pd.DataFrame:
     return df / norms
 
 
-def _vector_rank(scores: Sequence[float], index: Sequence[Any]) -> pd.DataFrame:
+def _vector_rank(scores: Sequence[float], index: Sequence[Any], *, ascending: bool = False) -> pd.DataFrame:
     out = pd.DataFrame({"Alternatif": list(index), "Skor": np.asarray(scores, dtype=float)})
-    out["Sıra"] = out["Skor"].rank(ascending=False, method="min").astype(int)
+    out["Sıra"] = out["Skor"].rank(ascending=ascending, method="min").astype(int)
     return out.sort_values(["Sıra", "Alternatif"]).reset_index(drop=True)
+
+
+def _is_lower_better_method(method: Optional[str]) -> bool:
+    if not method:
+        return False
+    base = method.replace("Fuzzy ", "")
+    return base == "VIKOR"
 
 
 def _benefit_cost_summary(criteria_types: Dict[str, str]) -> Dict[str, List[str]]:
@@ -828,7 +835,7 @@ def _rank_vikor(
     s_best, s_worst = s.min(), s.max()
     r_best, r_worst = r.min(), r.max()
     q = v_param * _safe_divide(s - s_best, s_worst - s_best) + (1 - v_param) * _safe_divide(r - r_best, r_worst - r_best)
-    score = 1.0 - _safe_divide(q - q.min(), q.max() - q.min())
+    score = q.copy()
     order_q = np.argsort(q)
     q_sorted = q[order_q]
     if len(q_sorted) > 1:
@@ -892,13 +899,10 @@ def _rank_codas(
     nis = v.min(axis=0)
     e = np.sqrt(((v - nis) ** 2).sum(axis=1))
     t = np.abs(v - nis).sum(axis=1)
-    h = np.zeros(len(pos), dtype=float)
-    for i in range(len(pos)):
-        total = 0.0
-        for k in range(len(pos)):
-            psi = 1.0 if abs(e[i] - e[k]) >= tau else 0.0
-            total += (e[i] - e[k]) + psi * (t[i] - t[k])
-        h[i] = total
+    delta_e = e[:, np.newaxis] - e[np.newaxis, :]
+    delta_t = t[:, np.newaxis] - t[np.newaxis, :]
+    psi = (np.abs(delta_e) >= tau).astype(float)
+    h = delta_e.sum(axis=1) + np.sum(psi * delta_t, axis=1)
     score = _safe_divide(h - h.min(), h.max() - h.min())
     det = {
         "normalized_matrix": norm,
@@ -1014,7 +1018,7 @@ def _rank_saw(data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[
     norm = _normalize_sum(data, criteria_types)
     wvec = np.asarray([weights[c] for c in norm.columns], dtype=float)
     raw = np.sum(norm.to_numpy(dtype=float) * wvec, axis=1)
-    score = _safe_divide(raw - raw.min(), raw.max() - raw.min())
+    score = raw.copy()
     det = {
         "normalized_matrix": norm,
         "saw_table": pd.DataFrame({
@@ -1030,7 +1034,7 @@ def _rank_wpm(data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[
     norm = _normalize_minmax(data, criteria_types)
     wvec = np.asarray([weights[c] for c in norm.columns], dtype=float)
     raw = np.prod(np.power(norm.to_numpy(dtype=float) + EPS, wvec), axis=1)
-    score = _safe_divide(raw - raw.min(), raw.max() - raw.min())
+    score = raw.copy()
     det = {
         "normalized_matrix": norm,
         "wpm_table": pd.DataFrame({
@@ -1047,7 +1051,7 @@ def _rank_maut(data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict
     wvec = np.asarray([weights[c] for c in norm.columns], dtype=float)
     utility = norm.to_numpy(dtype=float) * wvec
     raw = utility.sum(axis=1)
-    score = _safe_divide(raw - raw.min(), raw.max() - raw.min())
+    score = raw.copy()
     det = {
         "normalized_matrix": norm,
         "utility_matrix": pd.DataFrame(utility, index=data.index, columns=data.columns),
@@ -1086,7 +1090,7 @@ def _rank_moora(data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dic
     benefit_sum = weighted[:, benefit_idx].sum(axis=1) if benefit_idx else np.zeros(len(norm))
     cost_sum = weighted[:, cost_idx].sum(axis=1) if cost_idx else np.zeros(len(norm))
     raw = benefit_sum - cost_sum
-    score = _safe_divide(raw - raw.min(), raw.max() - raw.min())
+    score = raw.copy()
     det = {
         "normalized_matrix": norm,
         "moora_table": pd.DataFrame({"Alternatif": data.index.astype(str), "FaydaToplamı": benefit_sum, "MaliyetToplamı": cost_sum, "HamSkor": raw, "Skor": score}),
@@ -1193,35 +1197,39 @@ def _rank_promethee(
     wvec = np.asarray([weights[c] for c in data.columns], dtype=float)
     ranges = np.ptp(arr, axis=0)
     ranges = np.where(ranges <= EPS, 1.0, ranges)
+    qn = float(max(0.0, q))
+    pn = float(max(qn + EPS, p))
+    sn = float(max(EPS, s))
 
+    direction = np.asarray(
+        [1.0 if criteria_types.get(c, "max") == "max" else -1.0 for c in data.columns],
+        dtype=float,
+    )
+
+    # Vectorized PROMETHEE preference matrix construction:
+    # iterate criteria only, compute all (i,k) pairs at once.
     pref = np.zeros((m, m), dtype=float)
-    for i in range(m):
-        for k in range(m):
-            if i == k:
-                continue
-            d = arr[i, :] - arr[k, :]
-            for j, c in enumerate(data.columns):
-                if criteria_types.get(c, "max") == "min":
-                    d[j] = -d[j]
-            pj = np.maximum(0.0, d) / ranges
-            pj = np.clip(pj, 0.0, None)
-            qn = float(max(0.0, q))
-            pn = float(max(qn + EPS, p))
-            sn = float(max(EPS, s))
-            if pref_func == "usual":
-                pj = (pj > 0).astype(float)
-            elif pref_func == "u_shape":
-                pj = np.where(pj <= qn, 0.0, 1.0)
-            elif pref_func == "v_shape":
-                pj = np.where(pj <= 0, 0.0, np.where(pj >= pn, 1.0, pj / pn))
-            elif pref_func == "level":
-                pj = np.where(pj <= qn, 0.0, np.where(pj <= pn, 0.5, 1.0))
-            elif pref_func == "gaussian":
-                pj = np.where(pj <= 0, 0.0, 1.0 - np.exp(-(pj ** 2) / (2.0 * (sn ** 2))))
-            else:  # linear (V-shape with indifference)
-                pj = np.where(pj <= qn, 0.0, np.where(pj >= pn, 1.0, (pj - qn) / (pn - qn + EPS)))
-            pj = np.clip(pj, 0.0, 1.0)
-            pref[i, k] = float(np.sum(wvec * pj))
+    for j in range(n):
+        d = (arr[:, j][:, np.newaxis] - arr[:, j][np.newaxis, :]) * direction[j]
+        pj = np.maximum(0.0, d) / ranges[j]
+        pj = np.clip(pj, 0.0, None)
+
+        if pref_func == "usual":
+            pj = (pj > 0).astype(float)
+        elif pref_func == "u_shape":
+            pj = np.where(pj <= qn, 0.0, 1.0)
+        elif pref_func == "v_shape":
+            pj = np.where(pj <= 0, 0.0, np.where(pj >= pn, 1.0, pj / pn))
+        elif pref_func == "level":
+            pj = np.where(pj <= qn, 0.0, np.where(pj <= pn, 0.5, 1.0))
+        elif pref_func == "gaussian":
+            pj = np.where(pj <= 0, 0.0, 1.0 - np.exp(-(pj ** 2) / (2.0 * (sn ** 2))))
+        else:  # linear (V-shape with indifference)
+            pj = np.where(pj <= qn, 0.0, np.where(pj >= pn, 1.0, (pj - qn) / (pn - qn + EPS)))
+
+        pref += wvec[j] * np.clip(pj, 0.0, 1.0)
+
+    np.fill_diagonal(pref, 0.0)
 
     denom = max(m - 1, 1)
     phi_plus = pref.sum(axis=1) / denom
@@ -1268,7 +1276,7 @@ def _rank_gra(data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[
 
 def _triangular_fuzzy_from_crisp(data: pd.DataFrame, spread: float = 0.10) -> np.ndarray:
     x = data.to_numpy(dtype=float)
-    delta = np.maximum(np.abs(x), 1.0) * max(spread, EPS)
+    delta = np.maximum(np.abs(x) * max(spread, EPS), EPS)
     low = x - delta
     mid = x
     high = x + delta
@@ -1318,8 +1326,8 @@ def _rank_fuzzy_topsis(
     norm = _normalize_fuzzy_tfn(tfn, criteria, criteria_types)
     wvec = np.asarray([weights[c] for c in criteria], dtype=float)
     weighted = norm * wvec.reshape(1, -1, 1)
-    fpis = np.stack([weighted[:, j, 2].max() * np.ones(3) for j in range(weighted.shape[1])], axis=0)
-    fnis = np.stack([weighted[:, j, 0].min() * np.ones(3) for j in range(weighted.shape[1])], axis=0)
+    fpis = np.max(weighted, axis=0)
+    fnis = np.min(weighted, axis=0)
     dplus = np.sum(_fuzzy_distance(weighted, fpis[np.newaxis, :, :]), axis=1)
     dminus = np.sum(_fuzzy_distance(weighted, fnis[np.newaxis, :, :]), axis=1)
     score = dminus / (dplus + dminus + EPS)
@@ -1333,6 +1341,50 @@ def _rank_fuzzy_topsis(
     return score, det
 
 
+def _rank_fuzzy_by_scenarios(
+    data: pd.DataFrame,
+    criteria_types: Dict[str, str],
+    weights: Dict[str, float],
+    spread: float,
+    ranker,
+    *,
+    extra_params: Optional[Dict[str, float]] = None,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    criteria = list(data.columns)
+    tfn = _triangular_fuzzy_from_crisp(data, spread)
+    labels = ("Lower", "Middle", "Upper")
+    scenario_scores: Dict[str, np.ndarray] = {}
+    scenario_details: Dict[str, Dict[str, Any]] = {}
+
+    for idx, label in enumerate(labels):
+        scenario_df = pd.DataFrame(tfn[:, :, idx], index=data.index, columns=criteria)
+        sc, det = ranker(scenario_df, criteria_types, weights)
+        scenario_scores[label] = np.asarray(sc, dtype=float).reshape(-1)
+        scenario_details[label] = det
+
+    stacked = np.vstack([scenario_scores["Lower"], scenario_scores["Middle"], scenario_scores["Upper"]])
+    score = np.mean(stacked, axis=0)
+    middle_det = scenario_details.get("Middle", {})
+    det: Dict[str, Any] = dict(middle_det) if isinstance(middle_det, dict) else {}
+    det["fuzzy_matrix"] = tfn
+    det["fuzzy_scenario_scores"] = pd.DataFrame(
+        {
+            "Alternatif": data.index.astype(str),
+            "LowerSkor": scenario_scores["Lower"],
+            "MiddleSkor": scenario_scores["Middle"],
+            "UpperSkor": scenario_scores["Upper"],
+            "Skor": score,
+        }
+    )
+    det["fuzzy_scenario_method_details"] = scenario_details
+    merged_params = dict(det.get("parameters", {}) if isinstance(det.get("parameters"), dict) else {})
+    merged_params["spread"] = float(spread)
+    if extra_params:
+        merged_params.update(extra_params)
+    det["parameters"] = merged_params
+    return score, det
+
+
 def _rank_fuzzy_vikor(
     data: pd.DataFrame,
     criteria_types: Dict[str, str],
@@ -1340,65 +1392,38 @@ def _rank_fuzzy_vikor(
     spread: float = 0.10,
     v_param: float = 0.5,
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    criteria = list(data.columns)
-    tfn = _triangular_fuzzy_from_crisp(data, spread)
-    crisp = pd.DataFrame(_defuzzify_tfn(tfn), index=data.index, columns=criteria)
-    score, base_det = _rank_vikor(crisp, criteria_types, weights, v_param=v_param)
-    base_det["fuzzy_matrix"] = tfn
-    base_det["parameters"] = {"spread": float(spread), "v_param": float(v_param)}
-    return score, base_det
+    return _rank_fuzzy_by_scenarios(
+        data,
+        criteria_types,
+        weights,
+        spread,
+        lambda d, ct, w: _rank_vikor(d, ct, w, v_param=v_param),
+        extra_params={"v_param": float(v_param)},
+    )
 
 
 def _rank_fuzzy_aras(
     data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    criteria = list(data.columns)
-    tfn = _triangular_fuzzy_from_crisp(data, spread)
-    norm = _normalize_fuzzy_tfn(tfn, criteria, criteria_types)
-    weighted = norm * np.asarray([weights[c] for c in criteria], dtype=float).reshape(1, -1, 1)
-    crisp_weighted = _defuzzify_tfn(weighted)
-    crisp_df = pd.DataFrame(crisp_weighted, index=data.index, columns=criteria)
-    score, base_det = _rank_aras(crisp_df, {c: "max" for c in criteria}, weights)
-    base_det["fuzzy_matrix"] = tfn
-    base_det["normalized_fuzzy_matrix"] = norm
-    base_det["parameters"] = {"spread": float(spread)}
-    return score, base_det
+    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_aras)
 
 
 def _rank_fuzzy_saw(
     data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    criteria = list(data.columns)
-    tfn = _triangular_fuzzy_from_crisp(data, spread)
-    crisp = pd.DataFrame(_defuzzify_tfn(tfn), index=data.index, columns=criteria)
-    score, base_det = _rank_saw(crisp, criteria_types, weights)
-    base_det["fuzzy_matrix"] = tfn
-    base_det["parameters"] = {"spread": float(spread)}
-    return score, base_det
+    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_saw)
 
 
 def _rank_fuzzy_wpm(
     data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    criteria = list(data.columns)
-    tfn = _triangular_fuzzy_from_crisp(data, spread)
-    crisp = pd.DataFrame(_defuzzify_tfn(tfn), index=data.index, columns=criteria)
-    score, base_det = _rank_wpm(crisp, criteria_types, weights)
-    base_det["fuzzy_matrix"] = tfn
-    base_det["parameters"] = {"spread": float(spread)}
-    return score, base_det
+    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_wpm)
 
 
 def _rank_fuzzy_maut(
     data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    criteria = list(data.columns)
-    tfn = _triangular_fuzzy_from_crisp(data, spread)
-    crisp = pd.DataFrame(_defuzzify_tfn(tfn), index=data.index, columns=criteria)
-    score, base_det = _rank_maut(crisp, criteria_types, weights)
-    base_det["fuzzy_matrix"] = tfn
-    base_det["parameters"] = {"spread": float(spread)}
-    return score, base_det
+    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_maut)
 
 
 def _rank_fuzzy_waspas(
@@ -1408,27 +1433,20 @@ def _rank_fuzzy_waspas(
     spread: float = 0.10,
     lambda_param: float = 0.5,
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    criteria = list(data.columns)
-    tfn = _triangular_fuzzy_from_crisp(data, spread)
-    norm = _normalize_fuzzy_tfn(tfn, criteria, criteria_types)
-    crisp_norm = pd.DataFrame(_defuzzify_tfn(norm), index=data.index, columns=criteria)
-    score, base_det = _rank_waspas(crisp_norm, {c: "max" for c in criteria}, weights, lambda_param=lambda_param)
-    base_det["fuzzy_matrix"] = tfn
-    base_det["normalized_fuzzy_matrix"] = norm
-    base_det["parameters"] = {"spread": float(spread), "lambda": float(lambda_param)}
-    return score, base_det
+    return _rank_fuzzy_by_scenarios(
+        data,
+        criteria_types,
+        weights,
+        spread,
+        lambda d, ct, w: _rank_waspas(d, ct, w, lambda_param=lambda_param),
+        extra_params={"lambda": float(lambda_param)},
+    )
 
 
 def _rank_fuzzy_edas(
     data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    criteria = list(data.columns)
-    tfn = _triangular_fuzzy_from_crisp(data, spread)
-    crisp = pd.DataFrame(_defuzzify_tfn(tfn), index=data.index, columns=criteria)
-    score, base_det = _rank_edas(crisp, criteria_types, weights)
-    base_det["fuzzy_matrix"] = tfn
-    base_det["parameters"] = {"spread": float(spread)}
-    return score, base_det
+    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_edas)
 
 
 def _rank_fuzzy_codas(
@@ -1438,73 +1456,44 @@ def _rank_fuzzy_codas(
     spread: float = 0.10,
     tau: float = 0.02,
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    criteria = list(data.columns)
-    tfn = _triangular_fuzzy_from_crisp(data, spread)
-    crisp = pd.DataFrame(_defuzzify_tfn(tfn), index=data.index, columns=criteria)
-    score, base_det = _rank_codas(crisp, criteria_types, weights, tau=tau)
-    base_det["fuzzy_matrix"] = tfn
-    base_det["parameters"] = {"spread": float(spread), "tau": float(tau)}
-    return score, base_det
+    return _rank_fuzzy_by_scenarios(
+        data,
+        criteria_types,
+        weights,
+        spread,
+        lambda d, ct, w: _rank_codas(d, ct, w, tau=tau),
+        extra_params={"tau": float(tau)},
+    )
 
 
 def _rank_fuzzy_copras(
     data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    criteria = list(data.columns)
-    tfn = _triangular_fuzzy_from_crisp(data, spread)
-    crisp = pd.DataFrame(_defuzzify_tfn(tfn), index=data.index, columns=criteria)
-    score, base_det = _rank_copras(crisp, criteria_types, weights)
-    base_det["fuzzy_matrix"] = tfn
-    base_det["parameters"] = {"spread": float(spread)}
-    return score, base_det
+    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_copras)
 
 
 def _rank_fuzzy_ocra(
     data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    criteria = list(data.columns)
-    tfn = _triangular_fuzzy_from_crisp(data, spread)
-    crisp = pd.DataFrame(_defuzzify_tfn(tfn), index=data.index, columns=criteria)
-    score, base_det = _rank_ocra(crisp, criteria_types, weights)
-    base_det["fuzzy_matrix"] = tfn
-    base_det["parameters"] = {"spread": float(spread)}
-    return score, base_det
+    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_ocra)
 
 
 def _rank_fuzzy_moora(
     data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    criteria = list(data.columns)
-    tfn = _triangular_fuzzy_from_crisp(data, spread)
-    crisp = pd.DataFrame(_defuzzify_tfn(tfn), index=data.index, columns=criteria)
-    score, base_det = _rank_moora(crisp, criteria_types, weights)
-    base_det["fuzzy_matrix"] = tfn
-    base_det["parameters"] = {"spread": float(spread)}
-    return score, base_det
+    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_moora)
 
 
 def _rank_fuzzy_mabac(
     data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    criteria = list(data.columns)
-    tfn = _triangular_fuzzy_from_crisp(data, spread)
-    crisp = pd.DataFrame(_defuzzify_tfn(tfn), index=data.index, columns=criteria)
-    score, base_det = _rank_mabac(crisp, criteria_types, weights)
-    base_det["fuzzy_matrix"] = tfn
-    base_det["parameters"] = {"spread": float(spread)}
-    return score, base_det
+    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_mabac)
 
 
 def _rank_fuzzy_marcos(
     data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    criteria = list(data.columns)
-    tfn = _triangular_fuzzy_from_crisp(data, spread)
-    crisp = pd.DataFrame(_defuzzify_tfn(tfn), index=data.index, columns=criteria)
-    score, base_det = _rank_marcos(crisp, criteria_types, weights)
-    base_det["fuzzy_matrix"] = tfn
-    base_det["parameters"] = {"spread": float(spread)}
-    return score, base_det
+    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_marcos)
 
 
 def _rank_fuzzy_cocoso(
@@ -1514,13 +1503,14 @@ def _rank_fuzzy_cocoso(
     spread: float = 0.10,
     lambda_param: float = 0.5,
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    criteria = list(data.columns)
-    tfn = _triangular_fuzzy_from_crisp(data, spread)
-    crisp = pd.DataFrame(_defuzzify_tfn(tfn), index=data.index, columns=criteria)
-    score, base_det = _rank_cocoso(crisp, criteria_types, weights, lambda_param=lambda_param)
-    base_det["fuzzy_matrix"] = tfn
-    base_det["parameters"] = {"spread": float(spread), "lambda": float(lambda_param)}
-    return score, base_det
+    return _rank_fuzzy_by_scenarios(
+        data,
+        criteria_types,
+        weights,
+        spread,
+        lambda d, ct, w: _rank_cocoso(d, ct, w, lambda_param=lambda_param),
+        extra_params={"lambda": float(lambda_param)},
+    )
 
 
 def _rank_fuzzy_gra(
@@ -1530,13 +1520,14 @@ def _rank_fuzzy_gra(
     spread: float = 0.10,
     rho: float = 0.5,
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    criteria = list(data.columns)
-    tfn = _triangular_fuzzy_from_crisp(data, spread)
-    crisp = pd.DataFrame(_defuzzify_tfn(tfn), index=data.index, columns=criteria)
-    score, base_det = _rank_gra(crisp, criteria_types, weights, rho=rho)
-    base_det["fuzzy_matrix"] = tfn
-    base_det["parameters"] = {"spread": float(spread), "rho": float(rho)}
-    return score, base_det
+    return _rank_fuzzy_by_scenarios(
+        data,
+        criteria_types,
+        weights,
+        spread,
+        lambda d, ct, w: _rank_gra(d, ct, w, rho=rho),
+        extra_params={"rho": float(rho)},
+    )
 
 
 def _rank_fuzzy_promethee(
@@ -1549,19 +1540,19 @@ def _rank_fuzzy_promethee(
     p: float = 0.30,
     s: float = 0.20,
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    criteria = list(data.columns)
-    tfn = _triangular_fuzzy_from_crisp(data, spread)
-    crisp = pd.DataFrame(_defuzzify_tfn(tfn), index=data.index, columns=criteria)
-    score, base_det = _rank_promethee(crisp, criteria_types, weights, pref_func=pref_func, q=q, p=p, s=s)
-    base_det["fuzzy_matrix"] = tfn
-    base_det["parameters"] = {
-        "spread": float(spread),
-        "pref_func": str(pref_func),
-        "q": float(q),
-        "p": float(p),
-        "s": float(s),
-    }
-    return score, base_det
+    return _rank_fuzzy_by_scenarios(
+        data,
+        criteria_types,
+        weights,
+        spread,
+        lambda d, ct, w: _rank_promethee(d, ct, w, pref_func=pref_func, q=q, p=p, s=s),
+        extra_params={
+            "pref_func": str(pref_func),
+            "q": float(q),
+            "p": float(p),
+            "s": float(s),
+        },
+    )
 
 
 def rank_alternatives(
@@ -1633,7 +1624,9 @@ def rank_alternatives(
         raise ValueError(f"{method} yöntemi beklenmeyen skor uzunluğu üretti.")
     if (~np.isfinite(scores_arr)).any():
         raise ValueError(f"{method} yöntemi geçersiz skor (NaN/Inf) üretti.")
-    result = _vector_rank(scores_arr, df.index.astype(str))
+    lower_is_better = _is_lower_better_method(method)
+    result = _vector_rank(scores_arr, df.index.astype(str), ascending=lower_is_better)
+    details["score_direction"] = "min" if lower_is_better else "max"
     details["result_table"] = result
     return result, details
 
@@ -1970,7 +1963,8 @@ def _section_bulgular(
         top_score = float(ranking_table.iloc[0]['Skor'])
         second_alt = str(ranking_table.iloc[1]['Alternatif']) if len(ranking_table) > 1 else top_alt
         second_score = float(ranking_table.iloc[1]['Skor']) if len(ranking_table) > 1 else top_score
-        gap = top_score - second_score
+        lower_is_better = _is_lower_better_method(ranking_method)
+        gap = (second_score - top_score) if lower_is_better else (top_score - second_score)
         text += (
             f" {ranking_method} sonuçlarına göre birinci sırada {top_alt} yer almış ve {top_score:.4f} skoruna ulaşmıştır. "
             f"İkinci sıradaki {second_alt} ile fark {gap:.4f} düzeyindedir; bu farkın büyüklüğü kararın ne ölçüde keskin "
@@ -2562,8 +2556,9 @@ def generate_3layer_ranking(
     second_score = float(ranking_table.iloc[1]["Skor"]) if n > 1 else top_score
     last_alt = str(ranking_table.iloc[-1]["Alternatif"])
     last_score = float(ranking_table.iloc[-1]["Skor"])
-    gap = top_score - second_score
-    score_range = top_score - last_score
+    lower_is_better = _is_lower_better_method(ranking_method)
+    gap = (second_score - top_score) if lower_is_better else (top_score - second_score)
+    score_range = (last_score - top_score) if lower_is_better else (top_score - last_score)
     relative_gap = gap / score_range if score_range > EPS else 0.0
     dominance = "belirgin" if relative_gap > 0.15 else "sınırlı"
     is_fuzzy = ranking_method.startswith("Fuzzy")
@@ -2584,7 +2579,7 @@ def generate_3layer_ranking(
         "VIKOR": (
             f"{fuzzy_prefix}VIKOR uzlaşı analizi grup faydası (S) ve maksimum bireysel "
             f"pişmanlık (R) ölçütlerini dengeleyerek **{top_alt}** alternatifini uzlaşı "
-            f"çözümü olarak belirledi (normalize skor: {top_score:.4f}). "
+            f"çözümü olarak belirledi (Q: {top_score:.4f}). "
             f"**{second_alt}** ikinci sıradadır (fark: {gap:.4f})."
         ),
         "EDAS": (
