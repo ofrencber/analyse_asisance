@@ -618,6 +618,7 @@ def init_state() -> None:
         "panel_years": [],
         "panel_view_choice": None,
         "step1_done": False,
+        "direction_notice": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -4137,11 +4138,15 @@ with st.expander(_prep_label, expanded=not st.session_state.get("prep_done")):
             text-overflow:ellipsis;
             padding-top:0.06rem;
         }
-        .ct-wrap .stButton {
+        .ct-wrap .stButton,
+        [class*="st-key-dir_benefit_"],
+        [class*="st-key-dir_cost_"] {
             display:flex !important;
             align-items:center !important;
         }
-        .ct-wrap .stButton > button {
+        .ct-wrap .stButton > button,
+        [class*="st-key-dir_benefit_"] button,
+        [class*="st-key-dir_cost_"] button {
             width:100% !important;
             min-height:1.58rem !important;
             padding:0.10rem 0.22rem !important;
@@ -4154,26 +4159,54 @@ with st.expander(_prep_label, expanded=not st.session_state.get("prep_done")):
             box-shadow:none !important;
             letter-spacing:0 !important;
         }
-        .ct-wrap .stButton > button:hover {
+        .ct-wrap .stButton > button:hover,
+        [class*="st-key-dir_benefit_"] button:hover,
+        [class*="st-key-dir_cost_"] button:hover {
             background:#EAF0F5 !important;
             border-color:#B7C6D6 !important;
             color:#2F4358 !important;
         }
-        .ct-wrap .stButton > button[kind="primary"] {
-            background:linear-gradient(180deg, #274F78 0%, #1F4A73 100%) !important;
+        .ct-wrap .stButton > button[kind="primary"],
+        [class*="st-key-dir_benefit_"] button[kind="primary"],
+        [class*="st-key-dir_cost_"] button[kind="primary"] {
+            background:#C62828 !important;
             color:#FFFFFF !important;
-            border-color:#1F4A73 !important;
-            box-shadow:0 4px 10px rgba(31, 74, 115, 0.14) !important;
+            -webkit-text-fill-color:#FFFFFF !important;
+            border-color:#C62828 !important;
+            box-shadow:0 4px 10px rgba(198, 40, 40, 0.18) !important;
         }
-        .ct-wrap .stButton > button[kind="primary"]:hover {
-            background:linear-gradient(180deg, #21476D 0%, #173754 100%) !important;
+        .ct-wrap .stButton > button[kind="primary"] *,
+        [class*="st-key-dir_benefit_"] button[kind="primary"] *,
+        [class*="st-key-dir_cost_"] button[kind="primary"] * {
             color:#FFFFFF !important;
-            border-color:#173754 !important;
+            fill:#FFFFFF !important;
+            -webkit-text-fill-color:#FFFFFF !important;
+        }
+        .ct-wrap .stButton > button[kind="primary"]:hover,
+        [class*="st-key-dir_benefit_"] button[kind="primary"]:hover,
+        [class*="st-key-dir_cost_"] button[kind="primary"]:hover {
+            background:#B71C1C !important;
+            color:#FFFFFF !important;
+            -webkit-text-fill-color:#FFFFFF !important;
+            border-color:#B71C1C !important;
+        }
+        .ct-wrap .stButton > button[kind="primary"]:hover *,
+        [class*="st-key-dir_benefit_"] button[kind="primary"]:hover *,
+        [class*="st-key-dir_cost_"] button[kind="primary"]:hover * {
+            color:#FFFFFF !important;
+            fill:#FFFFFF !important;
+            -webkit-text-fill-color:#FFFFFF !important;
         }
         </style>""", unsafe_allow_html=True)
 
         _dir_benefit = tt("Fayda", "Benefit")
         _dir_cost = tt("Maliyet", "Cost")
+        _direction_notice = st.session_state.pop("direction_notice", None)
+        if _direction_notice:
+            try:
+                st.toast(_direction_notice, icon="✅")
+            except Exception:
+                st.info(_direction_notice)
 
         # Tablo başlığı (HTML div)
         st.markdown(
@@ -4204,6 +4237,7 @@ with st.expander(_prep_label, expanded=not st.session_state.get("prep_done")):
                     type="primary" if _is_benefit else "secondary",
                 ):
                     st.session_state["crit_dir"][_c] = True
+                    st.session_state["direction_notice"] = f"{tt('Seçilen', 'Selected')}: {_c} - {_dir_benefit}"
                     st.rerun()
             with _rc[3]:
                 if st.button(
@@ -4213,6 +4247,7 @@ with st.expander(_prep_label, expanded=not st.session_state.get("prep_done")):
                     type="primary" if not _is_benefit else "secondary",
                 ):
                     st.session_state["crit_dir"][_c] = False
+                    st.session_state["direction_notice"] = f"{tt('Seçilen', 'Selected')}: {_c} - {_dir_cost}"
                     st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
