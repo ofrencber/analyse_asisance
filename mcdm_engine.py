@@ -340,6 +340,7 @@ class AnalysisConfig:
     fuzzy_spread: float = 0.10
     sensitivity_iterations: int = 200
     sensitivity_sigma: float = 0.12
+    run_heavy_robustness: bool = True
 
 
 def _as_numeric_df(data: pd.DataFrame, criteria: Sequence[str]) -> pd.DataFrame:
@@ -2108,7 +2109,7 @@ def run_full_analysis(data: pd.DataFrame, config: AnalysisConfig) -> Dict[str, A
     ) if config.compare_methods else {}
 
     sensitivity = None
-    if config.ranking_method:
+    if config.ranking_method and bool(config.run_heavy_robustness) and int(config.sensitivity_iterations) > 0:
         sensitivity = sensitivity_analysis(
             df,
             criteria,
