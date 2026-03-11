@@ -162,9 +162,10 @@ st.markdown(
         /* ────── SIDEBAR BRANDING ────── */
         .sidebar-brand {
             text-align: center;
-            padding: 0.35rem 0.35rem 0.7rem 0.35rem;
+            padding: 0 0.35rem 0.5rem 0.35rem;
             border-bottom: 1px solid var(--border-strong);
-            margin-bottom: 0.7rem;
+            margin-bottom: 0.5rem;
+            margin-top: -0.75rem;
         }
         .sidebar-brand-logo {
             display: block;
@@ -243,12 +244,22 @@ st.markdown(
         section[data-testid="stSidebar"] p,
         section[data-testid="stSidebar"] span {
             font-size: 0.75rem !important;
-            line-height: 1.5 !important;
+            line-height: 1.25 !important;
         }
         section[data-testid="stSidebar"] .stButton > button {
             font-size: 0.73rem !important;
-            padding: 0.3rem 0.6rem !important;
-            min-height: 2rem !important;
+            padding: 0.25rem 0.6rem !important;
+            min-height: 1.8rem !important;
+        }
+        section[data-testid="stSidebar"] .stExpander {
+            margin-bottom: 0.3rem !important;
+        }
+        section[data-testid="stSidebar"] [data-testid="stExpander"] summary {
+            padding: 0.25rem 0.5rem !important;
+            min-height: 1.6rem !important;
+        }
+        section[data-testid="stSidebar"] .element-container {
+            margin-bottom: 0.15rem !important;
         }
 
         /* Sidebar section labels */
@@ -722,6 +733,19 @@ def weight_method_groups() -> List[tuple[str, List[str]]]:
             ["MEREC", "IDOCRIW", "Fuzzy IDOCRIW"],
         ),
     ]
+
+
+def _wm_single_select_cb(selected_name: str, all_methods: List[str]) -> None:
+    """Weight method checkbox on_change: enforce single selection."""
+    if st.session_state.get(f"weight_cb_{selected_name}", False):
+        for _m in all_methods:
+            if _m != selected_name:
+                st.session_state[f"weight_cb_{_m}"] = False
+        st.session_state["weight_method_pref"] = selected_name
+    else:
+        # Prevent deselecting the only active checkbox
+        if not any(st.session_state.get(f"weight_cb_{_m}", False) for _m in all_methods if _m != selected_name):
+            st.session_state[f"weight_cb_{selected_name}"] = True
 
 
 def ranking_method_groups(layer_key: str) -> List[tuple[str, List[str]]]:
@@ -2895,10 +2919,10 @@ def gen_stat_commentary(result: Dict[str, Any]) -> str:
             f"For a non-technical reading: the criteria are not strongly repeating each other, so the model can look at the problem from multiple angles."
         )
         if max_rho > 0.75:
-            academic = f"<strong>{cv_crit}</strong> has the highest coefficient of variation (CV ≈ {cv_val:.2f}), so it carries the strongest separating signal. At the same time, the high correlation between <strong>{c1}</strong> and <strong>{c2}</strong> (|ρ| = {max_rho:.2f}) suggests partial information overlap."
+            academic = f"<strong>{cv_crit}</strong> has the highest coefficient of variation (Coeff. of Variation ≈{cv_val:.2f}), so it carries the strongest separating signal. At the same time, the high correlation between <strong>{c1}</strong> and <strong>{c2}</strong> (|ρ| = {max_rho:.2f}) suggests partial information overlap."
             action = "If these two criteria are conceptually similar, consider a correlation-aware weighting method such as CRITIC or simplify the active criterion set."
         else:
-            academic = f"<strong>{cv_crit}</strong> has the highest coefficient of variation (CV ≈ {cv_val:.2f}), meaning it contributes the strongest discrimination in the ranking problem. Maximum inter-criterion correlation remains limited at |ρ| = {max_rho:.2f}, so redundancy risk is controlled."
+            academic = f"<strong>{cv_crit}</strong> has the highest coefficient of variation (Coeff. of Variation ≈{cv_val:.2f}), meaning it contributes the strongest discrimination in the ranking problem. Maximum inter-criterion correlation remains limited at |ρ| = {max_rho:.2f}, so redundancy risk is controlled."
             action = "The current data profile is appropriate for objective weighting and multi-method reading without an obvious structural warning."
         return _compose_commentary(simple, academic, action, example)
     simple = f"Bu veri setinde <strong>{n_alt} seçenek</strong>, <strong>{n_crit} kritere</strong> göre karşılaştırılıyor. Seçenekleri birbirinden en çok ayıran kriter <strong>{cv_crit}</strong> görünüyor."
@@ -2908,10 +2932,10 @@ def gen_stat_commentary(result: Dict[str, Any]) -> str:
         "Basit bir örnekle: kriterler birbirinin kopyası gibi davranmıyorsa sistem probleme farklı açılardan bakabilir."
     )
     if max_rho > 0.75:
-        academic = f"<strong>{cv_crit}</strong> kriteri varyasyon katsayısı bakımından en yüksek ayrıştırıcı gücü sergiliyor (CV ≈ {cv_val:.2f}). Bununla birlikte <strong>{c1}</strong> ile <strong>{c2}</strong> arasındaki yüksek ilişki (|ρ| = {max_rho:.2f}), kısmi bilgi tekrarına işaret ediyor."
+        academic = f"<strong>{cv_crit}</strong> kriteri varyasyon katsayısı bakımından en yüksek ayrıştırıcı gücü sergiliyor (Varyasyon Katsayısı ≈{cv_val:.2f}). Bununla birlikte <strong>{c1}</strong> ile <strong>{c2}</strong> arasındaki yüksek ilişki (|ρ| = {max_rho:.2f}), kısmi bilgi tekrarına işaret ediyor."
         action = "Bu iki kriter kavramsal olarak da benzerse CRITIC gibi korelasyon duyarlı bir ağırlıklandırma tercih edin veya aktif kriter setini sadeleştirin."
     else:
-        academic = f"<strong>{cv_crit}</strong> kriteri varyasyon katsayısı bakımından en güçlü ayrıştırıcı sinyali taşıyor (CV ≈ {cv_val:.2f}). Kriterler arası en yüksek ilişki |ρ| = {max_rho:.2f} düzeyinde kaldığı için tekrar riski sınırlı görünüyor."
+        academic = f"<strong>{cv_crit}</strong> kriteri varyasyon katsayısı bakımından en güçlü ayrıştırıcı sinyali taşıyor (Varyasyon Katsayısı ≈{cv_val:.2f}). Kriterler arası en yüksek ilişki |ρ| = {max_rho:.2f} düzeyinde kaldığı için tekrar riski sınırlı görünüyor."
         action = "Mevcut veri profili, belirgin bir yapısal uyarı vermeden objektif ağırlıklandırma ve çoklu yöntem okumasına uygundur."
     return _compose_commentary(simple, academic, action, example)
 
@@ -3165,7 +3189,7 @@ st.markdown(
         <div class="header-title">MCDM- Profesyonel Karar Destek Sistemi</div>
         <div class="header-professor">Prof. Dr. Ömer Faruk Rençber</div>
         <div class="header-meta">
-            <div class="header-dedication">Çocuklarım M. Eymen ve H. Serra'ya İthafen..</div>
+            <div class="header-dedication">{tt("Çocuklarım M. Eymen ve H. Serra'ya İthafen..", "Dedicated to My Children M. Eymen and H. Serra..")}</div>
             <div class="header-url"><a href="https://www.ofrencber.com" target="_blank">www.ofrencber.com</a></div>
         </div>
     </div>
@@ -3234,6 +3258,25 @@ with st.sidebar:
             f"</p>",
             unsafe_allow_html=True,
         )
+        st.markdown(
+            f"<div style='margin-top:0.6rem; padding:0.5rem 0.65rem; background:#EAF3FB; border-left:3px solid #5A9CC5; border-radius:4px;'>"
+            f"<p style='font-size:0.75rem; font-weight:700; color:#1F5F9A; margin:0 0 0.3rem 0;'>"
+            f"🎯 {tt('Yöntem Önerisi Nasıl Yapılır?', 'How Are Methods Recommended?')}"
+            f"</p>"
+            f"<p style='font-size:0.74rem; line-height:1.5; color:#2C3E50; margin:0;'>"
+            f"{tt('<b>Yüksek korelasyon</b> → CRITIC veya PCA ağırlıklandırma; uzlaşı için VIKOR önerilir.<br>'
+                  '<b>Yüksek değişkenlik (varyans)</b> → Entropi veya Standart Sapma ağırlıklandırma öne çıkar.<br>'
+                  '<b>Dengeli veri yapısı</b> → TOPSIS, VIKOR, EDAS güvenle uygulanabilir.<br>'
+                  '<b>Az alternatif (&lt;6)</b> → Yöntem seçimi daha kritik; Monte Carlo ihtiyatla yorumlanmalı.<br>'
+                  '<b>Geniş alternatif seti</b> → Mesafe tabanlı yöntemler (TOPSIS, EDAS) özellikle etkin.',
+                  '<b>High correlation</b> → CRITIC or PCA weighting; VIKOR recommended for consensus.<br>'
+                  '<b>High dispersion (variance)</b> → Entropy or Standard Deviation weighting stands out.<br>'
+                  '<b>Balanced data structure</b> → TOPSIS, VIKOR, EDAS can be applied safely.<br>'
+                  '<b>Few alternatives (&lt;6)</b> → Method choice is more critical; interpret Monte Carlo cautiously.<br>'
+                  '<b>Large alternative set</b> → Distance-based methods (TOPSIS, EDAS) are especially effective.')}"
+            f"</p></div>",
+            unsafe_allow_html=True,
+        )
 
     is_data_loaded = st.session_state.get("raw_data") is not None
 
@@ -3271,42 +3314,30 @@ with st.sidebar:
         if "missing_strategy_saved" not in st.session_state:
             st.session_state["missing_strategy_saved"] = "Sil"
 
-        _impute_open = st.session_state["impute_mode_open"]
+        impute_checked = st.checkbox(
+            tt("Eksik Veri Tamamla", "Impute Missing Values"),
+            value=st.session_state["impute_mode_open"],
+            key="cb_impute_mode",
+        )
+        if impute_checked != st.session_state["impute_mode_open"]:
+            st.session_state["impute_mode_open"] = impute_checked
+            st.rerun()
 
-        if not _impute_open:
-            # Kapalı durum: Temizle + Tamamla butonu yan yana
-            _mc1, _mc2 = st.columns(2)
-            with _mc1:
-                if st.button(tt("🗑️ Eksik Veri Temizle", "🗑️ Drop Missing"), use_container_width=True, key="btn_missing_drop"):
-                    st.session_state["missing_strategy_saved"] = "Sil"
-                    st.rerun()
-            with _mc2:
-                if st.button(tt("🔧 Eksik Veri Tamamla", "🔧 Impute Missing"), use_container_width=True, key="btn_impute_open"):
-                    st.session_state["impute_mode_open"] = True
-                    st.rerun()
-        else:
-            # Açık durum: Yöntem seçimi + Uygula/Kapat
+        if impute_checked:
             _impute_method = st.selectbox(
                 tt("Tamamlama yöntemi", "Imputation method"),
                 [tt("Medyan", "Median"), tt("Ortalama", "Mean"), tt("Interpolasyon", "Interpolation"), tt("Sıfır", "Zero")],
                 key="impute_method_select",
             )
-            _ia1, _ia2 = st.columns(2)
-            with _ia1:
-                if st.button(tt("✅ Uygula", "✅ Apply"), use_container_width=True, key="btn_impute_apply"):
-                    st.session_state["missing_strategy_saved"] = _impute_method
-                    st.session_state["impute_mode_open"] = False
-                    st.rerun()
-            with _ia2:
-                if st.button(tt("✖ Kapat", "✖ Close"), use_container_width=True, key="btn_impute_close"):
-                    st.session_state["impute_mode_open"] = False
-                    st.rerun()
+            if st.button(tt("✅ Uygula", "✅ Apply"), use_container_width=True, key="btn_impute_apply"):
+                st.session_state["missing_strategy_saved"] = _impute_method
+                st.rerun()
+            _strat_label = st.session_state["missing_strategy_saved"]
+            st.caption(tt(f"Aktif yöntem: {_strat_label}", f"Active method: {_strat_label}"))
 
-        missing_strategy = st.session_state["missing_strategy_saved"]
+        missing_strategy = st.session_state["missing_strategy_saved"] if impute_checked else "Sil"
         clip_outliers = st.checkbox(tt("Aykırı Değerleri (Outlier) Temizle", "Clean Outliers"), value=False)
-        # Aktif strateji göstergesi
-        _strat_label = tt("Sil", "Drop") if missing_strategy in {"Sil", "Drop"} else missing_strategy
-        st.caption(tt(f"Eksik veri: {_strat_label} · Yalnız sayısal sütunlara uygulanır.", f"Missing: {_strat_label} · Applied to numeric columns only."))
+        st.caption(tt("Yalnız sayısal sütunlara uygulanır.", "Applied to numeric columns only."))
     else:
         missing_strategy, clip_outliers = "Sil", False
 
@@ -3385,33 +3416,114 @@ with st.expander(_step1_label, expanded=(raw_data is not None) and not _step1_do
         index=_scope_default,
         horizontal=True,
     )
-    _step1_total_steps = 5 if _purpose_choice == _purpose_options[1] else 4
-    st.caption(
-        tt(
-            f"Bu akış toplam {_step1_total_steps} adımda tamamlanacaktır. Son adım {'3.2. Adım' if _purpose_choice == _purpose_options[1] else '3.1. Adım'} olacaktır.",
-            f"This flow will be completed in {_step1_total_steps} steps. The final step will be {'Step 3.2' if _purpose_choice == _purpose_options[1] else 'Step 3.1'}.",
-        )
-    )
-    _s_done  = "background:#d4efe2; color:#1a5c3a; border:1px solid #b0d8c0;"
-    _s_wait  = "background:#f0f4f8; color:#8a9aaa; border:1px solid #c8d8e8;"
-    _s_arrow = "color:#b0c0d0; font-size:0.7rem; margin:0 2px;"
-    _pill    = "display:inline-block; border-radius:20px; padding:0.18rem 0.55rem; font-size:0.65rem; font-weight:600; white-space:nowrap;"
-    _steps_html = [
-        f'<span style="{_pill} {_s_done if _step1_done else _s_wait}">{tt("① Amaç", "① Objective")}</span>',
-        f'<span style="{_s_arrow}">→</span>',
-        f'<span style="{_pill} {_s_wait}">{tt("② Hazırlık", "② Preparation")}</span>',
-        f'<span style="{_s_arrow}">→</span>',
-        f'<span style="{_pill} {_s_wait}">{tt("③ Yöntem", "③ Method")}</span>',
-        f'<span style="{_s_arrow}">→</span>',
-        f'<span style="{_pill} {_s_wait}">{tt("③.1 Ağırlık", "③.1 Weighting")}</span>',
+
+    # ── Panel veri ayarları (sadece panel seçiliyse) ──
+    if _scope_choice == _scope_options[1] and isinstance(raw_data, pd.DataFrame):
+        _yr_candidates = _guess_year_columns(raw_data)
+        _yr_col_opts   = [str(c) for c in raw_data.columns]
+        if _yr_col_opts:
+            _yr_col_default = st.session_state.get("panel_year_column")
+            if _yr_col_default not in _yr_col_opts:
+                _yr_col_default = _yr_candidates[0] if _yr_candidates else _yr_col_opts[0]
+            # Başlık + yıl sütunu etiketi tek HTML satırında
+            st.markdown(
+                f'<div style="background:#EEF5FB; border:1px solid #C0D8EE; border-radius:7px;'
+                f'padding:0.25rem 0.55rem; margin:0.3rem 0 0 0; display:flex; align-items:center; gap:0.5rem;">'
+                f'<span style="font-size:0.67rem; font-weight:700; color:#1F4A73; white-space:nowrap;">'
+                f'🗂️ {tt("Panel Ayarları", "Panel Settings")}</span>'
+                f'<span style="font-size:0.64rem; color:#5A7A9A;">— {tt("Yıl sütunu:", "Year column:")}</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            # Selectbox etiket gizli, hemen altında kompakt
+            st.markdown('<div style="margin-top:-0.4rem;"></div>', unsafe_allow_html=True)
+            _panel_col_inner = st.selectbox(
+                tt("Yıl sütunu", "Year column"),
+                _yr_col_opts,
+                index=_yr_col_opts.index(_yr_col_default),
+                key="panel_year_col_select",
+                label_visibility="collapsed",
+            )
+            st.session_state["panel_year_column"] = _panel_col_inner
+            _det_years = _sorted_panel_years(raw_data[_panel_col_inner])
+            if _det_years:
+                if "panel_selected_years" not in st.session_state or \
+                        set(st.session_state.get("panel_selected_years_all", [])) != set(_det_years):
+                    st.session_state["panel_selected_years"]     = list(_det_years)
+                    st.session_state["panel_selected_years_all"] = list(_det_years)
+                _sel_yrs_now = []
+                st.markdown(
+                    f'<p style="font-size:0.64rem; color:#4A6070; margin:0.1rem 0 0.05rem 0; line-height:1.2;">'
+                    f'{tt("Dönemler:", "Periods:")}</p>',
+                    unsafe_allow_html=True,
+                )
+                _yr_sel_cols = st.columns(min(10, len(_det_years)), gap="small")
+                for _yi, _yr in enumerate(_det_years):
+                    with _yr_sel_cols[_yi % min(10, len(_det_years))]:
+                        _yr_key = f"panel_yr_cb_{_yr}"
+                        _yr_def = _yr in st.session_state.get("panel_selected_years", _det_years)
+                        if st.checkbox(str(_yr), value=_yr_def, key=_yr_key):
+                            _sel_yrs_now.append(_yr)
+                st.session_state["panel_selected_years"] = _sel_yrs_now
+                if not _sel_yrs_now:
+                    st.warning(tt("En az bir dönem seçin.", "Select at least one period."))
+                elif len(_sel_yrs_now) < 2:
+                    st.markdown(
+                        f'<p style="font-size:0.63rem; color:#7A5018; margin:0.05rem 0 0 0;">'
+                        f'⚠ {tt("Karşılaştırma için ≥2 dönem önerilir.", "≥2 periods recommended.")}</p>',
+                        unsafe_allow_html=True,
+                    )
+
+    _flow_steps = [
+        (tt("Amaç belirleme",        "Define Objective"),        "1",   _step1_done, "#2E7D52", "#D4EFE2"),
+        (tt("Veri ön hazırlık",      "Data Preparation"),        "2",   False,       "#1F5F9A", "#DAEAF7"),
+        (tt("Ağırlık metodu belirle","Set Weighting Method"),    "3.1", False,       "#B5681E", "#FDE8CC"),
     ]
     if _purpose_choice == _purpose_options[1]:
-        _steps_html += [
-            f'<span style="{_s_arrow}">→</span>',
-            f'<span style="{_pill} {_s_wait}">{tt("③.2 Sıralama", "③.2 Ranking")}</span>',
-        ]
+        _flow_steps.insert(3, (tt("Sıralama metodu belirle", "Set Ranking Method"), "3.2", False, "#9A3030", "#FAD9D9"))
+    _flow_steps.append((tt("Analiz yap ve sonuçları yorumla", "Run Analysis & Interpret"), "4", False, "#6B4FA0", "#EAE0F7"))
+
+    _step_nodes = []
+    for _idx, (_label, _num, _done, _clr, _bg) in enumerate(_flow_steps):
+        _is_last = _idx == len(_flow_steps) - 1
+        if _done:
+            _box_bg  = _clr
+            _num_clr = "rgba(255,255,255,0.80)"
+            _lbl_clr = "#FFFFFF"
+            _bdr_clr = _clr
+            _num_txt = "✓"
+        else:
+            _box_bg  = _bg
+            _num_clr = _clr
+            _lbl_clr = _clr
+            _bdr_clr = _clr + "99"
+            _num_txt = _num
+
+        _node_html = (
+            f'<div style="flex:1; min-width:90px; max-width:200px;">'
+            f'<div style="background:{_box_bg}; border:1.5px solid {_bdr_clr}; border-radius:10px;'
+            f'padding:0.35rem 0.55rem 0.4rem 0.55rem; text-align:center;'
+            f'box-shadow:0 2px 8px rgba(0,0,0,0.07);">'
+            f'<div style="font-size:0.60rem; font-weight:800; color:{_num_clr}; letter-spacing:0.4px; line-height:1.2; margin-bottom:2px;">{_num_txt}</div>'
+            f'<div style="font-size:0.67rem; font-weight:600; color:{_lbl_clr}; line-height:1.35;">{_label}</div>'
+            f'</div>'
+            f'</div>'
+        )
+        _step_nodes.append(_node_html)
+
+        if not _is_last:
+            _step_nodes.append(
+                '<div style="width:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center;">'
+                '<div style="width:100%; height:2px; background:linear-gradient(90deg,#B0C8DC,#C8D8E8);"></div>'
+                '</div>'
+            )
+
     st.markdown(
-        f'<div style="display:flex; align-items:center; flex-wrap:wrap; gap:2px; margin:0.4rem 0 0.2rem 0;">{"".join(_steps_html)}</div>',
+        f'<div style="display:flex; align-items:stretch; gap:0; width:100%;'
+        f'background:linear-gradient(135deg,#F6FAFE,#EEF4FA);'
+        f'border:1px solid #C8D8E8; border-radius:12px;'
+        f'padding:0.6rem 0.75rem; margin:0.5rem 0 0.25rem 0;">'
+        f'{"".join(_step_nodes)}</div>',
         unsafe_allow_html=True,
     )
 needs_ranking = _purpose_choice == _purpose_options[1]
@@ -3421,18 +3533,12 @@ st.session_state["analysis_scope"] = "panel" if panel_mode else "single"
 
 panel_year_col = None
 if panel_mode and isinstance(raw_data, pd.DataFrame):
-    _year_candidates = _guess_year_columns(raw_data)
-    _year_options = [str(c) for c in raw_data.columns]
-    if _year_options:
-        _year_default = st.session_state.get("panel_year_column")
-        if _year_default not in _year_options:
-            _year_default = _year_candidates[0] if _year_candidates else _year_options[0]
-        _year_idx = _year_options.index(_year_default)
-        panel_year_col = st.selectbox(
-            tt("Yıl sütununu seçin", "Select the year column"),
-            _year_options,
-            index=_year_idx,
-        )
+    _stored_yr_col = st.session_state.get("panel_year_column")
+    _all_cols = [str(c) for c in raw_data.columns]
+    if _stored_yr_col in _all_cols:
+        panel_year_col = _stored_yr_col
+    elif _all_cols:
+        panel_year_col = _guess_year_columns(raw_data)[0] if _guess_year_columns(raw_data) else _all_cols[0]
         st.session_state["panel_year_column"] = panel_year_col
 
 if raw_data is not None and not st.session_state.get("step1_done"):
@@ -3501,7 +3607,7 @@ with st.expander(_prep_label, expanded=not st.session_state.get("prep_done")):
     # ── 1) Ön İnceleme Sonuçları ──
     if _has_diag:
         with st.expander(
-            f"🧭 {tt('Ön İnceleme Sonuçları', 'Preliminary Review Results')}  —  {_score}/100  {_label}",
+            f"🧭 {tt(f'Ön İnceleme Sonuçları  —  %{_score} Veri Uygunluğu Hesaplanmıştır', f'Preliminary Review  —  {_score}% Data Suitability Calculated')}",
             expanded=False,
         ):
             st.markdown(
@@ -3510,7 +3616,7 @@ with st.expander(_prep_label, expanded=not st.session_state.get("prep_done")):
                         <div class="assistant-title2">📊 {tt("Veri Profili", "Data Profile")}</div>
                         <div class="assistant-body2">
                             {_diag.get('n_alt', 0)} {tt("alternatif", "alternatives")} · {_diag.get('n_crit', 0)} {tt("kriter", "criteria")}<br>
-                            {tt("Ort. VK", "Avg. CV")}: <strong>{_diag.get('mean_cv', 0.0):.2f}</strong> &nbsp;·&nbsp;
+                            {tt("Ort. Varyasyon Katsayısı", "Avg. Coeff. of Variation")}: <strong>{_diag.get('mean_cv', 0.0):.2f}</strong> &nbsp;·&nbsp;
                             {tt("Maks. |ρ|", "Max |ρ|")}: <strong>{_diag.get('max_corr', 0.0):.2f}</strong>
                         </div>
                     </div>
@@ -3559,32 +3665,96 @@ with st.expander(_prep_label, expanded=not st.session_state.get("prep_done")):
 
     # ── 3) Kriter Yapılandırması ──
     with st.expander(f"⚙️ {tt('Kriter Yapılandırması', 'Criteria Configuration')}", expanded=False):
+        st.markdown("""<style>
+        .ct-wrap { border:1px solid #C8D8E8; border-radius:8px; overflow:hidden; margin-top:0.1rem; }
+        .ct-head {
+            display:grid; grid-template-columns:32px 1fr 170px;
+            background:#E8F0F8; padding:0.18rem 0.6rem;
+            font-size:0.67rem; font-weight:700; color:#3A5A78;
+            text-transform:uppercase; letter-spacing:0.3px;
+            border-bottom:2px solid #C8D8E8;
+        }
+        /* Row borders */
+        .ct-wrap .stHorizontalBlock {
+            border-bottom:1px solid #E0EAF2 !important;
+            margin:0 !important; padding:0 0.35rem !important;
+            align-items:center !important;
+        }
+        .ct-wrap .stHorizontalBlock:last-of-type { border-bottom:none !important; }
+        .ct-wrap .stHorizontalBlock:nth-of-type(even) { background:#F6FAFD; }
+        /* Compact columns */
+        .ct-wrap [data-testid="column"] { padding:0.05rem 0.2rem !important; }
+        .ct-wrap .element-container { margin:0 !important; padding:0 !important; }
+        /* Checkbox */
+        .ct-wrap .stCheckbox { margin:0 !important; min-height:1.6rem !important; }
+        .ct-wrap .stCheckbox > label { padding:0 !important; }
+        /* Criterion name */
+        .ct-crit-name { font-size:0.79rem; font-weight:600; color:#1C1C1E; line-height:1.8; }
+        /* Direction radio — pill style */
+        .ct-wrap .stRadio > label { display:none !important; }
+        .ct-wrap .stRadio > div[role="radiogroup"] {
+            flex-direction:row !important; gap:4px !important;
+            margin:0 !important; padding:0 !important; flex-wrap:nowrap !important;
+        }
+        .ct-wrap .stRadio label {
+            padding:0.08rem 0.55rem !important;
+            border-radius:12px !important;
+            font-size:0.70rem !important; font-weight:600 !important;
+            border:1.5px solid #ccc !important;
+            cursor:pointer !important; white-space:nowrap !important;
+            transition:background 0.15s, color 0.15s !important;
+            line-height:1.7 !important;
+        }
+        /* Fayda pill — green tones */
+        .ct-wrap .stRadio label:first-of-type {
+            border-color:#27704A !important; color:#27704A !important; background:#fff !important;
+        }
+        .ct-wrap .stRadio label:first-of-type:has(input:checked) {
+            background:#27704A !important; color:#fff !important;
+        }
+        /* Maliyet pill — red tones */
+        .ct-wrap .stRadio label:last-of-type {
+            border-color:#B02A2A !important; color:#B02A2A !important; background:#fff !important;
+        }
+        .ct-wrap .stRadio label:last-of-type:has(input:checked) {
+            background:#B02A2A !important; color:#fff !important;
+        }
+        /* Hide radio circle dot */
+        .ct-wrap .stRadio input[type="radio"] {
+            position:absolute !important; opacity:0 !important; width:0 !important; height:0 !important;
+        }
+        </style>""", unsafe_allow_html=True)
+
+        _dir_benefit = tt("⬆ Fayda", "⬆ Benefit")
+        _dir_cost    = tt("⬇ Maliyet", "⬇ Cost")
+
+        # Header
         st.markdown(
-            f'<p style="font-size:0.74rem; color:#5C5650; margin:0 0 0.25rem 0;">'
-            + tt("✅ dahil/çıkar · ⬆ Fayda / ⬇ Maliyet yönünü seçin.", "✅ include/exclude · set ⬆ Benefit / ⬇ Cost direction.")
-            + '</p>',
+            f'<div class="ct-wrap"><div class="ct-head">'
+            f'<span></span>'
+            f'<span>{tt("Kriter", "Criterion")}</span>'
+            f'<span>{tt("Yön", "Direction")}</span>'
+            f'</div></div>',
             unsafe_allow_html=True,
         )
-        for c in numeric_cols:
-            row_c = st.columns([0.14, 1.85, 2.01], gap="small")
-            with row_c[0]:
-                st.session_state["crit_include"][c] = st.checkbox(
-                    "", value=st.session_state["crit_include"].get(c, True), key=f"inc_{c}"
+        st.markdown('<div class="ct-wrap">', unsafe_allow_html=True)
+        for _c in numeric_cols:
+            _rc = st.columns([0.35, 3.5, 2.1], gap="small")
+            with _rc[0]:
+                st.session_state["crit_include"][_c] = st.checkbox(
+                    "", value=st.session_state["crit_include"].get(_c, True), key=f"inc_{_c}"
                 )
-            with row_c[1]:
-                st.markdown(
-                    f'<div style="padding-top:0.18rem; font-size:0.86rem; font-weight:600; color:#1C1C1E; line-height:1.1;">{c}</div>',
-                    unsafe_allow_html=True,
+            with _rc[1]:
+                st.markdown(f'<div class="ct-crit-name">{_c}</div>', unsafe_allow_html=True)
+            with _rc[2]:
+                _is_benefit = st.session_state["crit_dir"].get(_c, True)
+                _choice = st.radio(
+                    "", [_dir_benefit, _dir_cost],
+                    index=0 if _is_benefit else 1,
+                    key=f"dir_{_c}", horizontal=True, label_visibility="collapsed",
                 )
-            with row_c[2]:
-                current_dir = tt("⬆ Fayda", "⬆ Benefit") if st.session_state["crit_dir"].get(c, True) else tt("⬇ Maliyet", "⬇ Cost")
-                choice = st.radio(
-                    "", [tt("⬆ Fayda", "⬆ Benefit"), tt("⬇ Maliyet", "⬇ Cost")],
-                    index=0 if current_dir == tt("⬆ Fayda", "⬆ Benefit") else 1,
-                    key=f"dir_{c}", horizontal=True, label_visibility="collapsed",
-                )
-                st.session_state["crit_dir"][c] = (choice == tt("⬆ Fayda", "⬆ Benefit"))
-            st.markdown("<div style='margin-top:-0.35rem;'></div>", unsafe_allow_html=True)
+                st.session_state["crit_dir"][_c] = (_choice == _dir_benefit)
+        st.markdown('</div>', unsafe_allow_html=True)
 
     if not st.session_state.get("prep_done"):
         st.divider()
@@ -3652,7 +3822,9 @@ with st.expander(tt("⚙️ 3. Adım: Yöntem Seçimi ve Karşılaştırma", "�
             for _m in methods_internal:
                 if f"weight_cb_{_m}" not in st.session_state:
                     st.session_state[f"weight_cb_{_m}"] = (_m == weight_method)
-            _new_weight_sel = None
+            # Eğer hiç seçili yoksa varsayılanı koru
+            if not any(st.session_state.get(f"weight_cb_{_m}", False) for _m in methods_internal):
+                st.session_state[f"weight_cb_{weight_method}"] = True
             for group_label, group_methods in _weight_groups:
                 _filtered_methods = [m for m in group_methods if m in methods_internal]
                 if not _filtered_methods:
@@ -3663,25 +3835,37 @@ with st.expander(tt("⚙️ 3. Adım: Yöntem Seçimi ve Karşılaştırma", "�
                     with method_cols[i % len(method_cols)]:
                         _label = method_display_name(method_name)
                         _cb_key = f"weight_cb_{method_name}"
-                        _checked = st.checkbox(_label, key=_cb_key)
-                        if _checked and method_name != weight_method:
-                            _new_weight_sel = method_name
-            # Seçim değişikliğini işle
+                        _w_help = tt(
+                            f"{_method_help_text(method_name)}\nBu yöntemi seçerek devam edebilirsiniz.",
+                            f"{_method_help_text(method_name)}\nYou can proceed by selecting this method.",
+                        )
+                        st.checkbox(
+                            _label, key=_cb_key, help=_w_help,
+                            on_change=_wm_single_select_cb, args=(method_name, methods_internal),
+                        )
+            # Seçili yöntemi güncelle
             _all_weight_checked = [m for m in methods_internal if st.session_state.get(f"weight_cb_{m}", False)]
-            if not _all_weight_checked:
-                # Hiçbiri seçili değil — mevcut seçimi koru
-                st.session_state[f"weight_cb_{weight_method}"] = True
-                st.rerun()
-            elif _new_weight_sel is not None:
-                # Yeni seçim yapıldı — diğerlerini sıfırla
-                for _m in methods_internal:
-                    st.session_state[f"weight_cb_{_m}"] = (_m == _new_weight_sel)
-                st.session_state["weight_method_pref"] = _new_weight_sel
-                st.rerun()
-            _weight_help_lines = _method_help_text(weight_method).split("\n", 1)
-            st.caption(_weight_help_lines[0])
-            if len(_weight_help_lines) > 1:
-                st.caption(_weight_help_lines[1])
+            if _all_weight_checked:
+                weight_method = _all_weight_checked[0]
+                st.session_state["weight_method_pref"] = weight_method
+            # Seçili yöntem felsefesi kutusu
+            _wh = _method_help_text(weight_method).split("\n", 1)
+            _wh_simple   = _wh[0].strip()
+            _wh_academic = _wh[1].strip() if len(_wh) > 1 else ""
+            _academic_html = (
+                f'<div style="font-size:0.70rem; color:#4A6070; line-height:1.5; margin-top:0.15rem;">{_wh_academic}</div>'
+                if _wh_academic else ""
+            )
+            st.markdown(
+                f'<div style="background:#EAF3FB; border-left:3px solid #5A9CC5; border-radius:0 8px 8px 0; '
+                f'padding:0.45rem 0.75rem; margin-top:0.5rem;">'
+                f'<div style="font-size:0.72rem; font-weight:700; color:#1F4A73; margin-bottom:0.18rem;">'
+                f'💡 {method_display_name(weight_method)}</div>'
+                f'<div style="font-size:0.71rem; color:#2A3E54; line-height:1.55;">{_wh_simple}</div>'
+                f'{_academic_html}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
         elif "Eşit" in weight_mode or "Equal" in weight_mode:
             weight_method = "Eşit Ağırlık"
             weight_mode_key = "equal"
@@ -4041,7 +4225,11 @@ if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), use_container_width
         start = time.time()
         try:
             if panel_mode:
-                year_labels = _sorted_panel_years(working[panel_year_col])
+                _all_year_labels = _sorted_panel_years(working[panel_year_col])
+                _user_sel_years  = st.session_state.get("panel_selected_years") or _all_year_labels
+                year_labels = [y for y in _all_year_labels if y in _user_sel_years]
+                if not year_labels:
+                    year_labels = _all_year_labels
                 if len(year_labels) < 2:
                     raise ValueError(tt("Panel veri seçildi ancak yıl sütununda en az iki farklı dönem bulunamadı.", "Panel data was selected, but the year column does not contain at least two distinct periods."))
                 panel_results: Dict[str, Dict[str, Any]] = {}
