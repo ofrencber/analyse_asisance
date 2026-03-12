@@ -644,6 +644,7 @@ def init_state() -> None:
         "download_blob_cache": {},
         "download_blob_sig": None,
         "run_heavy_robustness": False,
+        "upload_widget_nonce": 0,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -1352,7 +1353,10 @@ def diag_rec_text(rec: Dict[str, str]) -> tuple[str, str]:
     )
 
 def reset_all() -> None:
+    # Recreate the uploader widget so previously selected files are discarded too.
+    upload_widget_nonce = int(st.session_state.get("upload_widget_nonce", 0)) + 1
     st.session_state.clear()
+    st.session_state["upload_widget_nonce"] = upload_widget_nonce
     init_state()
 
 def _diag_score_and_label(diag: Dict[str, Any]) -> tuple[int, str]:
@@ -4273,7 +4277,12 @@ with st.sidebar:
         f"📂 {tt('Veri Girişi', 'Data Input')} {'✅' if is_data_loaded else '⏳'}",
         expanded=not is_data_loaded,
     ):
-        uploaded = st.file_uploader(tt("CSV veya XLSX yükleyin", "Upload CSV or XLSX"), type=["csv", "xlsx"], label_visibility="collapsed")
+        uploaded = st.file_uploader(
+            tt("CSV veya XLSX yükleyin", "Upload CSV or XLSX"),
+            type=["csv", "xlsx"],
+            label_visibility="collapsed",
+            key=f"data_upload_{st.session_state.get('upload_widget_nonce', 0)}",
+        )
         sample_col_1, sample_col_2, sample_col_3 = st.columns(3)
         with sample_col_1:
             if st.button(tt("📘 Örnek Veri (TR)", "📘 Sample Data (TR)"), width="stretch", key="btn_sample_tr"):
