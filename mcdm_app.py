@@ -720,8 +720,17 @@ def _method_fallback_lines(method_label: str, lang: str) -> tuple[str, str]:
         f"{method_label} bulguları bu yöntemin varsayımları içinde yorumlanmalıdır.",
     )
 
+_SOFTWARE_CITATION = (
+    "Rençber, Ö. F. (2026). MCDM Analysis Assistance (Version 1.1) "
+    "[Computer software]. https://mcdm-assistance.streamlit.app/"
+)
+
+def _reference_key(text: Any) -> str:
+    return re.sub(r"\s+", " ", str(text or "").strip()).casefold()
+
 def _normalize_references(refs: List[Any], lang: str) -> List[str]:
     out: List[str] = []
+    seen: set[str] = set()
     for ref in refs or []:
         txt = str(ref).strip()
         if not txt:
@@ -730,7 +739,12 @@ def _normalize_references(refs: List[Any], lang: str) -> List[str]:
             txt = txt.replace("Kaynak:", "Source:")
         else:
             txt = txt.replace("Source:", "Kaynak:")
-        out.append(txt)
+        key = _reference_key(txt)
+        if key and key not in seen:
+            seen.add(key)
+            out.append(txt)
+    if _reference_key(_SOFTWARE_CITATION) not in seen:
+        out.append(_SOFTWARE_CITATION)
     return out
 
 def _method_help_text(method_name: str) -> str:
@@ -4355,9 +4369,10 @@ with st.sidebar:
 
     # ── Sidebar Footer ──
     st.markdown(
-        "<div class='sidebar-footer'>"
+        f"<div class='sidebar-footer'>"
         "Prof. Dr. Ömer Faruk Rençber"
         "<a class='sidebar-footer-mail' href='mailto:dr.ofrencber@gaziantep.edu.tr'>dr.ofrencber@gaziantep.edu.tr</a>"
+        f"<div style='margin-top:0.3rem;font-size:0.60rem;font-weight:500;line-height:1.35;'>{_SOFTWARE_CITATION}</div>"
         "</div>",
         unsafe_allow_html=True,
     )
