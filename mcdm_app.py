@@ -7027,9 +7027,9 @@ if raw_data is None:
     st.markdown(
         f"""
         <div style="display:flex;justify-content:center;gap:0.65rem;flex-wrap:wrap;margin-top:-1.4rem;margin-bottom:1.4rem;">
-            <a href="https://youtu.be/kaYR2TR0NJY?si=XKGKzCYxC-ad2-bx" target="_blank"
-               style="display:inline-block;background:#0F5D91;color:#FFFFFF;text-decoration:none;padding:0.6rem 1.05rem;border-radius:8px;font-size:0.92rem;font-weight:600;">
-               {tt("🎥 Uygulama Tanıtım Videosu (YouTube)", "🎥 Application Demo Video (YouTube)")}
+            <a href="https://youtu.be/jp4oih6_Nec" target="_blank"
+               style="display:inline-block;background:#DC2626;color:#FFFFFF;text-decoration:none;padding:0.6rem 1.05rem;border-radius:8px;font-size:0.92rem;font-weight:600;">
+               {tt("🎥 Uygulama Tanıtım Videosu (YouTube) · New-Yeni", "🎥 Application Demo Video (YouTube) · New-Yeni")}
             </a>
             <a href="https://www.instagram.com/mcdm_dss/" target="_blank"
                style="display:inline-block;background:#C13584;color:#FFFFFF;text-decoration:none;padding:0.6rem 1.05rem;border-radius:8px;font-size:0.92rem;font-weight:600;">
