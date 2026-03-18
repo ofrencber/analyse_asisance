@@ -6,6 +6,7 @@ import inspect
 import io
 import re
 import time
+import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -17,6 +18,12 @@ import streamlit as st
 from scipy.stats import spearmanr
 
 import mcdm_engine as me
+
+try:
+    import pyreadstat  # noqa: F401
+    SPSS_AVAILABLE = True
+except Exception:
+    SPSS_AVAILABLE = False
 
 APP_DIR = Path(__file__).resolve().parent
 MAX_UPLOAD_SIZE_MB = 20
@@ -391,6 +398,46 @@ st.markdown(
             border-color: rgba(18, 39, 62, 0.26) !important;
             box-shadow: 0 10px 20px rgba(21, 43, 66, 0.22) !important;
         }
+        .st-key-step1_continue_btn button,
+        .st-key-btn_use_upload_data_main button,
+        .st-key-btn_use_manual_data_main button,
+        .st-key-btn_prep_complete_main button,
+        .st-key-btn_run_analysis_main button {
+            background: #C62828 !important;
+            color: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+            border: 1px solid #C62828 !important;
+            box-shadow: 0 8px 18px rgba(198, 40, 40, 0.22) !important;
+        }
+        .st-key-step1_continue_btn button *,
+        .st-key-btn_use_upload_data_main button *,
+        .st-key-btn_use_manual_data_main button *,
+        .st-key-btn_prep_complete_main button *,
+        .st-key-btn_run_analysis_main button * {
+            color: #FFFFFF !important;
+            fill: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+        }
+        .st-key-step1_continue_btn button:hover,
+        .st-key-btn_use_upload_data_main button:hover,
+        .st-key-btn_use_manual_data_main button:hover,
+        .st-key-btn_prep_complete_main button:hover,
+        .st-key-btn_run_analysis_main button:hover {
+            background: #B71C1C !important;
+            color: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+            border-color: #B71C1C !important;
+            box-shadow: 0 10px 20px rgba(183, 28, 28, 0.24) !important;
+        }
+        .st-key-step1_continue_btn button:hover *,
+        .st-key-btn_use_upload_data_main button:hover *,
+        .st-key-btn_use_manual_data_main button:hover *,
+        .st-key-btn_prep_complete_main button:hover *,
+        .st-key-btn_run_analysis_main button:hover * {
+            color: #FFFFFF !important;
+            fill: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+        }
 
         /* ────── FILE UPLOADER ────── */
         [data-testid="stFileUploaderDropzone"] {
@@ -575,10 +622,91 @@ st.markdown(
         .kpi-value { font-size:0.92rem; font-weight:700; color: var(--text-main); margin-top:0.1rem; }
 
         /* ────── ASSISTANT GRID ────── */
-        .assistant-grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:0.6rem; margin-bottom:0.6rem; }
-        .assistant-card2 { background:#FFFFFF; border:1px solid var(--border); border-radius:10px; padding:0.65rem 0.75rem; }
-        .assistant-title2 { font-size:0.72rem; font-weight:700; color: var(--text-main); text-transform:uppercase; letter-spacing:.3px; margin-bottom:0.25rem; }
-        .assistant-body2 { font-size:0.82rem; color: var(--text-main); line-height:1.5; }
+        .assistant-grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:0.45rem; margin-bottom:0.45rem; }
+        .assistant-card2 { background:#FBFCFD; border:1px solid #E3E8EE; border-radius:8px; padding:0.52rem 0.6rem; }
+        .assistant-title2 { font-size:0.68rem; font-weight:700; color:#58697A; text-transform:uppercase; letter-spacing:.26px; margin-bottom:0.18rem; }
+        .assistant-body2 { font-size:0.78rem; color:#273645; line-height:1.45; }
+
+        /* ────── TRACKING PANELS ────── */
+        .tracking-panel {
+            border-radius: 10px;
+            padding: 0.58rem 0.68rem;
+            border: 1px solid #E5EAF0;
+            background: #FAFBFC;
+            margin: 0.2rem 0 0.7rem 0;
+        }
+        .tracking-panel-blue  { border-color:#E2EAF3; background:#FBFCFE; }
+        .tracking-panel-green { border-color:#E1EADF; background:#FBFDFC; }
+        .tracking-panel-amber { border-color:#EEE4D2; background:#FEFCF8; }
+        .tracking-panel-rose  { border-color:#EEDDDD; background:#FEFBFB; }
+        .tracking-panel-compact .tracking-grid { margin-top:0.12rem; }
+        .tracking-panel-guided .tracking-grid { margin-top:0.45rem; }
+        .tracking-title {
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.28px;
+            text-transform: uppercase;
+            color: #516374;
+            margin-bottom: 0.1rem;
+        }
+        .tracking-subtitle {
+            font-size: 0.74rem;
+            line-height: 1.45;
+            color: #718292;
+        }
+        .tracking-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 0.42rem;
+        }
+        .tracking-card {
+            background: #FFFFFF;
+            border: 1px solid #E6EBF0;
+            border-left: 2px solid #C4D2DE;
+            border-radius: 8px;
+            padding: 0.46rem 0.56rem;
+            min-height: 0;
+        }
+        .tracking-card-blue {
+            border-left-color: #7EA8C8;
+        }
+        .tracking-card-green {
+            border-left-color: #739B7F;
+        }
+        .tracking-card-amber {
+            border-left-color: #B8914A;
+        }
+        .tracking-card-rose {
+            border-left-color: #BF7D7D;
+        }
+        .tracking-card-slate {
+            border-left-color: #95A3B3;
+        }
+        .tracking-label {
+            font-size: 0.62rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.22px;
+            color: #7B8B99;
+        }
+        .tracking-value {
+            font-size: 0.79rem;
+            font-weight: 600;
+            line-height: 1.38;
+            color: #283645;
+            margin-top: 0.12rem;
+            word-break: break-word;
+        }
+        .tracking-note {
+            margin-top: 0.42rem;
+            padding: 0.34rem 0.44rem;
+            border-radius: 7px;
+            border: 1px solid #E3E8EE;
+            background: #FFFFFF;
+            font-size: 0.72rem;
+            line-height: 1.4;
+            color: #667687;
+        }
 
         /* ────── DIAG BADGES ────── */
         .diag-badge { display:inline-block; font-size:0.68rem; font-weight:700; border-radius:999px; padding:0.15rem 0.45rem; margin-left:0.3rem; }
@@ -607,6 +735,7 @@ st.markdown(
             }
             .kpi-grid { grid-template-columns:repeat(2, minmax(0,1fr)); }
             .assistant-grid { grid-template-columns:1fr; }
+            .tracking-grid { grid-template-columns:1fr; }
         }
     </style>
     """,
@@ -644,7 +773,19 @@ def init_state() -> None:
         "download_blob_cache": {},
         "download_blob_sig": None,
         "run_heavy_robustness": False,
-        "upload_widget_nonce": 0,
+        "study_title": "",
+        "manual_entry_df": None,
+        "manual_criteria_names": "",
+        "manual_name_inputs_mode": False,
+        "manual_criteria_inputs_seed": "",
+        "data_entry_mode": "upload",
+        "pending_data": None,
+        "pending_data_source_id": None,
+        "shown_step_hints": set(),
+        "impute_mode_open": False,
+        "missing_strategy_saved": "Sil",
+        "clip_outliers_saved": False,
+        "show_step_guidance": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -654,6 +795,19 @@ init_state()
 
 def tt(tr_text: str, en_text: str) -> str:
     return en_text if st.session_state.get("ui_lang", "TR") == "EN" else tr_text
+
+def _show_step_guidance_enabled() -> bool:
+    return bool(st.session_state.get("show_step_guidance", False))
+
+def _show_step_caption(
+    summary_tr: str,
+    summary_en: str,
+    detail_tr: str | None = None,
+    detail_en: str | None = None,
+) -> None:
+    st.caption(tt(summary_tr, summary_en))
+    if detail_tr and _show_step_guidance_enabled():
+        st.caption(tt(detail_tr, detail_en or detail_tr))
 
 _TR_HINTS = (
     " ve ",
@@ -977,6 +1131,867 @@ def sample_panel_dataset_en() -> pd.DataFrame:
             })
 
     return pd.DataFrame(rows)
+
+def _xl_text(lang: str, tr_text: str, en_text: str) -> str:
+    return en_text if lang == "EN" else tr_text
+
+def _make_unique_names(names: List[str], fallback_prefix: str) -> List[str]:
+    out: List[str] = []
+    seen: Dict[str, int] = {}
+    for idx, raw in enumerate(names, start=1):
+        base = str(raw or "").strip() or f"{fallback_prefix}_{idx}"
+        count = seen.get(base, 0) + 1
+        seen[base] = count
+        out.append(base if count == 1 else f"{base}_{count}")
+    return out
+
+def _default_manual_criteria(count: int, lang: str) -> List[str]:
+    prefix = "Criterion" if lang == "EN" else "Kriter"
+    return [f"{prefix}_{idx}" for idx in range(1, count + 1)]
+
+def _parse_manual_criteria(raw: str, count: int, lang: str) -> List[str]:
+    fallback = "Criterion" if lang == "EN" else "Kriter"
+    items = [part.strip() for part in str(raw or "").split(",") if part.strip()]
+    while len(items) < count:
+        items.append(f"{fallback}_{len(items) + 1}")
+    return _make_unique_names(items[:count], fallback)
+
+def _seed_manual_entry_df(
+    existing: pd.DataFrame | None,
+    row_count: int,
+    entity_col: str,
+    criteria_cols: List[str],
+    year_col: str | None = None,
+) -> pd.DataFrame:
+    row_count = int(max(2, row_count))
+    all_cols = [entity_col] + ([year_col] if year_col else []) + list(criteria_cols)
+    out = pd.DataFrame(index=range(row_count))
+    if isinstance(existing, pd.DataFrame):
+        existing = existing.copy()
+    for col in all_cols:
+        if isinstance(existing, pd.DataFrame) and col in existing.columns:
+            values = existing[col].tolist()[:row_count]
+            if len(values) < row_count:
+                if col == entity_col:
+                    values += [f"A{idx:02d}" for idx in range(len(values) + 1, row_count + 1)]
+                else:
+                    values += [np.nan] * (row_count - len(values))
+            out[col] = values
+        elif col == entity_col:
+            out[col] = [f"A{idx:02d}" for idx in range(1, row_count + 1)]
+        elif year_col and col == year_col:
+            out[col] = [2024] * row_count
+        else:
+            out[col] = pd.Series([np.nan] * row_count, dtype="float")
+    return out
+
+def _prepare_manual_entry_df(
+    edited_df: pd.DataFrame,
+    entity_col: str,
+    criteria_cols: List[str],
+    year_col: str | None = None,
+) -> pd.DataFrame:
+    if not isinstance(edited_df, pd.DataFrame) or edited_df.empty:
+        raise ValueError(tt("Manuel giriş tablosu boş görünüyor.", "The manual entry table appears to be empty."))
+    out = edited_df.copy()
+    missing_cols = [col for col in [entity_col] + ([year_col] if year_col else []) + list(criteria_cols) if col not in out.columns]
+    if missing_cols:
+        raise ValueError(
+            tt(
+                f"Eksik sütunlar var: {', '.join(missing_cols)}",
+                f"Some columns are missing: {', '.join(missing_cols)}",
+            )
+        )
+    out = out[[entity_col] + ([year_col] if year_col else []) + list(criteria_cols)].copy()
+    out[entity_col] = out[entity_col].astype(str).replace({"nan": "", "None": ""}).str.strip()
+    numeric_targets = list(criteria_cols) + ([year_col] if year_col else [])
+    for col in numeric_targets:
+        out[col] = pd.to_numeric(out[col], errors="coerce")
+    keep_mask = out[entity_col].ne("") | out[criteria_cols].notna().any(axis=1)
+    if year_col:
+        keep_mask = keep_mask | out[year_col].notna()
+    out = out.loc[keep_mask].copy()
+    if out.empty:
+        raise ValueError(
+            tt(
+                "Kaydedilecek satır bulunamadı. En az bir alternatif ve sayısal değer girin.",
+                "No rows are ready to save. Enter at least one alternative and some numeric values.",
+            )
+        )
+    out[entity_col] = _make_unique_labels(out[entity_col].tolist(), fallback_prefix="A")
+    if not out[criteria_cols].notna().any().any():
+        raise ValueError(
+            tt(
+                "En az bir kriter sütununda sayısal veri girmeniz gerekiyor.",
+                "Enter numeric values in at least one criterion column.",
+            )
+        )
+    return out.reset_index(drop=True)
+
+def _sync_manual_criteria_names_state(count: int, lang: str) -> None:
+    raw = str(st.session_state.get("manual_criteria_names", "") or "").strip()
+    if not raw:
+        raw = ", ".join(_default_manual_criteria(count, lang))
+    parsed = _parse_manual_criteria(raw, count, lang)
+    st.session_state["manual_criteria_names"] = ", ".join(parsed)
+
+def _sync_manual_criteria_input_keys(count: int, lang: str) -> None:
+    parsed = _parse_manual_criteria(st.session_state.get("manual_criteria_names", ""), count, lang)
+    seed = "||".join(parsed)
+    prev_seed = str(st.session_state.get("manual_criteria_inputs_seed", "") or "")
+    if seed != prev_seed:
+        for idx, name in enumerate(parsed, start=1):
+            st.session_state[f"manual_criteria_name_{idx}"] = name
+        stale_idx = count + 1
+        while f"manual_criteria_name_{stale_idx}" in st.session_state:
+            del st.session_state[f"manual_criteria_name_{stale_idx}"]
+            stale_idx += 1
+        st.session_state["manual_criteria_inputs_seed"] = seed
+
+def _upload_limit_mb() -> int:
+    try:
+        return int(st.get_option("server.maxUploadSize") or 200)
+    except Exception:
+        return 200
+
+def _stage_data_source(df: pd.DataFrame, source_id: str) -> None:
+    st.session_state["pending_data"] = df.copy()
+    st.session_state["pending_data_source_id"] = source_id
+
+def _clear_pending_data_source() -> None:
+    st.session_state["pending_data"] = None
+    st.session_state["pending_data_source_id"] = None
+
+def _data_ready_button_label() -> str:
+    return tt("✅ Verilerim tamam. Diğer adıma geçelim", "✅ My data is ready. Continue to the next step")
+
+def _show_step_hint_once(token: str, message_tr: str, message_en: str, *, icon: str = "ℹ️") -> None:
+    shown = set(st.session_state.get("shown_step_hints", set()) or set())
+    if token in shown:
+        return
+    shown.add(token)
+    st.session_state["shown_step_hints"] = shown
+    show_guidance = _show_step_guidance_enabled()
+    message = tt(message_tr, message_en)
+    flow_steps = [
+        tt("Veri hazır", "Data ready"),
+        tt("Kriter doğrula", "Validate criteria"),
+        tt("Yöntem ve sağlamlık", "Methods and robustness"),
+        tt("Sonuçları incele", "Review results"),
+    ]
+    active_step = {
+        "stage_objective": 1,
+        "stage_prep": 2,
+        "stage_methods": 3,
+        "stage_results": 4,
+    }.get(token, 1)
+    steps_html_parts: List[str] = []
+    for idx, label in enumerate(flow_steps, start=1):
+        if idx < active_step:
+            state_class = "is-done"
+            marker = "✓"
+        elif idx == active_step:
+            state_class = "is-active"
+            marker = str(idx)
+        else:
+            state_class = "is-pending"
+            marker = str(idx)
+        connector_html = '<div class="mcdm-flow-connector"></div>' if idx < len(flow_steps) else ""
+        steps_html_parts.append(
+            f"""
+            <div class="mcdm-flow-step {state_class}">
+                <div class="mcdm-flow-marker">{marker}</div>
+                <div class="mcdm-flow-label">{_safe_html_text(label)}</div>
+            </div>
+            {connector_html}
+            """
+        )
+    hint_id = f"mcdm-flow-hint-{re.sub(r'[^a-zA-Z0-9_-]+', '-', token)}"
+    head_margin = "0.58rem" if show_guidance else "0.3rem"
+    body_html = f'<div class="mcdm-flow-body">{_safe_html_text(message)}</div>' if show_guidance else ""
+    flow_html = f"""
+    <style>
+    @keyframes mcdmFlowHintIn {{
+        from {{ opacity:0; transform:translateX(26px) translateY(-6px); }}
+        to {{ opacity:1; transform:translateX(0) translateY(0); }}
+    }}
+    @keyframes mcdmFlowHintOut {{
+        from {{ opacity:1; transform:translateX(0) translateY(0); }}
+        to {{ opacity:0; transform:translateX(34px) translateY(-4px); visibility:hidden; }}
+    }}
+    #{hint_id} {{
+        position: fixed;
+        top: 5.4rem;
+        right: 1rem;
+        width: min(312px, calc(100vw - 1.4rem));
+        background: rgba(255,255,255,0.96);
+        color: #243344;
+        border: 1px solid rgba(157, 171, 186, 0.34);
+        border-radius: 14px;
+        box-shadow: 0 14px 30px rgba(18, 32, 48, 0.12);
+        padding: 0.7rem 0.75rem;
+        z-index: 999999;
+        pointer-events: none;
+        animation: mcdmFlowHintIn 0.22s ease-out, mcdmFlowHintOut 0.45s ease-in 4.8s forwards;
+    }}
+    #{hint_id} .mcdm-flow-head {{
+        display:flex;
+        gap:0.58rem;
+        align-items:flex-start;
+        margin-bottom:{head_margin};
+    }}
+    #{hint_id} .mcdm-flow-badge {{
+        width:1.9rem;
+        height:1.9rem;
+        border-radius:999px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:0.9rem;
+        background:#F2F5F8;
+        border:1px solid #E1E7ED;
+        flex-shrink:0;
+    }}
+    #{hint_id} .mcdm-flow-title {{
+        font-size:0.64rem;
+        font-weight:700;
+        letter-spacing:0.24px;
+        text-transform:uppercase;
+        color:#6C7B89;
+        margin-bottom:0.18rem;
+    }}
+    #{hint_id} .mcdm-flow-body {{
+        font-size:0.77rem;
+        line-height:1.4;
+        font-weight:600;
+        color:#253646;
+    }}
+    #{hint_id} .mcdm-flow-route {{
+        display:flex;
+        align-items:center;
+        gap:0.18rem;
+        flex-wrap:wrap;
+    }}
+    #{hint_id} .mcdm-flow-step {{
+        display:flex;
+        align-items:center;
+        gap:0.38rem;
+        padding:0.26rem 0.4rem;
+        border-radius:999px;
+        background:#F8FAFB;
+        border:1px solid #E4EAF0;
+    }}
+    #{hint_id} .mcdm-flow-step.is-done {{
+        background:#F3F8F4;
+        border-color:#D9E8DC;
+    }}
+    #{hint_id} .mcdm-flow-step.is-active {{
+        background:#FBF5EA;
+        border-color:#EAD6B1;
+        box-shadow:0 0 0 1px rgba(212, 179, 121, 0.12) inset;
+    }}
+    #{hint_id} .mcdm-flow-step.is-pending {{
+        opacity:0.74;
+    }}
+    #{hint_id} .mcdm-flow-marker {{
+        width:1.08rem;
+        height:1.08rem;
+        border-radius:999px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:0.62rem;
+        font-weight:700;
+        background:#EDF2F6;
+        color:#4C6175;
+        flex-shrink:0;
+    }}
+    #{hint_id} .mcdm-flow-label {{
+        font-size:0.68rem;
+        font-weight:600;
+        letter-spacing:0.1px;
+        white-space:nowrap;
+        color:#435466;
+    }}
+    #{hint_id} .mcdm-flow-connector {{
+        width:0.75rem;
+        height:2px;
+        background:linear-gradient(90deg, rgba(128,143,159,0.3), rgba(128,143,159,0.08));
+        border-radius:999px;
+        flex-shrink:0;
+    }}
+    @media (max-width: 920px) {{
+        #{hint_id} {{
+            top: auto;
+            right: 0.7rem;
+            left: 0.7rem;
+            bottom: 0.8rem;
+            width: auto;
+        }}
+        #{hint_id} .mcdm-flow-route {{
+            row-gap:0.35rem;
+        }}
+    }}
+    </style>
+    <div id="{hint_id}">
+        <div class="mcdm-flow-head">
+            <div class="mcdm-flow-badge">{_safe_html_text(icon)}</div>
+            <div>
+                <div class="mcdm-flow-title">{_safe_html_text(tt("Akış", "Flow"))}</div>
+                {body_html}
+            </div>
+        </div>
+        <div class="mcdm-flow-route">
+            {''.join(steps_html_parts)}
+        </div>
+    </div>
+    """
+    try:
+        st.html(flow_html)
+    except Exception:
+        try:
+            st.toast(message, icon=icon)
+        except Exception:
+            pass
+
+def _activate_data_source(df: pd.DataFrame, source_id: str, entry_mode: str) -> None:
+    st.session_state["raw_data"] = df.copy()
+    st.session_state["data_source_id"] = source_id
+    _clear_pending_data_source()
+    st.session_state["analysis_result"] = None
+    st.session_state["panel_results"] = None
+    st.session_state["clean_data"] = None
+    st.session_state["report_docx"] = None
+    st.session_state["prep_done"] = False
+    st.session_state["step1_done"] = False
+    st.session_state["alt_names"] = {}
+    st.session_state["crit_dir"] = {}
+    st.session_state["crit_include"] = {}
+    st.session_state["weight_method_pref"] = None
+    st.session_state["ranking_prefs"] = []
+    st.session_state["direction_notice"] = None
+    st.session_state["download_blob_cache"] = {}
+    st.session_state["download_blob_sig"] = None
+    st.session_state["study_title"] = ""
+    st.session_state["shown_step_hints"] = set()
+    st.session_state["panel_year_column"] = None
+    st.session_state["panel_entity_column"] = None
+    st.session_state["panel_selected_years"] = []
+    st.session_state["panel_selected_years_all"] = []
+    st.session_state["panel_selected_years_col"] = None
+    st.session_state["panel_years"] = []
+    st.session_state["panel_view_choice"] = None
+    st.session_state["panel_run_warnings"] = []
+    st.session_state["analysis_scope"] = "panel" if _guess_year_columns(df) else "single"
+
+def _manual_preset_catalog(lang: str) -> List[Dict[str, Any]]:
+    entity_default = "Alternative" if lang == "EN" else "Alternatif"
+    year_default = "Year" if lang == "EN" else "Yıl"
+    return [
+        {
+            "key": "small",
+            "label": _xl_text(lang, "Hızlı 5x4", "Quick 5x4"),
+            "rows": 5,
+            "criteria_count": 4,
+            "entity_col": entity_default,
+            "criteria_names": _default_manual_criteria(4, lang),
+            "has_year": False,
+            "year_col": year_default,
+        },
+        {
+            "key": "medium",
+            "label": _xl_text(lang, "Orta 10x6", "Medium 10x6"),
+            "rows": 10,
+            "criteria_count": 6,
+            "entity_col": entity_default,
+            "criteria_names": _default_manual_criteria(6, lang),
+            "has_year": False,
+            "year_col": year_default,
+        },
+        {
+            "key": "panel",
+            "label": _xl_text(lang, "Panel", "Panel"),
+            "rows": 12,
+            "criteria_count": 5,
+            "entity_col": _xl_text(lang, "Ülke", "Country"),
+            "criteria_names": _default_manual_criteria(5, lang),
+            "has_year": True,
+            "year_col": year_default,
+        },
+    ]
+
+def _apply_manual_preset(preset: Dict[str, Any], lang: str) -> None:
+    entity_col = str(preset.get("entity_col") or _xl_text(lang, "Alternatif", "Alternative"))
+    criteria_names = [str(name).strip() for name in preset.get("criteria_names", []) if str(name).strip()]
+    criteria_count = int(preset.get("criteria_count", len(criteria_names) or 4))
+    if not criteria_names:
+        criteria_names = _default_manual_criteria(criteria_count, lang)
+    year_col = str(preset.get("year_col") or _xl_text(lang, "Yıl", "Year")).strip()
+    has_year = bool(preset.get("has_year"))
+    rows = int(max(2, preset.get("rows", 8)))
+
+    st.session_state["manual_row_count"] = rows
+    st.session_state["manual_criteria_count"] = criteria_count
+    st.session_state["manual_entity_col"] = entity_col
+    st.session_state["manual_has_year"] = has_year
+    st.session_state["manual_year_col"] = year_col
+    st.session_state["manual_criteria_names"] = ", ".join(criteria_names)
+    st.session_state["manual_entry_df"] = _seed_manual_entry_df(
+        None,
+        rows,
+        entity_col,
+        criteria_names,
+        year_col if has_year else None,
+    )
+
+def _fill_manual_demo_data(
+    df: pd.DataFrame,
+    entity_col: str,
+    criteria_cols: List[str],
+    year_col: str | None = None,
+) -> pd.DataFrame:
+    out = df.copy()
+    rng = np.random.default_rng(42)
+    n_rows = len(out)
+    if entity_col in out.columns:
+        values = out[entity_col].astype(str).replace({"nan": "", "None": ""}).str.strip().tolist()
+        filled = []
+        for idx, value in enumerate(values, start=1):
+            filled.append(value if value else f"A{idx:02d}")
+        out[entity_col] = filled
+    if year_col and year_col in out.columns:
+        years = [2022, 2023, 2024]
+        out[year_col] = [years[idx % len(years)] for idx in range(n_rows)]
+    for idx, col in enumerate(criteria_cols, start=1):
+        if col not in out.columns:
+            continue
+        base = rng.uniform(10 * idx, 22 * idx, n_rows)
+        trend = np.linspace(0, idx * 3, n_rows)
+        out[col] = np.round(base + trend, 2)
+    return out
+
+def _manual_editor_stats(
+    df: pd.DataFrame,
+    entity_col: str,
+    criteria_cols: List[str],
+    year_col: str | None = None,
+) -> Dict[str, Any]:
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return {"filled_rows": 0, "criteria_count": len(criteria_cols), "fill_rate": 0.0}
+    entity_ok = df[entity_col].astype(str).replace({"nan": "", "None": ""}).str.strip().ne("") if entity_col in df.columns else pd.Series(False, index=df.index)
+    numeric_df = df[criteria_cols].apply(pd.to_numeric, errors="coerce") if criteria_cols else pd.DataFrame(index=df.index)
+    row_mask = entity_ok | numeric_df.notna().any(axis=1)
+    if year_col and year_col in df.columns:
+        row_mask = row_mask | pd.to_numeric(df[year_col], errors="coerce").notna()
+    filled_rows = int(row_mask.sum())
+    total_numeric_slots = int(max(1, len(criteria_cols) * max(filled_rows, 1)))
+    filled_numeric_slots = int(numeric_df.loc[row_mask].notna().sum().sum()) if not numeric_df.empty else 0
+    fill_rate = float(filled_numeric_slots / total_numeric_slots) if total_numeric_slots > 0 else 0.0
+    return {
+        "filled_rows": filled_rows,
+        "criteria_count": len(criteria_cols),
+        "fill_rate": fill_rate,
+    }
+
+def _render_upload_data_source_section(lang: str) -> None:
+    _max_mb = _upload_limit_mb()
+    st.caption(
+        tt(
+            "Beklenen format: ilk sütun alternatif etiketi olabilir; analizde kullanılacak kriter sütunları sayısal olmalıdır. CSV, XLSX ve SPSS `.sav` desteklenir.",
+            "Expected format: the first column may contain alternative labels; criterion columns used in the analysis must be numeric. CSV, XLSX, and SPSS `.sav` are supported.",
+        )
+    )
+    st.caption(
+        tt(
+            f"Yükleme sınırı: yaklaşık {_max_mb} MB. Daha büyük dosyalarda sütunları sadeleştirmeniz önerilir.",
+            f"Upload limit: about {_max_mb} MB. For larger files, reduce unnecessary columns before upload.",
+        )
+    )
+
+    with st.expander(tt("📐 Örnek veri formatı ve şablon", "📐 Sample data format and template"), expanded=False):
+        render_table(_input_format_notes(lang, panel=False))
+        st.markdown(f"**{tt('Tek dönem örnek görünüm', 'Single-period example preview')}**")
+        render_table(sample_dataset().head(5) if lang != "EN" else sample_dataset_en().head(5))
+        _tpl_col1, _tpl_col2 = st.columns(2)
+        with _tpl_col1:
+            st.download_button(
+                tt("⬇️ Tek dönem şablonu indir", "⬇️ Download single-period template"),
+                data=generate_input_template_excel(lang=lang, panel=False),
+                file_name=tt("MCDM_Ornek_Format.xlsx", "MCDM_Sample_Format.xlsx"),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                width="stretch",
+                on_click="ignore",
+            )
+        with _tpl_col2:
+            st.download_button(
+                tt("⬇️ Panel şablonu indir", "⬇️ Download panel template"),
+                data=generate_input_template_excel(lang="EN", panel=True),
+                file_name="MCDM_Panel_Template.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                width="stretch",
+                on_click="ignore",
+            )
+
+    uploaded = st.file_uploader(
+        tt("CSV, XLSX veya SAV yükleyin", "Upload CSV, XLSX, or SAV"),
+        type=["csv", "xlsx", "sav"],
+        label_visibility="collapsed",
+        key="main_data_file_uploader",
+    )
+    sample_col_1, sample_col_2, sample_col_3 = st.columns(3)
+    with sample_col_1:
+        if st.button(tt("📘 Örnek Veri (TR)", "📘 Sample Data (TR)"), width="stretch", key="btn_sample_tr_main"):
+            _stage_data_source(sample_dataset(), "sample_data_tr")
+            st.rerun()
+    with sample_col_2:
+        if st.button(tt("📗 Örnek Veri (EN)", "📗 Sample Data (EN)"), width="stretch", key="btn_sample_en_main"):
+            _stage_data_source(sample_dataset_en(), "sample_data_en")
+            st.rerun()
+    with sample_col_3:
+        if st.button(tt("📙 Panel Veri (EN)", "📙 Panel Data (EN)"), width="stretch", key="btn_sample_panel_en_main"):
+            _stage_data_source(sample_panel_dataset_en(), "sample_panel_en")
+            st.rerun()
+
+    if uploaded is not None:
+        _upload_sig = f"upload::{uploaded.name}::{getattr(uploaded, 'size', 0)}"
+        if (
+            st.session_state.get("data_source_id") != _upload_sig
+            and st.session_state.get("pending_data_source_id") != _upload_sig
+        ):
+            try:
+                loaded_df = load_uploaded_file(uploaded)
+            except ValueError as upload_exc:
+                st.error(str(upload_exc))
+            except Exception as upload_exc:
+                st.error(tt("Dosya okunamadı. Lütfen dosya formatını kontrol edip tekrar deneyin.", "File could not be read. Please verify the file format and try again."))
+                st.caption(tt(f"Hata kodu: {_safe_error_code(upload_exc)}", f"Error code: {_safe_error_code(upload_exc)}"))
+            else:
+                _stage_data_source(loaded_df, _upload_sig)
+                st.rerun()
+
+    _pending_df = st.session_state.get("pending_data")
+    _pending_id = str(st.session_state.get("pending_data_source_id") or "")
+    if isinstance(_pending_df, pd.DataFrame) and _pending_id and _pending_id != "manual_entry":
+        st.success(
+            tt(
+                f"Seçilen veri hazır: {_pending_df.shape[0]} satır, {_pending_df.shape[1]} sütun.",
+                f"Selected data is ready: {_pending_df.shape[0]} rows, {_pending_df.shape[1]} columns.",
+            )
+        )
+        with st.expander(tt("👀 Yüklenen veriyi önizle", "👀 Preview selected data"), expanded=False):
+            render_table(_pending_df.head(8))
+        if st.button(_data_ready_button_label(), key="btn_use_upload_data_main", width="stretch"):
+            _activate_data_source(_pending_df, _pending_id, "upload")
+            st.rerun()
+
+def _render_data_input_workspace_body(lang: str) -> None:
+    _mode = st.radio(
+        tt("Veri kaynağı", "Data source"),
+        options=["upload", "manual"],
+        index=0 if st.session_state.get("data_entry_mode", "upload") == "upload" else 1,
+        format_func=lambda mode: tt("📤 Dosya / Örnek Veri", "📤 File / Sample Data") if mode == "upload" else tt("✍️ Manuel Giriş", "✍️ Manual Entry"),
+        horizontal=True,
+        key="data_entry_mode",
+    )
+    if _mode == "upload":
+        _render_upload_data_source_section(lang)
+    else:
+        st.caption(
+            tt(
+                "Manuel giriş seçildi. Dosya yükleme alanı gizlendi; isterseniz aşağıdaki bölümü açıp tabloyu oluşturabilirsiniz.",
+                "Manual entry is selected. The file upload area is hidden; open the section below to build the table if needed.",
+            )
+        )
+        _render_manual_entry_workspace(lang)
+
+def _render_data_input_workspace(lang: str, is_data_loaded: bool) -> None:
+    _title = f"📂 {tt('Veri Girişi', 'Data Input')} {'✅' if is_data_loaded else '⏳'}"
+    if is_data_loaded:
+        with st.expander(_title, expanded=False):
+            _render_data_input_workspace_body(lang)
+    else:
+        st.markdown(f"### {_title}")
+        st.caption(
+            tt(
+                "Bu alan veri seçilene kadar açık kalır. Dosya yükleyin veya manuel girişinizi tamamlayıp aşağıdaki onay butonuyla ilerleyin.",
+                "This area stays open until data is selected. Upload a file or complete manual entry, then continue with the confirmation button below.",
+            )
+        )
+        _render_data_input_workspace_body(lang)
+
+def _render_manual_entry_workspace(lang: str) -> None:
+    with st.expander(tt("✍️ Manuel tablo girişi", "✍️ Manual table entry"), expanded=True):
+        st.caption(
+            tt(
+                "Dosya yüklemeden ilerlemek için bu alanı açın. En hızlı akış: alternatif ve kriter sayısını girin, adları düzenleyin, tabloya yapıştırın.",
+                "Open this area if you want to proceed without uploading a file. Fastest flow: enter the number of alternatives and criteria, edit the names, then paste into the table.",
+            )
+        )
+        _controls_col, _editor_col = st.columns([0.95, 1.7], gap="large")
+
+        with _controls_col:
+            st.markdown(f"**{tt('1. Hızlı kurulum', '1. Quick setup')}**")
+            _quick_col1, _quick_col2 = st.columns(2)
+            with _quick_col1:
+                _manual_rows = int(
+                    st.number_input(
+                        tt("Alternatif sayısı", "Number of alternatives"),
+                        min_value=2,
+                        max_value=200,
+                        value=int(st.session_state.get("manual_row_count", 8) or 8),
+                        step=1,
+                        key="manual_row_count",
+                    )
+                )
+            with _quick_col2:
+                _manual_crit_count = int(
+                    st.number_input(
+                        tt("Kriter sayısı", "Criterion count"),
+                        min_value=2,
+                        max_value=20,
+                        value=int(st.session_state.get("manual_criteria_count", 4) or 4),
+                        step=1,
+                        key="manual_criteria_count",
+                    )
+                )
+            st.caption(
+                tt(
+                    "Bu alan başlangıç tablosunun boyutunu belirler; isterseniz tabloda sonradan satır ekleyebilirsiniz.",
+                    "This sets the initial table size; you can still add more rows later in the editor.",
+                )
+            )
+
+            st.markdown(f"**{tt('2. Yapıyı özelleştir', '2. Customize structure')}**")
+            with st.expander(tt("Satır, sütun ve alan adlarını düzenle", "Adjust rows, columns, and field names"), expanded=True):
+                _cfg_col1, _cfg_col2 = st.columns(2)
+                with _cfg_col1:
+                    _manual_entity_col = st.text_input(
+                        tt("Etiket sütunu", "Label column"),
+                        value=st.session_state.get("manual_entity_col", tt("Alternatif", "Alternative")),
+                        key="manual_entity_col",
+                    ).strip() or tt("Alternatif", "Alternative")
+                with _cfg_col2:
+                    _manual_has_year = st.checkbox(
+                        tt("Panel için yıl sütunu", "Year column for panel"),
+                        value=bool(st.session_state.get("manual_has_year", False)),
+                        key="manual_has_year",
+                    )
+
+                _manual_year_col = None
+                if _manual_has_year:
+                    _manual_year_col = st.text_input(
+                        tt("Yıl sütunu adı", "Year column name"),
+                        value=st.session_state.get("manual_year_col", tt("Yıl", "Year")),
+                        key="manual_year_col",
+                    ).strip() or tt("Yıl", "Year")
+
+                _sync_manual_criteria_names_state(_manual_crit_count, lang)
+                _sync_manual_criteria_input_keys(_manual_crit_count, lang)
+                _name_cols = st.columns(2)
+                _typed_names: List[str] = []
+                for idx in range(_manual_crit_count):
+                    with _name_cols[idx % 2]:
+                        _typed_names.append(
+                            st.text_input(
+                                f"{tt('Kriter', 'Criterion')} {idx + 1}",
+                                key=f"manual_criteria_name_{idx + 1}",
+                            ).strip()
+                        )
+                _manual_criteria_now = _parse_manual_criteria(", ".join(_typed_names), _manual_crit_count, lang)
+                st.session_state["manual_criteria_names"] = ", ".join(_manual_criteria_now)
+                st.session_state["manual_criteria_inputs_seed"] = "||".join(_manual_criteria_now)
+                if st.button(tt("🧱 Yapıyı tabloya uygula", "🧱 Apply structure to table"), key="btn_refresh_manual_schema_main", width="stretch"):
+                    st.session_state["manual_entry_df"] = _seed_manual_entry_df(
+                        st.session_state.get("manual_entry_df"),
+                        _manual_rows,
+                        _manual_entity_col,
+                        _manual_criteria_now,
+                        _manual_year_col,
+                    )
+                    st.rerun()
+
+            _manual_rows = int(st.session_state.get("manual_row_count", 8) or 8)
+            _manual_crit_count = int(st.session_state.get("manual_criteria_count", 4) or 4)
+            _manual_entity_col = str(st.session_state.get("manual_entity_col", tt("Alternatif", "Alternative"))).strip() or tt("Alternatif", "Alternative")
+            _manual_has_year = bool(st.session_state.get("manual_has_year", False))
+            _manual_year_col = str(st.session_state.get("manual_year_col", tt("Yıl", "Year"))).strip() if _manual_has_year else None
+            _manual_criteria = _parse_manual_criteria(
+                st.session_state.get("manual_criteria_names", ""),
+                _manual_crit_count,
+                lang,
+            )
+
+            st.info(
+                tt(
+                    f"Mevcut yapı: {_manual_rows} satır, {_manual_crit_count} kriter, etiket sütunu '{_manual_entity_col}'.",
+                    f"Current setup: {_manual_rows} rows, {_manual_crit_count} criteria, label column '{_manual_entity_col}'.",
+                )
+            )
+            _action_cols = st.columns(2)
+            with _action_cols[0]:
+                if st.button(tt("🧪 Örnek değer yükle", "🧪 Load sample values"), key="btn_fill_manual_sample_main", width="stretch"):
+                    _base_manual = _seed_manual_entry_df(
+                        st.session_state.get("manual_entry_df"),
+                        _manual_rows,
+                        _manual_entity_col,
+                        _manual_criteria,
+                        _manual_year_col,
+                    )
+                    st.session_state["manual_entry_df"] = _fill_manual_demo_data(
+                        _base_manual,
+                        _manual_entity_col,
+                        _manual_criteria,
+                        _manual_year_col,
+                    )
+                    st.rerun()
+            with _action_cols[1]:
+                if st.button(tt("🧹 Tabloyu sıfırla", "🧹 Reset table"), key="btn_reset_manual_data_main", width="stretch"):
+                    st.session_state["manual_entry_df"] = _seed_manual_entry_df(
+                        None,
+                        _manual_rows,
+                        _manual_entity_col,
+                        _manual_criteria,
+                        _manual_year_col,
+                    )
+                    st.rerun()
+            st.caption(
+                tt(
+                    "İpucu: Kriter adlarını burada doğrudan değiştirip sonra tabloya uygulayabilirsiniz.",
+                    "Tip: Edit criterion names directly here and then apply them to the table.",
+                )
+            )
+
+        with _editor_col:
+            _manual_seed = _seed_manual_entry_df(
+                st.session_state.get("manual_entry_df"),
+                _manual_rows,
+                _manual_entity_col,
+                _manual_criteria,
+                _manual_year_col,
+            )
+            _manual_col_cfg: Dict[str, Any] = {
+                _manual_entity_col: st.column_config.TextColumn(
+                    tt("Etiket", "Label"),
+                    help=tt("Alternatif, ülke veya firma adı yazın.", "Enter alternative, country, or company label."),
+                )
+            }
+            if _manual_year_col:
+                _manual_col_cfg[_manual_year_col] = st.column_config.NumberColumn(
+                    _manual_year_col,
+                    format="%d",
+                    step=1,
+                )
+            for _crit in _manual_criteria:
+                _manual_col_cfg[_crit] = st.column_config.NumberColumn(_crit, format="%.4f")
+
+            st.markdown(f"**{tt('3. Tabloyu doldurun', '3. Fill the table')}**")
+            st.caption(
+                tt(
+                    "Excel'den hücre bloğu yapıştırabilir veya son satıra yazarak yeni alternatif ekleyebilirsiniz.",
+                    "Paste a block of cells from Excel or type into the last row to add a new alternative.",
+                )
+            )
+            _manual_edited = st.data_editor(
+                _manual_seed,
+                hide_index=True,
+                num_rows="dynamic",
+                width="stretch",
+                height=430,
+                key="manual_entry_editor",
+                column_config=_manual_col_cfg,
+            )
+            st.session_state["manual_entry_df"] = _manual_edited
+
+            _manual_stats = _manual_editor_stats(_manual_edited, _manual_entity_col, _manual_criteria, _manual_year_col)
+            _metric_col1, _metric_col2, _metric_col3 = st.columns(3)
+            _metric_col1.metric(tt("Dolu satır", "Filled rows"), _manual_stats["filled_rows"])
+            _metric_col2.metric(tt("Kriter", "Criteria"), _manual_stats["criteria_count"])
+            _metric_col3.metric(tt("Sayısal doluluk", "Numeric fill"), f"%{_manual_stats['fill_rate']*100:.0f}")
+
+            if _manual_year_col:
+                st.caption(
+                    tt(
+                        "Panel veri için her satırda yıl değeri bulunduğunu kontrol edin.",
+                        "For panel data, make sure each row includes a year value.",
+                    )
+                )
+            else:
+                st.caption(
+                    tt(
+                        "Etiket sütunu boş kalırsa sistem otomatik olarak A01, A02, A03... üretir.",
+                        "If the label column is blank, the app will auto-generate A01, A02, A03...",
+                    )
+                )
+
+            if st.button(_data_ready_button_label(), key="btn_use_manual_data_main", width="stretch"):
+                try:
+                    _prepared_manual = _prepare_manual_entry_df(
+                        _manual_edited,
+                        _manual_entity_col,
+                        _manual_criteria,
+                        _manual_year_col,
+                    )
+                except ValueError as manual_exc:
+                    st.error(str(manual_exc))
+                else:
+                    st.session_state["manual_entry_df"] = _prepared_manual
+                    _activate_data_source(_prepared_manual, "manual_entry", "manual")
+                    st.rerun()
+
+def _input_format_notes(lang: str, panel: bool = False) -> pd.DataFrame:
+    if panel:
+        rows = [
+            {
+                _xl_text(lang, "Başlık", "Item"): _xl_text(lang, "Kimlik sütunu", "Entity column"),
+                _xl_text(lang, "Açıklama", "Description"): _xl_text(lang, "Her satırda alternatif/ülke/firma adı yer alabilir.", "Each row can include an alternative/country/company name."),
+            },
+            {
+                _xl_text(lang, "Başlık", "Item"): _xl_text(lang, "Yıl sütunu", "Year column"),
+                _xl_text(lang, "Açıklama", "Description"): _xl_text(lang, "Panel analiz için dönem/yıl bilgisini ayrı sütunda verin.", "Provide period/year information in a separate column for panel analysis."),
+            },
+            {
+                _xl_text(lang, "Başlık", "Item"): _xl_text(lang, "Kriterler", "Criteria"),
+                _xl_text(lang, "Açıklama", "Description"): _xl_text(lang, "Analizde kullanılacak kriter sütunları sayısal olmalıdır.", "Criterion columns used in the analysis must be numeric."),
+            },
+        ]
+    else:
+        rows = [
+            {
+                _xl_text(lang, "Başlık", "Item"): _xl_text(lang, "İlk sütun", "First column"),
+                _xl_text(lang, "Açıklama", "Description"): _xl_text(lang, "Alternatif adı metin olabilir; sistem bunu etiket olarak kullanır.", "Alternative names can be text; the app uses them as labels."),
+            },
+            {
+                _xl_text(lang, "Başlık", "Item"): _xl_text(lang, "Kriter sayısı", "Number of criteria"),
+                _xl_text(lang, "Açıklama", "Description"): _xl_text(lang, "Analiz için en az 2 sayısal kriter gerekir.", "At least 2 numeric criteria are required."),
+            },
+            {
+                _xl_text(lang, "Başlık", "Item"): _xl_text(lang, "Maliyet/Fayda", "Cost/Benefit"),
+                _xl_text(lang, "Açıklama", "Description"): _xl_text(lang, "Kriter yönlerini sonraki adımda fayda veya maliyet olarak işaretleyebilirsiniz.", "You can mark criterion directions as benefit or cost in the next step."),
+            },
+        ]
+    return pd.DataFrame(rows)
+
+def generate_input_template_excel(lang: str = "TR", panel: bool = False) -> bytes:
+    output = io.BytesIO()
+    sample = sample_panel_dataset_en().head(20) if panel else (sample_dataset_en() if lang == "EN" else sample_dataset())
+    sheet_data = _xl_text(lang, "Ornek_Veri", "Sample_Data")
+    sheet_notes = _xl_text(lang, "Format_Notlari", "Format_Notes")
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        sample.to_excel(writer, sheet_name=sheet_data, index=False)
+        _input_format_notes(lang, panel=panel).to_excel(writer, sheet_name=sheet_notes, index=False)
+        workbook = writer.book
+        header_fmt = workbook.add_format({"bold": True, "bg_color": "#1d3557", "font_color": "white", "border": 1})
+        cell_fmt = workbook.add_format({"border": 1})
+        wrap_fmt = workbook.add_format({"border": 1, "text_wrap": True, "valign": "top"})
+        for sheet_name, df in [(sheet_data, sample), (sheet_notes, _input_format_notes(lang, panel=panel))]:
+            ws = writer.sheets[sheet_name]
+            ws.freeze_panes(1, 0)
+            ws.set_row(0, 22, header_fmt)
+            for idx, col in enumerate(df.columns):
+                max_len = max(len(str(col)), int(df[col].astype(str).map(len).max() if not df.empty else 0))
+                width = min(40, max(14, max_len + 2))
+                ws.set_column(idx, idx, width, wrap_fmt if sheet_name == sheet_notes else cell_fmt)
+    return output.getvalue()
 
 def guess_direction(col_name: str) -> str:
     lowered = col_name.lower()
@@ -1353,16 +2368,15 @@ def diag_rec_text(rec: Dict[str, str]) -> tuple[str, str]:
     )
 
 def reset_all() -> None:
-    # Recreate the uploader widget so previously selected files are discarded too.
-    upload_widget_nonce = int(st.session_state.get("upload_widget_nonce", 0)) + 1
     st.session_state.clear()
-    st.session_state["upload_widget_nonce"] = upload_widget_nonce
     init_state()
 
 def _diag_score_and_label(diag: Dict[str, Any]) -> tuple[int, str]:
     score = 100
     if diag.get("constant_criteria"):
         score -= 35
+    if diag.get("non_positive_criteria"):
+        score -= 8
     max_corr = float(diag.get("max_corr", 0.0))
     if max_corr >= 0.85:
         score -= 30
@@ -1370,6 +2384,15 @@ def _diag_score_and_label(diag: Dict[str, Any]) -> tuple[int, str]:
         score -= 15
     mean_cv = float(diag.get("mean_cv", 0.0))
     if mean_cv < 0.08:
+        score -= 10
+    outlier_ratio = float(diag.get("outlier_ratio", 0.0))
+    if outlier_ratio >= 0.12:
+        score -= 15
+    elif outlier_ratio >= 0.06:
+        score -= 8
+    if float(diag.get("mean_abs_skew", 0.0)) >= 1.0:
+        score -= 8
+    if float(diag.get("alt_crit_ratio", 99.0)) < 2.0:
         score -= 10
     if int(diag.get("n_alt", 0)) < 5:
         score -= 10
@@ -1455,7 +2478,31 @@ def load_uploaded_file(uploaded_file) -> pd.DataFrame:
                 f"File size limit exceeded. You can upload up to {MAX_UPLOAD_SIZE_MB} MB.",
             )
         )
-    df = pd.read_csv(uploaded_file) if uploaded_file.name.lower().endswith(".csv") else pd.read_excel(uploaded_file)
+    file_name = str(getattr(uploaded_file, "name", "") or "").lower()
+    if file_name.endswith(".csv"):
+        df = pd.read_csv(uploaded_file)
+    elif file_name.endswith(".xlsx"):
+        df = pd.read_excel(uploaded_file)
+    elif file_name.endswith(".sav"):
+        if not SPSS_AVAILABLE:
+            raise ValueError(
+                tt(
+                    "`.sav` dosyaları için `pyreadstat` kurulmalıdır. `pip install pyreadstat` veya `pip install -r requirements.txt` çalıştırın.",
+                    "`.sav` files require `pyreadstat`. Run `pip install pyreadstat` or `pip install -r requirements.txt`.",
+                )
+            )
+        try:
+            uploaded_file.seek(0)
+        except Exception:
+            pass
+        df = pd.read_spss(uploaded_file)
+    else:
+        raise ValueError(
+            tt(
+                "Desteklenmeyen dosya türü. Lütfen CSV, XLSX veya SAV yükleyin.",
+                "Unsupported file type. Please upload CSV, XLSX, or SAV.",
+            )
+        )
     if not isinstance(df, pd.DataFrame) or df.empty:
         raise ValueError(tt("Dosya boş veya okunamadı.", "The file is empty or could not be read."))
     n_rows, n_cols = df.shape
@@ -1703,6 +2750,119 @@ def _safe_html_text(value: Any) -> str:
 def _safe_plain_commentary_html(text: str) -> str:
     plain = _html_to_plain(text or "")
     return _safe_html_text(plain).replace("\n", "<br>")
+
+def _preview_list_text(values: Any, max_items: int = 4) -> str:
+    if values is None:
+        iterable: List[Any] = []
+    elif isinstance(values, (str, bytes)):
+        iterable = [values]
+    else:
+        iterable = list(values)
+    cleaned: List[str] = []
+    for value in iterable:
+        txt = str(value or "").strip()
+        if txt and txt not in cleaned:
+            cleaned.append(txt)
+    if not cleaned:
+        return tt("Belirlenmedi", "Not set")
+    head = ", ".join(cleaned[:max_items])
+    if len(cleaned) > max_items:
+        head += tt(f" +{len(cleaned) - max_items} daha", f" +{len(cleaned) - max_items} more")
+    return head
+
+def _data_source_label(source_id: Any) -> str:
+    sid = str(source_id or "")
+    if sid == "manual_entry":
+        return tt("Manuel giriş", "Manual entry")
+    if sid.startswith("upload::"):
+        return tt("Dosya yükleme", "File upload")
+    if "sample_panel" in sid:
+        return tt("Örnek panel veri", "Sample panel data")
+    if "sample_data" in sid:
+        return tt("Örnek veri", "Sample data")
+    return tt("Hazır veri", "Selected data")
+
+def _render_tracking_panel(
+    title: str,
+    subtitle: str,
+    items: List[tuple[Any, ...]],
+    *,
+    note: str | None = None,
+    tone: str = "blue",
+    expanded: bool | None = None,
+    icon: str = "🧭",
+    show_title: bool | None = None,
+    show_context: bool | None = None,
+) -> None:
+    tone_class = {
+        "blue": "tracking-panel-blue",
+        "green": "tracking-panel-green",
+        "amber": "tracking-panel-amber",
+        "rose": "tracking-panel-rose",
+    }.get(str(tone or "blue"), "tracking-panel-blue")
+    if show_title is None:
+        show_title = expanded is None
+    if show_context is None:
+        show_context = _show_step_guidance_enabled()
+    cards_html_parts: List[str] = []
+    for item in items:
+        if len(item) >= 3:
+            label, value, card_tone = item[0], item[1], str(item[2] or "slate")
+        else:
+            label, value = item[0], item[1]
+            card_tone = "slate"
+        card_tone_class = {
+            "blue": "tracking-card-blue",
+            "green": "tracking-card-green",
+            "amber": "tracking-card-amber",
+            "rose": "tracking-card-rose",
+            "slate": "tracking-card-slate",
+        }.get(card_tone, "tracking-card-slate")
+        cards_html_parts.append(
+            f"""
+            <div class="tracking-card {card_tone_class}">
+                <div class="tracking-label">{_safe_html_text(label)}</div>
+                <div class="tracking-value">{_safe_html_text(value)}</div>
+            </div>
+            """
+        )
+    cards_html = "".join(cards_html_parts)
+    subtitle_html = (
+        f'<div class="tracking-subtitle">{_safe_html_text(subtitle)}</div>'
+        if show_context and subtitle and str(subtitle).strip()
+        else ""
+    )
+    note_html = (
+        f'<div class="tracking-note">{_safe_html_text(note)}</div>'
+        if show_context and note and str(note).strip()
+        else ""
+    )
+    title_html = f'<div class="tracking-title">{_safe_html_text(title)}</div>' if show_title else ""
+    panel_mode_class = "tracking-panel-guided" if show_context else "tracking-panel-compact"
+    panel_html = (
+        f"""
+        <div class="tracking-panel {tone_class} {panel_mode_class}">
+            {title_html}
+            {subtitle_html}
+            <div class="tracking-grid">{cards_html}</div>
+            {note_html}
+        </div>
+        """
+    )
+    if expanded is None:
+        st.html(panel_html.strip())
+    else:
+        with st.expander(f"{icon} {title}", expanded=expanded):
+            st.html(panel_html.strip())
+
+def _current_ui_stage() -> str:
+    if st.session_state.get("analysis_result") is not None:
+        return "results"
+    if bool(st.session_state.get("prep_done")):
+        return "step3"
+    if bool(st.session_state.get("step1_done")):
+        return "step2"
+    return "step1"
 
 def get_math_formulation_en(w_method: str, r_methods: List[str]) -> str:
     lines: List[str] = ["Mathematical and Algorithmic Framework", ""]
@@ -2281,25 +3441,1268 @@ def generate_apa_docx(result: Dict[str, Any], selected_data: pd.DataFrame, lang:
     doc.save(buffer)
     return buffer.getvalue()
 
+def _export_study_title(result: Dict[str, Any], lang: str) -> str:
+    manual_title = str(st.session_state.get("study_title", "") or "").strip()
+    if manual_title:
+        return manual_title
+    weight_method = (result.get("weights") or {}).get("method") or _xl_text(lang, "Ağırlık", "Weights")
+    ranking_method = (result.get("ranking") or {}).get("method")
+    if ranking_method:
+        return _xl_text(lang, f"{weight_method} - {ranking_method} Analiz Raporu", f"{weight_method} - {ranking_method} Analysis Report")
+    return _xl_text(lang, f"{weight_method} Ağırlık Analizi Raporu", f"{weight_method} Weight Analysis Report")
+
+def _export_file_name(title: str, lang: str, ext: str) -> str:
+    base = re.sub(r"[^\w.-]+", "_", str(title or "").strip(), flags=re.UNICODE).strip("._")
+    if not base:
+        base = _xl_text(lang, "MCDM_Sonuclari", "MCDM_Results")
+    return f"{base}.{ext}"
+
+def _browser_safe_download_name(file_name: str, fallback: str) -> str:
+    raw_name = str(file_name or "").strip()
+    if not raw_name:
+        raw_name = fallback
+    normalized = unicodedata.normalize("NFKD", raw_name)
+    ascii_name = normalized.encode("ascii", "ignore").decode("ascii")
+    ascii_name = re.sub(r"[^A-Za-z0-9._-]+", "_", ascii_name).strip("._")
+    if not ascii_name:
+        ascii_name = re.sub(r"[^A-Za-z0-9._-]+", "_", str(fallback or "download")).strip("._") or "download"
+    if "." not in ascii_name and "." in raw_name:
+        ext = raw_name.rsplit(".", 1)[-1].strip()
+        if ext:
+            ascii_name = f"{ascii_name}.{ext}"
+    return ascii_name
+
+def _preferred_export_dir() -> Path:
+    candidates = [
+        Path.home() / "Downloads" / "MCDM_exports",
+        APP_DIR / "_exports",
+    ]
+    for candidate in candidates:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            test_path = candidate / ".write_test"
+            test_path.write_bytes(b"ok")
+            test_path.unlink(missing_ok=True)
+            return candidate
+        except Exception:
+            continue
+    raise OSError("No writable export directory available.")
+
+def _unique_export_path(export_dir: Path, file_name: str) -> Path:
+    safe_name = _browser_safe_download_name(file_name, "MCDM_Results.xlsx")
+    stem = Path(safe_name).stem or "MCDM_Results"
+    suffix = Path(safe_name).suffix or ".bin"
+    candidate = export_dir / f"{stem}{suffix}"
+    counter = 2
+    while candidate.exists():
+        candidate = export_dir / f"{stem}_{counter}{suffix}"
+        counter += 1
+    return candidate
+
+def _save_export_blob(data: bytes | bytearray, file_name: str) -> Path:
+    export_dir = _preferred_export_dir()
+    target_path = _unique_export_path(export_dir, file_name)
+    target_path.write_bytes(bytes(data))
+    return target_path
+
+def _safe_sheet_name(name: str, used_names: set[str]) -> str:
+    clean = re.sub(r"[\[\]:*?/\\]", "_", str(name or "Sheet")).strip() or "Sheet"
+    clean = clean[:31]
+    candidate = clean
+    counter = 2
+    while candidate in used_names:
+        suffix = f"_{counter}"
+        candidate = f"{clean[: 31 - len(suffix)]}{suffix}"
+        counter += 1
+    used_names.add(candidate)
+    return candidate
+
+def _excel_formats(workbook):
+    return {
+        "cover_title": workbook.add_format({"bold": True, "font_size": 18, "align": "center", "valign": "vcenter", "font_color": "#FFFFFF", "bg_color": "#16324F"}),
+        "cover_subtitle": workbook.add_format({"italic": True, "font_size": 11, "align": "center", "valign": "vcenter", "font_color": "#EAF1F7", "bg_color": "#1F4A73"}),
+        "cover_badge": workbook.add_format({"bold": True, "font_size": 13, "align": "center", "valign": "vcenter", "font_color": "#FFFFFF", "bg_color": "#C9A227"}),
+        "cover_label_card": workbook.add_format({"bold": True, "font_size": 11, "align": "center", "valign": "vcenter", "font_color": "#FFFFFF", "bg_color": "#2E75B6", "border": 1}),
+        "cover_value_card": workbook.add_format({"font_size": 11, "align": "left", "valign": "vcenter", "bg_color": "#F2F2F2", "border": 1, "text_wrap": True}),
+        "sheet_title": workbook.add_format({"bold": True, "font_size": 14, "align": "center", "valign": "vcenter", "font_color": "#FFFFFF", "bg_color": "#1F3864"}),
+        "sheet_subtitle": workbook.add_format({"italic": True, "font_size": 10, "align": "center", "valign": "vcenter", "font_color": "#1F1F1F", "bg_color": "#E9EFF7"}),
+        "section": workbook.add_format({"bold": True, "font_size": 12, "align": "left", "valign": "vcenter", "font_color": "#16324F", "bg_color": "#DCE9F5", "border": 1}),
+        "header": workbook.add_format({"bold": True, "bg_color": "#1d3557", "font_color": "#FFFFFF", "border": 1, "text_wrap": True, "valign": "vcenter"}),
+        "cell": workbook.add_format({"border": 1, "valign": "top"}),
+        "cell_wrap": workbook.add_format({"border": 1, "text_wrap": True, "valign": "top"}),
+        "label": workbook.add_format({"bold": True, "border": 1, "bg_color": "#EFF5FB"}),
+        "value": workbook.add_format({"border": 1, "text_wrap": True}),
+        "note": workbook.add_format({"italic": True, "font_color": "#516173"}),
+        "text_block": workbook.add_format({"text_wrap": True, "valign": "top", "border": 1}),
+        "citation": workbook.add_format({"italic": True, "font_size": 9, "font_color": "#516173", "bg_color": "#F7F9FC", "border": 1, "text_wrap": True, "valign": "vcenter"}),
+        "highlight_good": workbook.add_format({"bold": True, "font_color": "#1F5130", "bg_color": "#D9EAD3", "border": 1}),
+        "highlight_warn": workbook.add_format({"bold": True, "font_color": "#7F1D1D", "bg_color": "#F4CCCC", "border": 1}),
+    }
+
+def _excel_method_chain(weight_method: str | None, ranking_method: str | None, lang: str) -> str:
+    w_label = str(weight_method or "").strip() or _xl_text(lang, "Belirtilmedi", "Not specified")
+    r_label = str(ranking_method or "").strip()
+    if not r_label:
+        return f"{w_label} {_xl_text(lang, 'Analizi', 'Analysis')}"
+    return f"{w_label} -> {r_label}"
+
+def _write_sheet_banner(ws, title: str, subtitle: str, formats, *, end_col: int = 9) -> int:
+    end_col = max(5, int(end_col))
+    ws.merge_range(0, 0, 0, end_col, title, formats["sheet_title"])
+    ws.merge_range(1, 0, 1, end_col, subtitle, formats["sheet_subtitle"])
+    ws.set_row(0, 24)
+    ws.set_row(1, 20)
+    return 3
+
+def _write_citation_block(ws, start_row: int, text: str, formats, *, end_col: int = 9) -> int:
+    end_col = max(3, int(end_col))
+    ws.merge_range(start_row, 0, start_row, end_col, text, formats["citation"])
+    ws.set_row(start_row, 34)
+    return start_row + 2
+
+def _set_worksheet_widths(ws, df: pd.DataFrame, startcol: int = 0, index: bool = False, max_width: int = 38) -> None:
+    if index:
+        idx_sample = df.index.astype(str).tolist()[:100]
+        idx_width = min(max_width, max(12, max([len(str(df.index.name or ""))] + [len(val.replace("\n", " ")) for val in idx_sample]) + 2))
+        ws.set_column(startcol, startcol, idx_width)
+        startcol += 1
+    for offset, col in enumerate(df.columns):
+        sample = df[col].head(100).astype(str).tolist()
+        max_len = max([len(str(col))] + [len(val.replace("\n", " ")) for val in sample]) if sample else len(str(col))
+        ws.set_column(startcol + offset, startcol + offset, min(max_width, max(12, max_len + 2)))
+
+def _write_df_block(
+    writer,
+    sheet_name: str,
+    df: pd.DataFrame,
+    startrow: int,
+    title: str,
+    formats,
+    *,
+    index: bool = False,
+    freeze: bool = False,
+) -> Dict[str, int]:
+    ws = writer.sheets[sheet_name]
+    cols_n = max(1, df.shape[1] + (1 if index else 0))
+    ws.merge_range(startrow, 0, startrow, max(4, cols_n - 1), title, formats["section"])
+    data_row = startrow + 2
+    if df.empty:
+        ws.write(data_row, 0, "—", formats["note"])
+        return {"header_row": data_row, "data_row": data_row + 1, "nrows": 0, "ncols": cols_n, "next_row": data_row + 3}
+    df.to_excel(writer, sheet_name=sheet_name, startrow=data_row, startcol=0, index=index)
+    ws.set_row(data_row, 24, formats["header"])
+    ws.autofilter(data_row, 0, data_row + len(df), cols_n - 1)
+    _set_worksheet_widths(ws, df, startcol=0, index=index)
+    if freeze:
+        ws.freeze_panes(data_row + 1, 0)
+    return {
+        "header_row": data_row,
+        "data_row": data_row + 1,
+        "nrows": len(df),
+        "ncols": cols_n,
+        "next_row": data_row + len(df) + 3,
+    }
+
+def _clean_excel_text(text: Any) -> str:
+    raw = html.unescape(str(text or ""))
+    raw = re.sub(r"<br\s*/?>", "\n", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"</(p|div|li)>", "\n", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"<li[^>]*>", "- ", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"<[^>]+>", "", raw)
+    raw = raw.replace("**", "").replace("__", "").replace("*", "")
+    raw = re.sub(r"[ \t]+", " ", raw)
+    raw = re.sub(r"\n{3,}", "\n\n", raw)
+    return raw.strip()
+
+def _write_layer_insight_block(
+    ws,
+    start_row: int,
+    title: str,
+    layers: Dict[str, str],
+    lang: str,
+    formats,
+    *,
+    end_col: int = 11,
+) -> int:
+    valid_rows = [
+        (_xl_text(lang, "Betimsel çıkarım", "Descriptive inference"), _clean_excel_text((layers or {}).get("descriptive", ""))),
+        (_xl_text(lang, "Analitik yorum", "Analytic interpretation"), _clean_excel_text((layers or {}).get("analytic", ""))),
+        (_xl_text(lang, "Karar önerisi", "Decision implication"), _clean_excel_text((layers or {}).get("normative", ""))),
+    ]
+    valid_rows = [(label, text) for label, text in valid_rows if text]
+    if not valid_rows:
+        return start_row
+
+    ws.merge_range(start_row, 0, start_row, end_col, title, formats["section"])
+    row = start_row + 2
+    for label, text in valid_rows:
+        ws.write(row, 0, label, formats["label"])
+        ws.merge_range(row, 1, row + 2, end_col, text, formats["text_block"])
+        ws.set_row(row, 24)
+        ws.set_row(row + 1, 24)
+        ws.set_row(row + 2, 24)
+        row += 4
+    return row
+
+def _write_bullet_block(
+    ws,
+    start_row: int,
+    title: str,
+    lines: List[str],
+    formats,
+    *,
+    end_col: int = 11,
+) -> int:
+    clean_lines = [_clean_excel_text(line) for line in lines if _clean_excel_text(line)]
+    if not clean_lines:
+        return start_row
+    ws.merge_range(start_row, 0, start_row, end_col, title, formats["section"])
+    body = "\n".join(f"{idx}. {line}" for idx, line in enumerate(clean_lines, start=1))
+    span = max(3, min(12, len(clean_lines) + 2))
+    ws.merge_range(start_row + 2, 0, start_row + 1 + span, end_col, body, formats["text_block"])
+    for row_idx in range(start_row + 2, start_row + 2 + span):
+        ws.set_row(row_idx, 24)
+    return start_row + span + 3
+
+def _weight_layers_for_excel(result: Dict[str, Any]) -> Dict[str, str]:
+    weights = (result.get("weights") or {}).get("values") or {}
+    if not weights:
+        return {}
+    method = str((result.get("weights") or {}).get("method") or "").strip()
+    selected_data = result.get("selected_data", pd.DataFrame())
+    n_alt = len(selected_data) if isinstance(selected_data, pd.DataFrame) else 0
+    return me.generate_3layer_weight(method, weights, max(n_alt, 1))
+
+def _ranking_layers_for_excel(method_name: str, ranking_table: pd.DataFrame, weights: Dict[str, float]) -> Dict[str, str]:
+    if not str(method_name or "").strip() or not isinstance(ranking_table, pd.DataFrame) or ranking_table.empty:
+        return {}
+    internal_table = ranking_table.copy()
+    internal_table = internal_table.rename(columns={"Alternative": "Alternatif", "Score": "Skor", "Rank": "Sıra"})
+    return me.generate_3layer_ranking(str(method_name), internal_table, weights or {})
+
+def _comparison_layers_for_excel(result: Dict[str, Any]) -> Dict[str, str]:
+    comparison = result.get("comparison") or {}
+    base_method = str((result.get("ranking") or {}).get("method") or "").strip()
+    if not comparison or not base_method:
+        return {}
+    return me.generate_3layer_comparison(comparison, base_method)
+
+def _sensitivity_layers_for_excel(result: Dict[str, Any]) -> Dict[str, str]:
+    sensitivity = result.get("sensitivity") or {}
+    if not sensitivity:
+        return {}
+    return me.generate_3layer_sensitivity(sensitivity)
+
+def _vikor_compromise_export_df(method_name: str, ranking_details: Dict[str, Any], lang: str) -> pd.DataFrame:
+    method_label = str(method_name or "").strip()
+    if "VIKOR" not in method_label.upper():
+        return pd.DataFrame()
+    vikor_table = ranking_details.get("vikor_table")
+    conditions = ranking_details.get("compromise_conditions") or {}
+    if not isinstance(vikor_table, pd.DataFrame) or vikor_table.empty:
+        return pd.DataFrame()
+
+    table = vikor_table.copy()
+    alt_col = col_key(table, "Alternatif", "Alternative")
+    for metric_col in ["S", "R", "Q"]:
+        if metric_col in table.columns:
+            table[metric_col] = pd.to_numeric(table[metric_col], errors="coerce")
+    table = table.sort_values("Q", ascending=True).reset_index(drop=True)
+    top_alt = str(table.iloc[0][alt_col])
+    second_alt = str(table.iloc[1][alt_col]) if len(table) > 1 else top_alt
+    q1 = float(pd.to_numeric(table.iloc[0]["Q"], errors="coerce")) if "Q" in table.columns else np.nan
+    q2 = float(pd.to_numeric(table.iloc[1]["Q"], errors="coerce")) if len(table) > 1 and "Q" in table.columns else q1
+    dq = 1.0 / max(len(table) - 1, 1) if len(table) > 1 else np.nan
+    gap = q2 - q1 if np.isfinite(q1) and np.isfinite(q2) else np.nan
+    s_rank = int(pd.to_numeric(table["S"], errors="coerce").rank(method="min", ascending=True).iloc[0]) if "S" in table.columns else 1
+    r_rank = int(pd.to_numeric(table["R"], errors="coerce").rank(method="min", ascending=True).iloc[0]) if "R" in table.columns else 1
+    advantage_ok = bool(conditions.get("acceptable_advantage", np.isfinite(gap) and np.isfinite(dq) and gap >= dq))
+    stability_ok = bool(conditions.get("acceptable_stability", (s_rank == 1) or (r_rank == 1)))
+
+    if advantage_ok and stability_ok:
+        conclusion = _xl_text(lang, f"{top_alt} güçlü bir uzlaşı çözümüdür.", f"{top_alt} is a strong compromise solution.")
+    elif stability_ok:
+        conclusion = _xl_text(
+            lang,
+            f"{top_alt} lider görünmektedir; ancak {second_alt} ile avantaj farkı sınırlıdır.",
+            f"{top_alt} remains the leader, but the advantage over {second_alt} is limited.",
+        )
+    elif advantage_ok:
+        conclusion = _xl_text(
+            lang,
+            f"{top_alt} Q açısından ayrışmaktadır; ancak S/R kararlılığı tam destek vermemektedir.",
+            f"{top_alt} separates on Q, but the S/R stability condition is not fully supported.",
+        )
+    else:
+        conclusion = _xl_text(
+            lang,
+            f"{top_alt} ile {second_alt} birlikte değerlendirilmelidir; uzlaşı sinyali zayıftır.",
+            f"{top_alt} and {second_alt} should be evaluated together; the compromise signal is weak.",
+        )
+
+    return pd.DataFrame(
+        [
+            {
+                _xl_text(lang, "Koşul", "Condition"): _xl_text(lang, "Kabul edilebilir avantaj", "Acceptable advantage"),
+                _xl_text(lang, "Kanıt", "Evidence"): (
+                    _xl_text(lang, "Yeterli alternatif yok; avantaj koşulu otomatik kabul edildi.", "There is only one alternative; the advantage condition is accepted by default.")
+                    if len(table) <= 1 else
+                    _xl_text(
+                        lang,
+                        f"DQ = 1/(n-1) = {dq:.4f}; Q2 - Q1 = {gap:.4f} ({second_alt} - {top_alt})",
+                        f"DQ = 1/(n-1) = {dq:.4f}; Q2 - Q1 = {gap:.4f} ({second_alt} - {top_alt})",
+                    )
+                ),
+                _xl_text(lang, "Durum", "Status"): _xl_text(lang, "Sağlandı", "Satisfied") if advantage_ok else _xl_text(lang, "Sağlanmadı", "Not satisfied"),
+            },
+            {
+                _xl_text(lang, "Koşul", "Condition"): _xl_text(lang, "Kabul edilebilir kararlılık", "Acceptable stability"),
+                _xl_text(lang, "Kanıt", "Evidence"): _xl_text(
+                    lang,
+                    f"{top_alt} için S sırası = {s_rank}, R sırası = {r_rank}. En az birinde 1. sıra gerekir.",
+                    f"For {top_alt}, S rank = {s_rank} and R rank = {r_rank}. The leader should be first in at least one of them.",
+                ),
+                _xl_text(lang, "Durum", "Status"): _xl_text(lang, "Sağlandı", "Satisfied") if stability_ok else _xl_text(lang, "Sağlanmadı", "Not satisfied"),
+            },
+            {
+                _xl_text(lang, "Koşul", "Condition"): _xl_text(lang, "Sonuç", "Conclusion"),
+                _xl_text(lang, "Kanıt", "Evidence"): conclusion,
+                _xl_text(lang, "Durum", "Status"): _xl_text(lang, "Güçlü", "Strong") if (advantage_ok and stability_ok) else _xl_text(lang, "İhtiyatlı", "Cautious"),
+            },
+        ]
+    )
+
+def _comparison_method_inference_df(result: Dict[str, Any], lang: str) -> pd.DataFrame:
+    comparison = result.get("comparison") or {}
+    method_tables = comparison.get("method_tables") or {}
+    method_details = comparison.get("method_details") or {}
+    weights = (result.get("weights") or {}).get("values") or {}
+    rows: List[Dict[str, Any]] = []
+    for method_name, method_table in method_tables.items():
+        if not isinstance(method_table, pd.DataFrame) or method_table.empty:
+            continue
+        internal_table = method_table.copy().rename(columns={"Alternative": "Alternatif", "Score": "Skor", "Rank": "Sıra"})
+        top_alt_col = col_key(internal_table, "Alternatif", "Alternative")
+        score_col = col_key(internal_table, "Skor", "Score")
+        top_alt = str(internal_table.iloc[0][top_alt_col])
+        top_score_val = pd.to_numeric(internal_table.iloc[0][score_col], errors="coerce")
+        layers = _ranking_layers_for_excel(str(method_name), internal_table, weights)
+        insight_text = _clean_excel_text(layers.get("analytic") or layers.get("descriptive") or "")
+        if "VIKOR" in str(method_name).upper():
+            vikor_eval = _vikor_compromise_export_df(str(method_name), method_details.get(method_name, {}) or {}, lang)
+            if isinstance(vikor_eval, pd.DataFrame) and not vikor_eval.empty:
+                status_col = _xl_text(lang, "Durum", "Status")
+                condition_col = _xl_text(lang, "Koşul", "Condition")
+                conclusion_row = vikor_eval[vikor_eval[condition_col] == _xl_text(lang, "Sonuç", "Conclusion")]
+                if not conclusion_row.empty and status_col in conclusion_row.columns:
+                    insight_text = f"{insight_text} {_xl_text(lang, 'Uzlaşı durumu', 'Compromise status')}: {str(conclusion_row.iloc[0][status_col])}.".strip()
+        rows.append(
+            {
+                _xl_text(lang, "Yöntem", "Method"): str(method_name),
+                _xl_text(lang, "Lider alternatif", "Leading alternative"): top_alt,
+                _xl_text(lang, "Lider skor", "Leading score"): round(float(top_score_val), 4) if pd.notna(top_score_val) else np.nan,
+                _xl_text(lang, "İç çıkarsama", "Inference"): insight_text,
+            }
+        )
+    return pd.DataFrame(rows)
+
+def _single_summary_findings_lines(
+    result: Dict[str, Any],
+    weight_df: pd.DataFrame,
+    ranking_df: pd.DataFrame,
+    comparison_df: pd.DataFrame,
+    sensitivity_df: pd.DataFrame,
+    lang: str,
+) -> List[str]:
+    lines: List[str] = []
+    weight_method = str((result.get("weights") or {}).get("method") or "").strip()
+    ranking_method = str((result.get("ranking") or {}).get("method") or "").strip()
+    if isinstance(weight_df, pd.DataFrame) and not weight_df.empty:
+        crit_col = col_key(weight_df, "Kriter", "Criterion")
+        top_crit = str(weight_df.iloc[0][crit_col])
+        pct_col = _xl_text(lang, "Ağırlık %", "Weight %")
+        if pct_col in weight_df.columns:
+            top_pct = pd.to_numeric(weight_df.iloc[0][pct_col], errors="coerce")
+            if pd.notna(top_pct):
+                lines.append(
+                    _xl_text(
+                        lang,
+                        f"{weight_method} ağırlıklandırması altında en baskın kriter {top_crit} olarak belirlenmiştir (%{float(top_pct):.1f}).",
+                        f"Under {weight_method}, the most influential criterion is {top_crit} ({float(top_pct):.1f}%).",
+                    )
+                )
+    if isinstance(ranking_df, pd.DataFrame) and not ranking_df.empty:
+        alt_col = col_key(ranking_df, "Alternatif", "Alternative")
+        score_col = col_key(ranking_df, "Skor", "Score")
+        top_alt = str(ranking_df.iloc[0][alt_col])
+        top_score = pd.to_numeric(ranking_df.iloc[0][score_col], errors="coerce")
+        last_alt = str(ranking_df.iloc[-1][alt_col])
+        if pd.notna(top_score):
+            lines.append(
+                _xl_text(
+                    lang,
+                    f"{ranking_method} sonucunda {top_alt} {float(top_score):.4f} skoruyla lider alternatif olmuştur; son sırada {last_alt} yer almaktadır.",
+                    f"Under {ranking_method}, {top_alt} becomes the leading alternative with a score of {float(top_score):.4f}, while {last_alt} remains at the bottom.",
+                )
+            )
+    vikor_eval = _vikor_compromise_export_df(ranking_method, (result.get("ranking") or {}).get("details", {}) or {}, lang)
+    if isinstance(vikor_eval, pd.DataFrame) and not vikor_eval.empty:
+        evidence_col = _xl_text(lang, "Kanıt", "Evidence")
+        conclusion_mask = vikor_eval[_xl_text(lang, "Koşul", "Condition")] == _xl_text(lang, "Sonuç", "Conclusion")
+        if conclusion_mask.any():
+            lines.append(str(vikor_eval.loc[conclusion_mask, evidence_col].iloc[0]))
+    if isinstance(comparison_df, pd.DataFrame) and not comparison_df.empty:
+        mean_rho = _docx_mean_spearman(result.get("comparison") or {})
+        if mean_rho is not None:
+            level = (
+                _xl_text(lang, "yüksek", "high") if mean_rho >= 0.85 else
+                _xl_text(lang, "orta", "moderate") if mean_rho >= 0.70 else
+                _xl_text(lang, "düşük", "low")
+            )
+            lines.append(
+                _xl_text(
+                    lang,
+                    f"Yöntemler arası ortalama Spearman uyumu ρ = {mean_rho:.3f} düzeyinde olup {level} metodolojik tutarlılık göstermektedir.",
+                    f"The average Spearman agreement across methods is ρ = {mean_rho:.3f}, indicating {level} methodological consistency.",
+                )
+            )
+    if isinstance(sensitivity_df, pd.DataFrame) and not sensitivity_df.empty:
+        fp_col = _xl_text(lang, "BirincilikOranı", "FirstPlaceRate")
+        alt_col = col_key(sensitivity_df, "Alternatif", "Alternative")
+        if fp_col in sensitivity_df.columns and alt_col in sensitivity_df.columns:
+            top_alt = str(sensitivity_df.iloc[0][alt_col])
+            stability = pd.to_numeric(sensitivity_df.iloc[0][fp_col], errors="coerce")
+            if pd.notna(stability):
+                lines.append(
+                    _xl_text(
+                        lang,
+                        f"Duyarlılık analizinde {top_alt} alternatifinin birincilik oranı %{float(stability) * 100:.1f} olarak gözlenmiştir.",
+                        f"In the sensitivity analysis, {top_alt} retains first place in {float(stability) * 100:.1f}% of the scenarios.",
+                    )
+                )
+    report_findings = _clean_excel_text(str((_build_doc_sections(result, lang) or {}).get(_xl_text(lang, "Bulgular", "Findings"), "") or ""))
+    if report_findings:
+        first_sentence = re.split(r"(?<=[.!?])\s+", report_findings, maxsplit=1)[0].strip()
+        lines.append(first_sentence[:240] + ("..." if len(first_sentence) > 240 else ""))
+    return lines[:6]
+
+def _decision_matrix_export_df(selected_data: pd.DataFrame, lang: str) -> pd.DataFrame:
+    if not isinstance(selected_data, pd.DataFrame):
+        return pd.DataFrame()
+    preview = selected_data.copy()
+    if "Alternatif" not in preview.columns and "Alternative" not in preview.columns and not isinstance(preview.index, pd.RangeIndex):
+        preview = preview.reset_index()
+        first_col = str(preview.columns[0])
+        preview = preview.rename(columns={first_col: ("Alternative" if lang == "EN" else "Alternatif")})
+    return localize_df_lang(preview, lang)
+
+def _weight_analysis_export_df(result: Dict[str, Any], lang: str) -> pd.DataFrame:
+    weight_df = (result.get("weights") or {}).get("table")
+    if not isinstance(weight_df, pd.DataFrame) or weight_df.empty:
+        return pd.DataFrame()
+    out = weight_df.copy()
+    crit_col = col_key(out, "Kriter", "Criterion")
+    weight_col = col_key(out, "Ağırlık", "Weight")
+    type_label = _xl_text(lang, "Tip", "Type")
+    pct_label = _xl_text(lang, "Ağırlık %", "Weight %")
+    visual_label = _xl_text(lang, "Görsel Ağırlık", "Visual Weight")
+    criteria_types = result.get("criteria_types", {}) or {}
+    out[type_label] = out[crit_col].astype(str).map(
+        lambda key: _xl_text(lang, "Fayda", "Benefit") if criteria_types.get(key, "max") == "max" else _xl_text(lang, "Maliyet", "Cost")
+    )
+    out[pct_label] = pd.to_numeric(out[weight_col], errors="coerce") * 100
+    out[visual_label] = out[pct_label].map(
+        lambda x: (f"{'█' * max(1, int(round(float(x) / 4)))}  {float(x):.1f}%") if pd.notna(x) else ""
+    )
+    return localize_df_lang(out, lang)
+
+def _report_text_sections_df(result: Dict[str, Any], lang: str) -> pd.DataFrame:
+    sections = _build_doc_sections(result, lang)
+    order = [
+        _xl_text(lang, "Çalışmanın Amacı", "Objective of the Study"),
+        _xl_text(lang, "Çalışmanın Felsefesi", "Philosophy of the Study"),
+        _xl_text(lang, "Metodoloji", "Methodology"),
+        _xl_text(lang, "Bulgular", "Findings"),
+    ]
+    rows: List[Dict[str, Any]] = []
+    label_map = {
+        _xl_text(lang, "Çalışmanın Amacı", "Objective of the Study"): _xl_text(lang, "Çalışmanın Amacı", "Objective of the Study"),
+        _xl_text(lang, "Çalışmanın Felsefesi", "Philosophy of the Study"): _xl_text(lang, "Çalışmanın Felsefesi", "Philosophy of the Study"),
+        _xl_text(lang, "Metodoloji", "Methodology"): _xl_text(lang, "Metodoloji", "Methodology"),
+        _xl_text(lang, "Bulgular", "Findings"): _xl_text(lang, "Bulgular", "Findings"),
+    }
+    for key in order:
+        text = str(sections.get(key, "") or "").strip()
+        if text:
+            rows.append(
+                {
+                    _xl_text(lang, "Bölüm", "Section"): label_map.get(key, key),
+                    _xl_text(lang, "Metin", "Text"): text,
+                }
+            )
+    return pd.DataFrame(rows)
+
+def _coerce_excel_frame(value: Any, name: str, lang: str) -> pd.DataFrame | None:
+    if isinstance(value, pd.DataFrame) and not value.empty:
+        return localize_df_lang(value.copy(), lang)
+    if isinstance(value, pd.Series) and not value.empty:
+        out = value.reset_index()
+        out.columns = [_xl_text(lang, "Gösterge", "Metric"), _xl_text(lang, "Değer", "Value")]
+        return out
+    if isinstance(value, np.ndarray):
+        arr = np.asarray(value)
+        if arr.ndim == 1 and arr.size > 0:
+            return pd.DataFrame({name: arr})
+        if arr.ndim == 2 and arr.size > 0:
+            return pd.DataFrame(arr)
+    if isinstance(value, dict):
+        scalar_items = {k: v for k, v in value.items() if np.isscalar(v) or v is None}
+        if scalar_items:
+            return pd.DataFrame(
+                {
+                    _xl_text(lang, "Gösterge", "Metric"): list(scalar_items.keys()),
+                    _xl_text(lang, "Değer", "Value"): list(scalar_items.values()),
+                }
+            )
+    return None
+
+def _single_export_detail_tables(result: Dict[str, Any], lang: str) -> List[tuple[str, pd.DataFrame]]:
+    tables: List[tuple[str, pd.DataFrame]] = []
+    corr_matrix = result.get("correlation_matrix")
+    if isinstance(corr_matrix, pd.DataFrame) and not corr_matrix.empty:
+        tables.append((_xl_text(lang, "Korelasyon_Matrisi", "Correlation_Matrix"), corr_matrix.reset_index()))
+    pca_info = result.get("pca") or {}
+    for key, title in [
+        ("explained_variance", _xl_text(lang, "PCA_Aciklanan_Varyans", "PCA_Explained_Variance")),
+        ("explained_ratio", _xl_text(lang, "PCA_Varyans_Orani", "PCA_Variance_Ratio")),
+        ("loadings", _xl_text(lang, "PCA_Yukler", "PCA_Loadings")),
+        ("score_df", _xl_text(lang, "PCA_Skorlar", "PCA_Scores")),
+    ]:
+        df = _coerce_excel_frame(pca_info.get(key), key, lang)
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            tables.append((title, df))
+    weight_details = (result.get("weights") or {}).get("details", {}) or {}
+    for key, value in weight_details.items():
+        if key == "weight_table":
+            continue
+        df = _coerce_excel_frame(value, key, lang)
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            tables.append((f"{(result.get('weights') or {}).get('method', 'Weights')}_{key}", df))
+    ranking_details = (result.get("ranking") or {}).get("details", {}) or {}
+    for key, value in ranking_details.items():
+        if key in {"result_table", "score_direction"}:
+            continue
+        df = _coerce_excel_frame(value, key, lang)
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            tables.append((f"{(result.get('ranking') or {}).get('method', 'Ranking')}_{key}", df))
+    comparison = result.get("comparison") or {}
+    for key in ["rank_table", "score_table", "spearman_matrix", "top_alternatives"]:
+        df = _coerce_excel_frame(comparison.get(key), key, lang)
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            tables.append((f"Comparison_{key}", df))
+    for method_name, value in (comparison.get("method_tables") or {}).items():
+        df = _coerce_excel_frame(value, method_name, lang)
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            tables.append((f"Compare_{method_name}", df))
+    sensitivity = result.get("sensitivity") or {}
+    for key in ["monte_carlo_summary", "local_sensitivity"]:
+        df = _coerce_excel_frame(sensitivity.get(key), key, lang)
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            tables.append((f"Sensitivity_{key}", df))
+    robustness = result.get("weight_robustness") or {}
+    for key in ["leave_one_out", "bootstrap_summary"]:
+        df = _coerce_excel_frame(robustness.get(key), key, lang)
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            tables.append((f"WeightRobust_{key}", df))
+    return tables
+
+def _write_single_cover_sheet(writer, sheet_name: str, result: Dict[str, Any], selected_data: pd.DataFrame, lang: str, formats) -> None:
+    ws = writer.sheets[sheet_name]
+    title = _export_study_title(result, lang)
+    weight_method = (result.get("weights") or {}).get("method")
+    ranking_method = (result.get("ranking") or {}).get("method")
+    subtitle = f"{_excel_method_chain(weight_method, ranking_method, lang)} {_xl_text(lang, 'Analiz Raporu', 'Analysis Report')}"
+    ws.merge_range("B2:J3", title, formats["cover_title"])
+    ws.merge_range("B4:J4", subtitle, formats["cover_badge"])
+    n_alt, n_crit = selected_data.shape if isinstance(selected_data, pd.DataFrame) else (0, 0)
+    source_id = str(result.get("data_source_id") or "")
+    source_label = source_id or _xl_text(lang, "Belirtilmedi", "Not specified")
+    if source_id == "manual_entry":
+        source_label = _xl_text(lang, "Manuel tablo girişi", "Manual table entry")
+    elif source_id == "sample_data_tr":
+        source_label = "Sample Data (TR)"
+    elif source_id == "sample_data_en":
+        source_label = "Sample Data (EN)"
+    elif source_id == "sample_panel_en":
+        source_label = "Panel Sample Data (EN)"
+    meta_rows = [
+        (_xl_text(lang, "Yöntem", "Method"), _excel_method_chain(weight_method, ranking_method, lang)),
+        (_xl_text(lang, "Örneklem", "Sample"), f"{n_alt} {_xl_text(lang, 'alternatif', 'alternatives')}"),
+        (_xl_text(lang, "Veri kaynağı", "Data source"), source_label),
+        (_xl_text(lang, "Kriter sayısı", "Number of criteria"), n_crit),
+        (_xl_text(lang, "Analiz kapsamı", "Analysis scope"), _xl_text(lang, "Tek dönem / kesitsel analiz", "Single-period / cross-sectional analysis")),
+        (_xl_text(lang, "Oluşturulma zamanı", "Generated at"), pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")),
+    ]
+    row = 7
+    for label, value in meta_rows:
+        ws.write(row, 1, label, formats["cover_label_card"])
+        ws.merge_range(row, 3, row, 9, value, formats["cover_value_card"])
+        row += 2
+    sections = _build_doc_sections(result, lang)
+    ws.write(row + 1, 1, _xl_text(lang, "Çalışmanın amacı", "Objective"), formats["section"])
+    ws.merge_range(row + 2, 1, row + 6, 9, str(sections.get(_xl_text(lang, "Çalışmanın Amacı", "Objective of the Study"), "") or ""), formats["text_block"])
+    _write_citation_block(
+        ws,
+        row + 8,
+        f"{_xl_text(lang, 'Önerilen atıf', 'Suggested citation')}: {_SOFTWARE_CITATION}",
+        formats,
+        end_col=9,
+    )
+    ws.set_row(1, 30)
+    ws.set_row(2, 34)
+    ws.set_column(1, 8, 18)
+    ws.set_column(3, 9, 22)
+
+def _write_raw_data_sheet(writer, sheet_name: str, df: pd.DataFrame, title: str, subtitle: str, lang: str, formats) -> None:
+    ws = writer.sheets[sheet_name]
+    start_row = _write_sheet_banner(ws, title, subtitle, formats, end_col=max(8, df.shape[1] if isinstance(df, pd.DataFrame) else 8))
+    meta = _write_df_block(
+        writer,
+        sheet_name,
+        df,
+        start_row,
+        _xl_text(lang, "Ham Veri Tablosu", "Raw Data Table"),
+        formats,
+        index=False,
+        freeze=True,
+    )
+    if isinstance(df, pd.DataFrame) and not df.empty:
+        _apply_heatmap(ws, meta, df)
+
+def _write_vikor_compromise_sheet(
+    writer,
+    sheet_name: str,
+    method_name: str,
+    ranking_details: Dict[str, Any],
+    result: Dict[str, Any],
+    lang: str,
+    formats,
+) -> None:
+    ws = writer.sheets[sheet_name]
+    start_row = _write_sheet_banner(
+        ws,
+        _xl_text(lang, "Uzlaşı Koşulları", "Compromise Conditions"),
+        _xl_text(lang, "VIKOR liderinin kabul edilebilir avantaj ve kararlılık koşullarına göre değerlendirmesi", "Evaluation of the VIKOR leader under acceptable advantage and stability conditions"),
+        formats,
+        end_col=11,
+    )
+    condition_df = _vikor_compromise_export_df(method_name, ranking_details, lang)
+    row = start_row
+    if isinstance(condition_df, pd.DataFrame) and not condition_df.empty:
+        meta = _write_df_block(
+            writer,
+            sheet_name,
+            condition_df,
+            row,
+            _xl_text(lang, "Uzlaşı koşulu değerlendirme tablosu", "Compromise condition assessment table"),
+            formats,
+            index=False,
+            freeze=False,
+        )
+        status_col = _xl_text(lang, "Durum", "Status")
+        if status_col in condition_df.columns:
+            status_idx = list(condition_df.columns).index(status_col)
+            for idx, value in enumerate(condition_df[status_col].astype(str).tolist()):
+                fmt = formats["highlight_good"] if any(token in value.casefold() for token in ["sağlandı", "satisfied", "güçlü", "strong"]) else formats["highlight_warn"]
+                ws.write(meta["data_row"] + idx, status_idx, value, fmt)
+        row = meta["next_row"]
+    row = _write_layer_insight_block(
+        ws,
+        row,
+        _xl_text(lang, "VIKOR yöntemi iç çıkarsama", "VIKOR method inference"),
+        _ranking_layers_for_excel(method_name, (result.get("ranking") or {}).get("table"), (result.get("weights") or {}).get("values") or {}),
+        lang,
+        formats,
+        end_col=11,
+    )
+    _write_citation_block(
+        ws,
+        row + 1,
+        f"{_xl_text(lang, 'Önerilen atıf', 'Suggested citation')}: {_SOFTWARE_CITATION}",
+        formats,
+        end_col=11,
+    )
+    ws.set_column(0, 11, 18)
+
+def _single_summary_key_rows(result: Dict[str, Any], weight_df: pd.DataFrame, ranking_df: pd.DataFrame, comparison_df: pd.DataFrame, sensitivity_df: pd.DataFrame, lang: str) -> List[tuple[str, Any]]:
+    weight_method = (result.get("weights") or {}).get("method") or "—"
+    ranking_method = (result.get("ranking") or {}).get("method") or _xl_text(lang, "Uygulanmadı", "Not applied")
+    top_alt = "—"
+    top_score = "—"
+    if isinstance(ranking_df, pd.DataFrame) and not ranking_df.empty:
+        alt_col = col_key(ranking_df, "Alternatif", "Alternative")
+        score_col = col_key(ranking_df, "Skor", "Score")
+        top_alt = str(ranking_df.iloc[0][alt_col])
+        score_val = pd.to_numeric(ranking_df.iloc[0][score_col], errors="coerce")
+        top_score = f"{float(score_val):.4f}" if pd.notna(score_val) else "—"
+    top_criterion = "—"
+    if isinstance(weight_df, pd.DataFrame) and not weight_df.empty:
+        crit_col = col_key(weight_df, "Kriter", "Criterion")
+        pct_col = _xl_text(lang, "Ağırlık %", "Weight %")
+        top_criterion = str(weight_df.iloc[0][crit_col])
+        if pct_col in weight_df.columns:
+            pct_val = pd.to_numeric(weight_df.iloc[0][pct_col], errors="coerce")
+            if pd.notna(pct_val):
+                top_criterion = f"{top_criterion} ({float(pct_val):.1f}%)"
+    agreement = "—"
+    if isinstance(comparison_df, pd.DataFrame) and not comparison_df.empty:
+        metric_values = pd.to_numeric(comparison_df.select_dtypes(include=[np.number]).stack(), errors="coerce")
+        metric_values = metric_values.dropna()
+        if not metric_values.empty:
+            agreement = f"{float(metric_values.mean()):.3f}"
+    stability = "—"
+    if isinstance(sensitivity_df, pd.DataFrame) and not sensitivity_df.empty:
+        fp_col = _xl_text(lang, "BirincilikOranı", "FirstPlaceRate")
+        if fp_col in sensitivity_df.columns:
+            fp_val = pd.to_numeric(sensitivity_df.iloc[0][fp_col], errors="coerce")
+            if pd.notna(fp_val):
+                stability = f"%{float(fp_val) * 100:.1f}"
+    return [
+        (_xl_text(lang, "Uygulanan analiz", "Applied analysis"), _excel_method_chain(weight_method, ranking_method if ranking_method != _xl_text(lang, "Uygulanmadı", "Not applied") else "", lang)),
+        (_xl_text(lang, "Öne çıkan alternatif", "Leading alternative"), f"{top_alt} | {_xl_text(lang, 'Skor', 'Score')}: {top_score}"),
+        (_xl_text(lang, "En baskın kriter", "Dominant criterion"), top_criterion),
+        (_xl_text(lang, "Yöntem uyumu", "Method agreement"), agreement),
+        (_xl_text(lang, "Kararlılık göstergesi", "Robustness signal"), stability),
+    ]
+
+def _write_single_summary_sheet(
+    writer,
+    sheet_name: str,
+    result: Dict[str, Any],
+    weight_df: pd.DataFrame,
+    ranking_df: pd.DataFrame,
+    comparison_df: pd.DataFrame,
+    sensitivity_df: pd.DataFrame,
+    lang: str,
+    formats,
+) -> None:
+    ws = writer.sheets[sheet_name]
+    start_row = _write_sheet_banner(
+        ws,
+        _xl_text(lang, "Özet Bulgular", "Summary Findings"),
+        _xl_text(lang, "Karar özeti, en güçlü/zayıf alternatifler ve temel metodolojik sinyaller", "Decision summary, strongest/weakest alternatives, and key methodological signals"),
+        formats,
+        end_col=11,
+    )
+    row = start_row
+    for label, value in _single_summary_key_rows(result, weight_df, ranking_df, comparison_df, sensitivity_df, lang):
+        ws.write(row, 0, label, formats["cover_label_card"])
+        ws.merge_range(row, 1, row, 5, value, formats["cover_value_card"])
+        row += 2
+
+    summary_row = row + 1
+    if isinstance(ranking_df, pd.DataFrame) and not ranking_df.empty:
+        rank_col = col_key(ranking_df, "Sıra", "Rank")
+        ranking_sorted = ranking_df.sort_values(rank_col, ascending=True).reset_index(drop=True)
+        top_df = ranking_sorted.head(5).copy()
+        bottom_df = ranking_sorted.tail(5).copy()
+        top_meta = _write_df_block(writer, sheet_name, top_df, summary_row, _xl_text(lang, "En Güçlü 5 Alternatif", "Top 5 Alternatives"), formats, index=False, freeze=False)
+        ws.merge_range(summary_row, 7, summary_row, 11, _xl_text(lang, "En Zayıf 5 Alternatif", "Bottom 5 Alternatives"), formats["section"])
+        bottom_df.to_excel(writer, sheet_name=sheet_name, startrow=summary_row + 2, startcol=7, index=False)
+        ws.set_row(summary_row + 2, 24, formats["header"])
+        _set_worksheet_widths(ws, bottom_df, startcol=7, index=False)
+        ws.autofilter(summary_row + 2, 7, summary_row + 2 + len(bottom_df), 7 + max(0, bottom_df.shape[1] - 1))
+        _apply_data_bar(ws, top_meta, top_df, col_key(top_df, "Skor", "Score"), color="#5E81AC")
+        bottom_meta = {"data_row": summary_row + 3, "nrows": len(bottom_df)}
+        if col_key(bottom_df, "Skor", "Score") in bottom_df.columns:
+            score_idx = 7 + list(bottom_df.columns).index(col_key(bottom_df, "Skor", "Score"))
+            ws.conditional_format(summary_row + 3, score_idx, summary_row + 2 + len(bottom_df), score_idx, {"type": "data_bar", "bar_color": "#D38B5D"})
+        _insert_chart(
+            writer.book,
+            ws,
+            sheet_name,
+            {"data_row": top_meta["data_row"], "nrows": min(top_meta["nrows"], 5), "header_row": top_meta["header_row"]},
+            top_df.head(5),
+            category_col=col_key(top_df, "Alternatif", "Alternative"),
+            value_col=col_key(top_df, "Skor", "Score"),
+            title=_xl_text(lang, "İlk 5 Alternatif Skoru", "Top 5 Alternative Scores"),
+            chart_type="bar",
+            anchor_col=13,
+            anchor_row=3,
+        )
+        row = max(top_meta["next_row"], summary_row + len(bottom_df) + 6, row)
+
+    if isinstance(weight_df, pd.DataFrame) and not weight_df.empty:
+        top_weight_cols = [c for c in [col_key(weight_df, "Kriter", "Criterion"), _xl_text(lang, "Tip", "Type"), _xl_text(lang, "Ağırlık %", "Weight %")] if c in weight_df.columns]
+        weight_focus_df = weight_df[top_weight_cols].head(5).copy() if top_weight_cols else weight_df.head(5).copy()
+        weight_meta = _write_df_block(writer, sheet_name, weight_focus_df, row, _xl_text(lang, "En Etkili Kriterler", "Most Influential Criteria"), formats, index=False, freeze=False)
+        pct_col = _xl_text(lang, "Ağırlık %", "Weight %")
+        if pct_col in weight_focus_df.columns:
+            _apply_data_bar(ws, weight_meta, weight_focus_df, pct_col, color="#7CB342")
+        row = weight_meta["next_row"]
+
+    row = _write_bullet_block(
+        ws,
+        row,
+        _xl_text(lang, "Otomatik temel bulgular", "Automated key findings"),
+        _single_summary_findings_lines(result, weight_df, ranking_df, comparison_df, sensitivity_df, lang),
+        formats,
+        end_col=11,
+    )
+
+    sections = _build_doc_sections(result, lang)
+    findings_text = _clean_excel_text(str(sections.get(_xl_text(lang, "Bulgular", "Findings"), "") or ""))
+    row = _write_citation_block(
+        ws,
+        row + 1,
+        f"{_xl_text(lang, 'Önerilen atıf', 'Suggested citation')}: {_SOFTWARE_CITATION}",
+        formats,
+        end_col=11,
+    )
+    if findings_text:
+        ws.merge_range(row, 0, row, 11, _xl_text(lang, "Temel yorum", "Key interpretation"), formats["section"])
+        ws.merge_range(row + 2, 0, row + 7, 11, findings_text, formats["text_block"])
+    ws.set_column(0, 11, 18)
+
+def _panel_raw_data_export_df(panel_results: Dict[str, Dict[str, Any]], lang: str) -> pd.DataFrame:
+    frames: List[pd.DataFrame] = []
+    year_label_col = _xl_text(lang, "Yıl", "Year")
+    for year_label, year_result in panel_results.items():
+        frame = _decision_matrix_export_df(year_result.get("selected_data", pd.DataFrame()), lang)
+        if isinstance(frame, pd.DataFrame) and not frame.empty:
+            frame.insert(0, year_label_col, str(year_label))
+            frames.append(frame)
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+def _write_panel_summary_findings_sheet(
+    writer,
+    sheet_name: str,
+    panel_results: Dict[str, Dict[str, Any]],
+    summary_df: pd.DataFrame,
+    rank_df: pd.DataFrame,
+    weight_df: pd.DataFrame,
+    lang: str,
+    formats,
+) -> None:
+    ws = writer.sheets[sheet_name]
+    start_row = _write_sheet_banner(
+        ws,
+        _xl_text(lang, "Özet Bulgular", "Summary Findings"),
+        _xl_text(lang, "Dönemler arası liderlik, ortalama sıralar ve baskın kriterler", "Cross-period leadership, average ranks, and dominant criteria"),
+        formats,
+        end_col=11,
+    )
+    row = start_row
+    if isinstance(summary_df, pd.DataFrame) and not summary_df.empty:
+        top_period = str(summary_df.iloc[0][col_key(summary_df, "Yıl", "Year")])
+        top_leader = str(summary_df.iloc[0][col_key(summary_df, "LiderAlternatif", "TopAlternative")])
+        ws.write(row, 0, _xl_text(lang, "İlk gözlenen dönem lideri", "First observed period leader"), formats["cover_label_card"])
+        ws.merge_range(row, 1, row, 5, f"{top_period} - {top_leader}", formats["cover_value_card"])
+        row += 2
+    if isinstance(rank_df, pd.DataFrame) and not rank_df.empty:
+        top_rank_df = rank_df.head(5).copy()
+        bottom_rank_df = rank_df.tail(5).copy()
+        top_meta = _write_df_block(writer, sheet_name, top_rank_df, row, _xl_text(lang, "Ortalama Sıraya Göre İlk 5", "Top 5 by Average Rank"), formats, index=False, freeze=False)
+        bottom_title = _xl_text(lang, "Ortalama Sıraya Göre Son 5", "Bottom 5 by Average Rank")
+        side_start_col = max(7, top_meta["ncols"] + 1)
+        bottom_span_end = side_start_col + max(4, len(bottom_rank_df.columns) - 1)
+        if bottom_span_end <= 11:
+            ws.merge_range(row, side_start_col, row, 11, bottom_title, formats["section"])
+            bottom_rank_df.to_excel(writer, sheet_name=sheet_name, startrow=row + 2, startcol=side_start_col, index=False)
+            ws.set_row(row + 2, 24, formats["header"])
+            _set_worksheet_widths(ws, bottom_rank_df, startcol=side_start_col, index=False)
+            row = max(top_meta["next_row"], row + len(bottom_rank_df) + 6)
+        else:
+            row = top_meta["next_row"]
+            bottom_meta = _write_df_block(writer, sheet_name, bottom_rank_df, row, bottom_title, formats, index=False, freeze=False)
+            row = bottom_meta["next_row"]
+    if isinstance(weight_df, pd.DataFrame) and not weight_df.empty:
+        top_weight_df = weight_df.head(6).copy()
+        weight_meta = _write_df_block(writer, sheet_name, top_weight_df, row, _xl_text(lang, "Ortalama Ağırlığa Göre Öne Çıkan Kriterler", "Leading Criteria by Average Weight"), formats, index=False, freeze=False)
+        avg_weight_col = col_key(top_weight_df, "OrtalamaAğırlık", "AverageWeight")
+        if avg_weight_col in top_weight_df.columns:
+            _apply_data_bar(ws, weight_meta, top_weight_df, avg_weight_col, color="#7CB342")
+        row = weight_meta["next_row"]
+    row = _write_citation_block(
+        ws,
+        row + 1,
+        f"{_xl_text(lang, 'Önerilen atıf', 'Suggested citation')}: {_SOFTWARE_CITATION}",
+        formats,
+        end_col=11,
+    )
+    ws.set_column(0, 11, 18)
+
+def _excel_col_label(col_idx: int) -> str:
+    col_idx = int(col_idx)
+    label = ""
+    while col_idx >= 0:
+        col_idx, rem = divmod(col_idx, 26)
+        label = chr(65 + rem) + label
+        col_idx -= 1
+    return label
+
+def _excel_cell(row_idx: int, col_idx: int) -> str:
+    return f"{_excel_col_label(col_idx)}{int(row_idx) + 1}"
+
+def _apply_data_bar(
+    ws,
+    meta: Dict[str, int],
+    df: pd.DataFrame,
+    column_name: str,
+    *,
+    color: str = "#5A8FCB",
+) -> None:
+    if meta.get("nrows", 0) <= 0 or column_name not in df.columns:
+        return
+    col_idx = list(df.columns).index(column_name)
+    ws.conditional_format(
+        meta["data_row"],
+        col_idx,
+        meta["data_row"] + meta["nrows"] - 1,
+        col_idx,
+        {"type": "data_bar", "bar_color": color},
+    )
+
+def _apply_heatmap(
+    ws,
+    meta: Dict[str, int],
+    df: pd.DataFrame,
+    *,
+    start_col_name: str | None = None,
+    colors: tuple[str, str, str] = ("#F8D7DA", "#FFF3CD", "#D1E7DD"),
+) -> None:
+    if meta.get("nrows", 0) <= 0 or df.empty:
+        return
+    numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    if not numeric_cols:
+        return
+    if start_col_name and start_col_name in df.columns:
+        start_col = list(df.columns).index(start_col_name)
+        end_col = max(start_col, len(df.columns) - 1)
+    else:
+        start_col = min(list(df.columns).index(numeric_cols[0]), len(df.columns) - 1)
+        end_col = max(list(df.columns).index(c) for c in numeric_cols)
+    ws.conditional_format(
+        meta["data_row"],
+        start_col,
+        meta["data_row"] + meta["nrows"] - 1,
+        end_col,
+        {
+            "type": "3_color_scale",
+            "min_color": colors[0],
+            "mid_color": colors[1],
+            "max_color": colors[2],
+        },
+    )
+
+def _insert_chart(
+    workbook,
+    ws,
+    sheet_name: str,
+    meta: Dict[str, int],
+    df: pd.DataFrame,
+    *,
+    category_col: str,
+    value_col: str,
+    title: str,
+    chart_type: str = "column",
+    anchor_col: int = 11,
+    anchor_row: int | None = None,
+    x_scale: float = 1.12,
+    y_scale: float = 1.05,
+) -> None:
+    if meta.get("nrows", 0) <= 0 or category_col not in df.columns or value_col not in df.columns:
+        return
+    cat_idx = list(df.columns).index(category_col)
+    val_idx = list(df.columns).index(value_col)
+    chart = workbook.add_chart({"type": chart_type})
+    chart.add_series(
+        {
+            "name": title,
+            "categories": [sheet_name, meta["data_row"], cat_idx, meta["data_row"] + meta["nrows"] - 1, cat_idx],
+            "values": [sheet_name, meta["data_row"], val_idx, meta["data_row"] + meta["nrows"] - 1, val_idx],
+            "fill": {"color": "#7FB3D5"},
+            "border": {"color": "#1F4A73"},
+        }
+    )
+    chart.set_title({"name": title})
+    chart.set_legend({"none": True})
+    chart.set_style(10)
+    ws.insert_chart(_excel_cell(anchor_row if anchor_row is not None else meta["header_row"], anchor_col), chart, {"x_scale": x_scale, "y_scale": y_scale})
+
 def generate_excel(result: Dict[str, Any], selected_data: pd.DataFrame, lang: str = "TR") -> bytes:
     output = io.BytesIO()
-    sheet_map = (
-        {"decision": "Decision_Matrix", "stats": "Statistics", "weights": "Weights", "ranking": "Ranking"}
-        if lang == "EN"
-        else {"decision": "Karar_Matrisi", "stats": "Istatistikler", "weights": "Agirliklar", "ranking": "Siralama"}
-    )
+    used_names: set[str] = set()
+    cover_name = _safe_sheet_name(_xl_text(lang, "Kapak", "Cover"), used_names)
+    raw_name = _safe_sheet_name(_xl_text(lang, "Ham Veri", "Raw Data"), used_names)
+
+    decision_df = _decision_matrix_export_df(selected_data, lang)
+    stats_raw = result.get("stats")
+    stats_df = localize_df_lang(stats_raw.copy(), lang) if isinstance(stats_raw, pd.DataFrame) else pd.DataFrame()
+    weight_df = _weight_analysis_export_df(result, lang)
+    ranking_raw = (result.get("ranking") or {}).get("table")
+    ranking_df = localize_df_lang(ranking_raw.copy(), lang) if isinstance(ranking_raw, pd.DataFrame) else pd.DataFrame()
+    comparison = result.get("comparison") or {}
+    comparison_raw = comparison.get("spearman_matrix")
+    comparison_df = localize_df_lang(comparison_raw.copy(), lang) if isinstance(comparison_raw, pd.DataFrame) else pd.DataFrame()
+    sensitivity_raw = (result.get("sensitivity") or {}).get("monte_carlo_summary")
+    sensitivity_df = localize_df_lang(sensitivity_raw.copy(), lang) if isinstance(sensitivity_raw, pd.DataFrame) else pd.DataFrame()
+    local_sensitivity_raw = (result.get("sensitivity") or {}).get("local_scenarios")
+    local_sensitivity_df = localize_df_lang(local_sensitivity_raw.copy(), lang) if isinstance(local_sensitivity_raw, pd.DataFrame) else pd.DataFrame()
+    ranking_details = (result.get("ranking") or {}).get("details", {}) or {}
+    comparison_method_inference_df = localize_df_lang(_comparison_method_inference_df(result, lang), lang)
+
+    weight_method = str((result.get("weights") or {}).get("method") or _xl_text(lang, "Ağırlık", "Weight")).strip()
+    ranking_method = str((result.get("ranking") or {}).get("method") or "").strip()
+    weight_sheet_name = _safe_sheet_name(f"{weight_method} {_xl_text(lang, 'Analizi', 'Analysis')}", used_names)
+    ranking_sheet_name = _safe_sheet_name(f"{ranking_method} {_xl_text(lang, 'Sonuçları', 'Results')}", used_names) if ranking_method else None
+    compromise_sheet_name = _safe_sheet_name(_xl_text(lang, "Uzlaşı Koşulları", "Compromise Conditions"), used_names) if ("VIKOR" in ranking_method.upper()) else None
+    comparison_sheet_name = _safe_sheet_name(_xl_text(lang, "Yöntem Karşılaştırması", "Method Comparison"), used_names) if isinstance(comparison_df, pd.DataFrame) and not comparison_df.empty else None
+    sensitivity_sheet_name = _safe_sheet_name(_xl_text(lang, "Duyarlılık Analizi", "Sensitivity Analysis"), used_names) if (
+        (isinstance(sensitivity_df, pd.DataFrame) and not sensitivity_df.empty)
+        or (isinstance(local_sensitivity_df, pd.DataFrame) and not local_sensitivity_df.empty)
+    ) else None
+    summary_sheet_name = _safe_sheet_name(_xl_text(lang, "Özet Bulgular", "Summary Findings"), used_names)
+
+    weight_detail_tables: List[tuple[str, pd.DataFrame]] = []
+    for key, value in ((result.get("weights") or {}).get("details", {}) or {}).items():
+        if key == "weight_table":
+            continue
+        df = _coerce_excel_frame(value, key, lang)
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            weight_detail_tables.append((key, df))
+
+    ranking_detail_tables: List[tuple[str, pd.DataFrame]] = []
+    for key, value in ((result.get("ranking") or {}).get("details", {}) or {}).items():
+        if key in {"result_table", "score_direction"}:
+            continue
+        df = _coerce_excel_frame(value, key, lang)
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            ranking_detail_tables.append((key, df))
+
+    comparison_detail_tables: List[tuple[str, pd.DataFrame]] = []
+    for key in ["rank_table", "score_table", "top_alternatives"]:
+        df = _coerce_excel_frame(comparison.get(key), key, lang)
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            comparison_detail_tables.append((key, df))
+    for method_name, value in (comparison.get("method_tables") or {}).items():
+        df = _coerce_excel_frame(value, method_name, lang)
+        if isinstance(df, pd.DataFrame) and not df.empty:
+            comparison_detail_tables.append((method_name, df))
+
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        localize_df_lang(selected_data, lang).to_excel(writer, sheet_name=sheet_map["decision"])
-        localize_df_lang(result["stats"], lang).to_excel(writer, sheet_name=sheet_map["stats"], index=False)
-        localize_df_lang(result["weights"]["table"], lang).to_excel(writer, sheet_name=sheet_map["weights"], index=False)
-        if result["ranking"]["table"] is not None:
-            localize_df_lang(result["ranking"]["table"], lang).to_excel(writer, sheet_name=sheet_map["ranking"], index=False)
         workbook = writer.book
-        fmt = workbook.add_format({"bold": True, "bg_color": "#1d3557", "font_color": "white"})
-        for ws in writer.sheets.values():
-            ws.freeze_panes(1, 0)
-            ws.set_row(0, 22, fmt)
-            ws.set_column(0, 18, 18)
+        formats = _excel_formats(workbook)
+        sheet_names = [cover_name, raw_name, weight_sheet_name]
+        if ranking_sheet_name:
+            sheet_names.append(ranking_sheet_name)
+        if compromise_sheet_name:
+            sheet_names.append(compromise_sheet_name)
+        if comparison_sheet_name:
+            sheet_names.append(comparison_sheet_name)
+        if sensitivity_sheet_name:
+            sheet_names.append(sensitivity_sheet_name)
+        sheet_names.append(summary_sheet_name)
+        for sheet_name in sheet_names:
+            writer.sheets[sheet_name] = workbook.add_worksheet(sheet_name)
+
+        _write_single_cover_sheet(writer, cover_name, result, selected_data, lang, formats)
+        _write_raw_data_sheet(
+            writer,
+            raw_name,
+            decision_df,
+            _xl_text(lang, "Ham Veri", "Raw Data"),
+            _xl_text(lang, "Analizde kullanılan karar matrisi ve temizlenmiş giriş tablosu", "Decision matrix and cleaned input table used in the analysis"),
+            lang,
+            formats,
+        )
+
+        weight_ws = writer.sheets[weight_sheet_name]
+        weight_ws.set_column(10, 18, 15)
+        weight_row = _write_sheet_banner(
+            weight_ws,
+            f"{weight_method} {_xl_text(lang, 'Analizi', 'Analysis')}",
+            _xl_text(lang, "Kriter ağırlıklarının dağılımı ve yöntem özel hesaplama çıktıları", "Criterion-weight distribution and method-specific calculation outputs"),
+            formats,
+            end_col=11,
+        )
+        weight_meta = _write_df_block(writer, weight_sheet_name, weight_df, weight_row, _xl_text(lang, "Kriter Ağırlık Tablosu", "Criterion Weight Table"), formats, index=False, freeze=True)
+        if weight_meta["nrows"] > 0:
+            _apply_data_bar(weight_ws, weight_meta, weight_df, col_key(weight_df, "Ağırlık", "Weight"), color="#5A8FCB")
+            pct_col = _xl_text(lang, "Ağırlık %", "Weight %")
+            if pct_col in weight_df.columns:
+                _apply_data_bar(weight_ws, weight_meta, weight_df, pct_col, color="#7CB342")
+            _insert_chart(
+                workbook,
+                weight_ws,
+                weight_sheet_name,
+                {"data_row": weight_meta["data_row"], "nrows": min(weight_meta["nrows"], 10), "header_row": weight_meta["header_row"]},
+                weight_df.head(10),
+                category_col=col_key(weight_df, "Kriter", "Criterion"),
+                value_col=col_key(weight_df, "Ağırlık", "Weight"),
+                title=_xl_text(lang, "Kriter Ağırlıkları", "Criterion Weights"),
+                chart_type="column",
+                anchor_col=10,
+                anchor_row=3,
+            )
+        weight_row = max(weight_meta["next_row"], 28)
+        for key, df in weight_detail_tables[:4]:
+            meta = _write_df_block(writer, weight_sheet_name, df, weight_row, str(key), formats, index=False, freeze=False)
+            if "corr" in str(key).lower() or "matrix" in str(key).lower():
+                _apply_heatmap(weight_ws, meta, df)
+            weight_row = meta["next_row"]
+        weight_row = _write_layer_insight_block(
+            weight_ws,
+            weight_row,
+            _xl_text(lang, "Ağırlık yöntemi iç çıkarsama", "Weight-method inference"),
+            _weight_layers_for_excel(result),
+            lang,
+            formats,
+            end_col=11,
+        )
+        _write_citation_block(weight_ws, weight_row + 1, f"{_xl_text(lang, 'Önerilen atıf', 'Suggested citation')}: {_SOFTWARE_CITATION}", formats, end_col=11)
+
+        if ranking_sheet_name:
+            ranking_ws = writer.sheets[ranking_sheet_name]
+            ranking_ws.set_column(10, 18, 15)
+            ranking_row = _write_sheet_banner(
+                ranking_ws,
+                f"{ranking_method} {_xl_text(lang, 'Sonuçları', 'Results')}",
+                _xl_text(lang, "Alternatif skorları, sıralar ve yöntem özel çıktı tabloları", "Alternative scores, ranks, and method-specific output tables"),
+                formats,
+                end_col=11,
+            )
+            if isinstance(ranking_df, pd.DataFrame) and not ranking_df.empty:
+                rank_meta = _write_df_block(writer, ranking_sheet_name, ranking_df, ranking_row, _xl_text(lang, "Sıralama Tablosu", "Ranking Table"), formats, index=False, freeze=True)
+                _apply_data_bar(ranking_ws, rank_meta, ranking_df, col_key(ranking_df, "Skor", "Score"), color="#5E81AC")
+                _insert_chart(
+                    workbook,
+                    ranking_ws,
+                    ranking_sheet_name,
+                    {"data_row": rank_meta["data_row"], "nrows": min(rank_meta["nrows"], 10), "header_row": rank_meta["header_row"]},
+                    ranking_df.head(10),
+                    category_col=col_key(ranking_df, "Alternatif", "Alternative"),
+                    value_col=col_key(ranking_df, "Skor", "Score"),
+                    title=_xl_text(lang, "İlk Alternatiflerin Skorları", "Scores of Top Alternatives"),
+                    chart_type="bar",
+                    anchor_col=10,
+                    anchor_row=3,
+                )
+                ranking_row = max(rank_meta["next_row"], 28)
+            if isinstance(stats_df, pd.DataFrame) and not stats_df.empty:
+                stats_meta = _write_df_block(writer, ranking_sheet_name, stats_df, ranking_row, _xl_text(lang, "Tanımlayıcı İstatistikler", "Descriptive Statistics"), formats, index=False, freeze=False)
+                _apply_heatmap(ranking_ws, stats_meta, stats_df)
+                ranking_row = stats_meta["next_row"]
+            for key, df in ranking_detail_tables[:4]:
+                meta = _write_df_block(writer, ranking_sheet_name, df, ranking_row, str(key), formats, index=False, freeze=False)
+                if "matrix" in str(key).lower():
+                    _apply_heatmap(ranking_ws, meta, df)
+                ranking_row = meta["next_row"]
+            ranking_row = _write_layer_insight_block(
+                ranking_ws,
+                ranking_row,
+                _xl_text(lang, "Sıralama yöntemi iç çıkarsama", "Ranking-method inference"),
+                _ranking_layers_for_excel(ranking_method, (result.get("ranking") or {}).get("table"), (result.get("weights") or {}).get("values") or {}),
+                lang,
+                formats,
+                end_col=11,
+            )
+            _write_citation_block(ranking_ws, ranking_row + 1, f"{_xl_text(lang, 'Önerilen atıf', 'Suggested citation')}: {_SOFTWARE_CITATION}", formats, end_col=11)
+
+        if compromise_sheet_name:
+            _write_vikor_compromise_sheet(
+                writer,
+                compromise_sheet_name,
+                ranking_method,
+                ranking_details,
+                result,
+                lang,
+                formats,
+            )
+
+        if comparison_sheet_name:
+            comparison_ws = writer.sheets[comparison_sheet_name]
+            comparison_row = _write_sheet_banner(
+                comparison_ws,
+                _xl_text(lang, "Yöntem Karşılaştırması", "Method Comparison"),
+                _xl_text(lang, "Farklı yöntemlerin sıralama uyumu ve karşılaştırmalı sonuçları", "Ranking agreement and comparative outcomes across methods"),
+                formats,
+                end_col=11,
+            )
+            comp_meta = _write_df_block(writer, comparison_sheet_name, comparison_df, comparison_row, _xl_text(lang, "Spearman Uyum Matrisi", "Spearman Agreement Matrix"), formats, index=False, freeze=True)
+            _apply_heatmap(comparison_ws, comp_meta, comparison_df)
+            comparison_row = comp_meta["next_row"]
+            for key, df in comparison_detail_tables[:4]:
+                meta = _write_df_block(writer, comparison_sheet_name, df, comparison_row, str(key), formats, index=False, freeze=False)
+                if "matrix" in str(key).lower():
+                    _apply_heatmap(comparison_ws, meta, df)
+                comparison_row = meta["next_row"]
+            comparison_row = _write_layer_insight_block(
+                comparison_ws,
+                comparison_row,
+                _xl_text(lang, "Yöntem karşılaştırması yorumu", "Method-comparison interpretation"),
+                _comparison_layers_for_excel(result),
+                lang,
+                formats,
+                end_col=11,
+            )
+            if isinstance(comparison_method_inference_df, pd.DataFrame) and not comparison_method_inference_df.empty:
+                comparison_meta = _write_df_block(
+                    writer,
+                    comparison_sheet_name,
+                    comparison_method_inference_df,
+                    comparison_row,
+                    _xl_text(lang, "Yöntem bazlı iç çıkarsamalar", "Method-specific inferences"),
+                    formats,
+                    index=False,
+                    freeze=False,
+                )
+                comparison_row = comparison_meta["next_row"]
+            _write_citation_block(comparison_ws, comparison_row + 1, f"{_xl_text(lang, 'Önerilen atıf', 'Suggested citation')}: {_SOFTWARE_CITATION}", formats, end_col=11)
+
+        if sensitivity_sheet_name:
+            sensitivity_ws = writer.sheets[sensitivity_sheet_name]
+            sensitivity_row = _write_sheet_banner(
+                sensitivity_ws,
+                _xl_text(lang, "Duyarlılık Analizi", "Sensitivity Analysis"),
+                _xl_text(lang, "Monte Carlo sonuçları ve kriter bazlı yerel duyarlılık çıktıları", "Monte Carlo outputs and criterion-level local sensitivity results"),
+                formats,
+                end_col=11,
+            )
+            if isinstance(sensitivity_df, pd.DataFrame) and not sensitivity_df.empty:
+                sens_meta = _write_df_block(writer, sensitivity_sheet_name, sensitivity_df, sensitivity_row, _xl_text(lang, "Monte Carlo Özeti", "Monte Carlo Summary"), formats, index=False, freeze=True)
+                fp_col = _xl_text(lang, "BirincilikOranı", "FirstPlaceRate")
+                if fp_col in sensitivity_df.columns:
+                    _apply_data_bar(sensitivity_ws, sens_meta, sensitivity_df, fp_col, color="#7CB342")
+                _apply_heatmap(sensitivity_ws, sens_meta, sensitivity_df)
+                sensitivity_row = sens_meta["next_row"]
+            if isinstance(local_sensitivity_df, pd.DataFrame) and not local_sensitivity_df.empty:
+                local_meta = _write_df_block(writer, sensitivity_sheet_name, local_sensitivity_df, sensitivity_row, _xl_text(lang, "Yerel Duyarlılık", "Local Sensitivity"), formats, index=False, freeze=False)
+                _apply_heatmap(sensitivity_ws, local_meta, local_sensitivity_df)
+                sensitivity_row = local_meta["next_row"]
+            sensitivity_row = _write_layer_insight_block(
+                sensitivity_ws,
+                sensitivity_row,
+                _xl_text(lang, "Duyarlılık yorumu", "Sensitivity interpretation"),
+                _sensitivity_layers_for_excel(result),
+                lang,
+                formats,
+                end_col=11,
+            )
+            _write_citation_block(sensitivity_ws, sensitivity_row + 1, f"{_xl_text(lang, 'Önerilen atıf', 'Suggested citation')}: {_SOFTWARE_CITATION}", formats, end_col=11)
+
+        _write_single_summary_sheet(
+            writer,
+            summary_sheet_name,
+            result,
+            weight_df,
+            ranking_df,
+            comparison_df,
+            sensitivity_df,
+            lang,
+            formats,
+        )
+
     return output.getvalue()
 
 def _panel_summary_rows(panel_results: Dict[str, Dict[str, Any]]) -> pd.DataFrame:
@@ -2423,31 +4826,189 @@ def _panel_weight_matrix(panel_results: Dict[str, Dict[str, Any]]) -> pd.DataFra
             matrix[col] = pd.to_numeric(matrix[col], errors="coerce").round(4)
     return matrix
 
+def _write_panel_cover_sheet(writer, sheet_name: str, panel_results: Dict[str, Dict[str, Any]], lang: str, formats) -> None:
+    ws = writer.sheets[sheet_name]
+    first_result = next(iter(panel_results.values()))
+    year_labels = list(panel_results.keys())
+    title = str(st.session_state.get("study_title", "") or "").strip() or _xl_text(lang, "Panel Analiz Raporu", "Panel Analysis Report")
+    subtitle = f"{_excel_method_chain((first_result.get('weights') or {}).get('method'), (first_result.get('ranking') or {}).get('method'), lang)} {_xl_text(lang, 'Panel Analiz Raporu', 'Panel Analysis Report')}"
+    ws.merge_range("B2:J3", title, formats["cover_title"])
+    ws.merge_range("B4:J4", subtitle, formats["cover_badge"])
+    rank_matrix = _panel_rank_matrix(panel_results)
+    meta_rows = [
+        (_xl_text(lang, "Yöntem", "Method"), _excel_method_chain((first_result.get("weights") or {}).get("method"), (first_result.get("ranking") or {}).get("method"), lang)),
+        (_xl_text(lang, "Dönem sayısı", "Number of periods"), len(year_labels)),
+        (_xl_text(lang, "Dönemler", "Periods"), ", ".join(map(str, year_labels))),
+        (_xl_text(lang, "İzlenen alternatif sayısı", "Tracked alternatives"), int(rank_matrix.shape[0]) if isinstance(rank_matrix, pd.DataFrame) else 0),
+        (_xl_text(lang, "Oluşturulma zamanı", "Generated at"), pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")),
+    ]
+    row = 7
+    for label, value in meta_rows:
+        ws.write(row, 1, label, formats["cover_label_card"])
+        ws.merge_range(row, 3, row, 9, value, formats["cover_value_card"])
+        row += 2
+    first_sections = _build_doc_sections(first_result, lang)
+    ws.write(row + 1, 1, _xl_text(lang, "Çalışmanın amacı", "Objective"), formats["section"])
+    ws.merge_range(
+        row + 2,
+        1,
+        row + 6,
+        9,
+        str(first_sections.get(_xl_text(lang, "Çalışmanın Amacı", "Objective of the Study"), "") or ""),
+        formats["text_block"],
+    )
+    _write_citation_block(
+        ws,
+        row + 8,
+        f"{_xl_text(lang, 'Önerilen atıf', 'Suggested citation')}: {_SOFTWARE_CITATION}",
+        formats,
+        end_col=9,
+    )
+    ws.set_column(1, 8, 18)
+
 def generate_panel_excel(panel_results: Dict[str, Dict[str, Any]], lang: str = "TR") -> bytes:
     output = io.BytesIO()
-    summary = _panel_summary_rows(panel_results)
+    used_names: set[str] = set()
+    cover_name = _safe_sheet_name(_xl_text(lang, "Kapak", "Cover"), used_names)
+    raw_name = _safe_sheet_name(_xl_text(lang, "Ham Veri", "Raw Data"), used_names)
+    summary_name = _safe_sheet_name(_xl_text(lang, "Panel_Ozet", "Panel_Summary"), used_names)
+    matrix_name = _safe_sheet_name(_xl_text(lang, "Panel_Matris", "Panel_Matrix"), used_names)
+    findings_name = _safe_sheet_name(_xl_text(lang, "Özet Bulgular", "Summary Findings"), used_names)
+
+    summary_df = localize_df_lang(_panel_summary_rows(panel_results), lang)
+    rank_df = localize_df_lang(_panel_rank_matrix(panel_results), lang)
+    score_df = localize_df_lang(_panel_score_matrix(panel_results), lang)
+    weight_df = localize_df_lang(_panel_weight_matrix(panel_results), lang)
+    raw_df = _panel_raw_data_export_df(panel_results, lang)
+
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        localize_df_lang(summary, lang).to_excel(
-            writer,
-            sheet_name=("Panel_Summary" if lang == "EN" else "Panel_Ozet"),
-            index=False,
-        )
-        for year_label, year_result in panel_results.items():
-            prefix = str(year_label)[:12]
-            selected = year_result.get("selected_data", pd.DataFrame())
-            localize_df_lang(selected, lang).to_excel(writer, sheet_name=f"{prefix}_Data"[:31], index=False)
-            localize_df_lang(year_result["weights"]["table"], lang).to_excel(writer, sheet_name=f"{prefix}_W"[:31], index=False)
-            if year_result.get("ranking", {}).get("table") is not None:
-                localize_df_lang(year_result["ranking"]["table"], lang).to_excel(writer, sheet_name=f"{prefix}_R"[:31], index=False)
-            mc_df = (year_result.get("sensitivity") or {}).get("monte_carlo_summary")
-            if isinstance(mc_df, pd.DataFrame) and not mc_df.empty:
-                localize_df_lang(mc_df, lang).to_excel(writer, sheet_name=f"{prefix}_MC"[:31], index=False)
         workbook = writer.book
-        fmt = workbook.add_format({"bold": True, "bg_color": "#1d3557", "font_color": "white"})
-        for ws in writer.sheets.values():
-            ws.freeze_panes(1, 0)
-            ws.set_row(0, 22, fmt)
-            ws.set_column(0, 18, 18)
+        formats = _excel_formats(workbook)
+        for sheet_name in [cover_name, raw_name, summary_name, matrix_name, findings_name]:
+            writer.sheets[sheet_name] = workbook.add_worksheet(sheet_name)
+
+        _write_panel_cover_sheet(writer, cover_name, panel_results, lang, formats)
+        _write_raw_data_sheet(
+            writer,
+            raw_name,
+            raw_df,
+            _xl_text(lang, "Ham Veri", "Raw Data"),
+            _xl_text(lang, "Panel analizinde kullanılan dönemsel karar matrisi", "Period-wise decision matrix used in the panel analysis"),
+            lang,
+            formats,
+        )
+        summary_ws = writer.sheets[summary_name]
+        summary_ws.set_column(11, 19, 15)
+        summary_ws.freeze_panes(2, 0)
+        summary_start = _write_sheet_banner(
+            summary_ws,
+            _xl_text(lang, "Panel Sonuç Özeti", "Panel Result Summary"),
+            _xl_text(lang, "Dönem liderleri, skor eğilimleri ve genel panel görünümü", "Period leaders, score trends, and the overall panel view"),
+            formats,
+            end_col=11,
+        )
+        matrix_ws = writer.sheets[matrix_name]
+        matrix_ws.set_column(0, 12, 15)
+        matrix_ws.freeze_panes(2, 0)
+        matrix_start = _write_sheet_banner(
+            matrix_ws,
+            _xl_text(lang, "Panel Matrisleri", "Panel Matrices"),
+            _xl_text(lang, "Yıllara göre sıralama, skor ve ağırlık değişim tabloları", "Year-by-year ranking, score, and weight change tables"),
+            formats,
+            end_col=11,
+        )
+
+        summary_meta = _write_df_block(
+            writer,
+            summary_name,
+            summary_df,
+            summary_start,
+            _xl_text(lang, "Panel Sonuç Özeti Tablosu", "Panel Summary Table"),
+            formats,
+            index=False,
+            freeze=False,
+        )
+        _apply_data_bar(summary_ws, summary_meta, summary_df, col_key(summary_df, "LiderSkor", "TopScore"), color="#5E81AC")
+        _apply_data_bar(summary_ws, summary_meta, summary_df, col_key(summary_df, "LiderKararlılığı", "LeaderStability"), color="#7CB342")
+        _insert_chart(
+            workbook,
+            summary_ws,
+            summary_name,
+            summary_meta,
+            summary_df,
+            category_col=col_key(summary_df, "Yıl", "Year"),
+            value_col=col_key(summary_df, "LiderSkor", "TopScore"),
+            title=_xl_text(lang, "Yıllara Göre Lider Skoru", "Leader Score by Period"),
+            chart_type="line",
+            anchor_col=11,
+            anchor_row=1,
+        )
+        if isinstance(score_df, pd.DataFrame) and not score_df.empty and col_key(score_df, "Alternatif", "Alternative") in score_df.columns:
+            _insert_chart(
+                workbook,
+                summary_ws,
+                summary_name,
+                {"data_row": summary_meta["data_row"], "nrows": min(8, len(score_df)), "header_row": summary_meta["header_row"]},
+                score_df.head(8),
+                category_col=col_key(score_df, "Alternatif", "Alternative"),
+                value_col=col_key(score_df, "OrtalamaSkor", "AverageScore"),
+                title=_xl_text(lang, "Ortalama Skora Göre İlk Alternatifler", "Top Alternatives by Average Score"),
+                chart_type="bar",
+                anchor_col=11,
+                anchor_row=20,
+            )
+        _write_citation_block(summary_ws, max(summary_meta["next_row"], 34), f"{_xl_text(lang, 'Önerilen atıf', 'Suggested citation')}: {_SOFTWARE_CITATION}", formats, end_col=11)
+
+        matrix_row = matrix_start
+        rank_meta = _write_df_block(
+            writer,
+            matrix_name,
+            rank_df,
+            matrix_row,
+            _xl_text(lang, "Alternatiflerin Yıllara Göre Sıraları", "Alternative Ranks by Period"),
+            formats,
+            index=False,
+            freeze=False,
+        )
+        _apply_heatmap(matrix_ws, rank_meta, rank_df)
+        matrix_row = rank_meta["next_row"]
+
+        score_meta = _write_df_block(
+            writer,
+            matrix_name,
+            score_df,
+            matrix_row,
+            _xl_text(lang, "Alternatiflerin Yıllara Göre Skorları", "Alternative Scores by Period"),
+            formats,
+            index=False,
+            freeze=False,
+        )
+        _apply_heatmap(matrix_ws, score_meta, score_df)
+        matrix_row = score_meta["next_row"]
+
+        weight_meta = _write_df_block(
+            writer,
+            matrix_name,
+            weight_df,
+            matrix_row,
+            _xl_text(lang, "Kriter Ağırlıklarının Yıllara Göre Değişimi", "Criterion Weights by Period"),
+            formats,
+            index=False,
+            freeze=False,
+        )
+        _apply_heatmap(matrix_ws, weight_meta, weight_df)
+        _write_citation_block(matrix_ws, weight_meta["next_row"], f"{_xl_text(lang, 'Önerilen atıf', 'Suggested citation')}: {_SOFTWARE_CITATION}", formats, end_col=11)
+        _write_panel_summary_findings_sheet(
+            writer,
+            findings_name,
+            panel_results,
+            summary_df,
+            rank_df,
+            weight_df,
+            lang,
+            formats,
+        )
+
     return output.getvalue()
 
 def generate_panel_apa_docx(panel_results: Dict[str, Dict[str, Any]], lang: str = "TR") -> bytes | None:
@@ -2557,16 +5118,130 @@ def generate_panel_apa_docx(panel_results: Dict[str, Dict[str, Any]], lang: str 
     return buffer.getvalue()
 
 def _download_signature(result: Dict[str, Any] | None, panel_results: Dict[str, Dict[str, Any]] | None) -> tuple:
+    study_title = str(st.session_state.get("study_title", "") or "").strip()
     if isinstance(panel_results, dict) and panel_results:
         years = tuple(str(y) for y in panel_results.keys())
         base_time = result.get("analysis_time") if isinstance(result, dict) else None
-        return ("panel", years, base_time)
+        return ("panel", years, base_time, study_title)
     if not isinstance(result, dict):
-        return ("none",)
+        return ("none", study_title)
     wm = (result.get("weights") or {}).get("method")
     rm = (result.get("ranking") or {}).get("method")
     shape = tuple(result.get("selected_data", pd.DataFrame()).shape)
-    return ("single", wm, rm, result.get("analysis_time"), shape)
+    return ("single", wm, rm, result.get("analysis_time"), shape, study_title)
+
+def _render_report_download_controls_core(lang: str) -> None:
+    result = st.session_state.get("analysis_result")
+    panel_results = st.session_state.get("panel_results")
+    if not isinstance(result, dict):
+        return
+
+    is_panel_download = isinstance(panel_results, dict) and bool(panel_results)
+    download_sig = _download_signature(result, panel_results)
+    if st.session_state.get("download_blob_sig") != download_sig:
+        st.session_state["download_blob_sig"] = download_sig
+        st.session_state["download_blob_cache"] = {}
+
+    blob_cache = dict(st.session_state.get("download_blob_cache") or {})
+    excel_key = f"excel::{lang}"
+    excel_title = (
+        _export_study_title(result, lang)
+        if not is_panel_download
+        else (str(st.session_state.get("study_title", "") or "").strip() or _xl_text(lang, "Panel Analiz Raporu", "Panel Analysis Report"))
+    )
+    excel_filename = _export_file_name(excel_title, lang, "xlsx")
+    excel_download_name = _browser_safe_download_name(excel_filename, "MCDM_Results.xlsx")
+    key_suffix = f"{lang.lower()}_{abs(hash(download_sig))}"
+
+    if excel_key not in blob_cache:
+        try:
+            if is_panel_download:
+                blob_cache[excel_key] = generate_panel_excel(panel_results, lang=lang)
+            else:
+                selected_data = result.get("selected_data", pd.DataFrame())
+                blob_cache[excel_key] = generate_excel(result, selected_data, lang=lang)
+        except Exception as exc:
+            st.error(tt("Excel çıktısı oluşturulamadı.", "Excel output could not be created."))
+            st.caption(tt(f"Hata kodu: {_safe_error_code(exc)}", f"Error code: {_safe_error_code(exc)}"))
+            st.session_state["download_blob_cache"] = blob_cache
+            return
+    st.session_state["download_blob_cache"] = blob_cache
+
+    doc_key = f"docx::{lang}"
+    doc_bytes = None
+    if DOCX_AVAILABLE:
+        if doc_key not in blob_cache:
+            try:
+                selected_data = result.get("selected_data", pd.DataFrame())
+                blob_cache[doc_key] = (
+                    generate_panel_apa_docx(panel_results, lang=lang)
+                    if is_panel_download
+                    else generate_apa_docx(result, selected_data, lang=lang)
+                )
+            except Exception as exc:
+                st.error(tt("Word çıktısı oluşturulamadı.", "Word output could not be created."))
+                st.caption(tt(f"Hata kodu: {_safe_error_code(exc)}", f"Error code: {_safe_error_code(exc)}"))
+                st.session_state["report_docx"] = None
+                st.session_state["download_blob_cache"] = blob_cache
+                return
+        doc_bytes = blob_cache.get(doc_key)
+        st.session_state["report_docx"] = doc_bytes
+        st.session_state["download_blob_cache"] = blob_cache
+
+    dl1, dl2 = st.columns(2)
+    with dl1:
+        if st.button(
+            tt("📊 Tüm Sonuçları Kaydet (Excel)", "📊 Save All Results (Excel)"),
+            width="stretch",
+            key=f"save_excel_{key_suffix}",
+        ):
+            try:
+                excel_path = _save_export_blob(blob_cache[excel_key], excel_download_name)
+                st.success(
+                    tt(
+                        f"Excel dosyası kaydedildi: {excel_path}",
+                        f"Excel file saved: {excel_path}",
+                    )
+                )
+            except Exception as exc:
+                st.error(tt("Excel dosyası kaydedilemedi.", "Excel file could not be saved."))
+                st.caption(tt(f"Hata kodu: {_safe_error_code(exc)}", f"Error code: {_safe_error_code(exc)}"))
+        st.caption(
+            tt(
+                "Dosya tarayıcı indirmesi yerine yerel export klasörüne kaydedilir.",
+                "The file is saved to a local export folder instead of using browser download.",
+            )
+        )
+
+    with dl2:
+        if DOCX_AVAILABLE:
+            docx_name = _browser_safe_download_name(
+                tt("MCDM_Akademik_Rapor.docx", "MCDM_Academic_Report.docx"),
+                "MCDM_Academic_Report.docx",
+            )
+            if st.button(
+                tt("📄 Akademik Raporu Kaydet — APA Word", "📄 Save Academic Report — APA Word"),
+                width="stretch",
+                key=f"save_docx_{key_suffix}",
+            ):
+                try:
+                    docx_path = _save_export_blob(doc_bytes, docx_name)
+                    st.success(
+                        tt(
+                            f"Word dosyası kaydedildi: {docx_path}",
+                            f"Word file saved: {docx_path}",
+                        )
+                    )
+                except Exception as exc:
+                    st.error(tt("Word dosyası kaydedilemedi.", "Word file could not be saved."))
+                    st.caption(tt(f"Hata kodu: {_safe_error_code(exc)}", f"Error code: {_safe_error_code(exc)}"))
+        else:
+            st.warning(tt("Word çıktısı için python-docx kurulu olmalıdır.", "python-docx must be installed for Word output."))
+
+if hasattr(st, "fragment"):
+    _render_report_download_controls = st.fragment(_render_report_download_controls_core)
+else:
+    _render_report_download_controls = _render_report_download_controls_core
 
 def _run_single_analysis_bundle(
     data_slice: pd.DataFrame,
@@ -4212,17 +6887,25 @@ with st.sidebar:
     if _new_lang != st.session_state.get("ui_lang"):
         st.session_state["ui_lang"] = _new_lang
         st.rerun()
+    st.checkbox(
+        tt("Detay rehberini göster", "Show guidance details"),
+        key="show_step_guidance",
+        help=tt(
+            "Kapalıyken adım açıklamaları ve özet kartları daha sade görünür.",
+            "When off, step descriptions and summary cards stay more minimal.",
+        ),
+    )
 
     with st.expander(tt("📘 Uygulama Rehberi", "📘 User Guide"), expanded=False):
         st.markdown(
             f"<p style='font-size:0.78rem; line-height:1.55; color:#2C2C2C; margin:0;'>"
-            f"{tt('1️⃣ Sol panelden veriyi yükleyin veya örnek veriyi kullanın.<br>'
+            f"{tt('1️⃣ Sağ paneldeki veri girişi alanından dosya yükleyin, örnek veriyi kullanın veya manuel tabloya geçin.<br>'
                   '2️⃣ Sağ panelde analiz amacını seçin.<br>'
                   '3️⃣ Kriterlerin yönünü (fayda/maliyet) doğrulayın.<br>'
                   '4️⃣ Ağırlıklandırma ve sıralama yöntemlerini belirleyin.<br>'
                   '5️⃣ &#34;Analiz Zamanı&#34; butonuna basın.<br>'
                   '6️⃣ Sonuçları sekmeler arasında inceleyin ve raporu indirin.',
-                  '1️⃣ Upload data from the left panel or use sample data.<br>'
+                  '1️⃣ In the right-side data input area, upload a file, use sample data, or switch to manual entry.<br>'
                   '2️⃣ Select your analysis objective in the right panel.<br>'
                   '3️⃣ Confirm criterion directions (benefit/cost).<br>'
                   '4️⃣ Select weighting and ranking methods.<br>'
@@ -4271,65 +6954,38 @@ with st.sidebar:
     if st.button(tt("🔄 Yeni Analize Başla (Sıfırla)", "🔄 Start New Analysis (Reset)"), width="stretch"):
         reset_all()
         st.rerun()
-
-    # ── Veri Girişi ──
-    with st.expander(
-        f"📂 {tt('Veri Girişi', 'Data Input')} {'✅' if is_data_loaded else '⏳'}",
-        expanded=not is_data_loaded,
-    ):
-        uploaded = st.file_uploader(
-            tt("CSV veya XLSX yükleyin", "Upload CSV or XLSX"),
-            type=["csv", "xlsx"],
-            label_visibility="collapsed",
-            key=f"data_upload_{st.session_state.get('upload_widget_nonce', 0)}",
+    st.caption(
+        tt(
+            "Veri yükleme alanı sağ panelde yer alır. Veri geldikten sonra bu bölüm otomatik olarak kapanır.",
+            "The data input area is in the right panel. Once data is loaded, that section collapses automatically.",
         )
-        sample_col_1, sample_col_2, sample_col_3 = st.columns(3)
-        with sample_col_1:
-            if st.button(tt("📘 Örnek Veri (TR)", "📘 Sample Data (TR)"), width="stretch", key="btn_sample_tr"):
-                st.session_state["raw_data"] = sample_dataset()
-                st.session_state["data_source_id"] = "sample_data_tr"
-                st.session_state.prep_done = False
-                st.session_state["step1_done"] = False
-                st.rerun()
-        with sample_col_2:
-            if st.button(tt("📗 Örnek Veri (EN)", "📗 Sample Data (EN)"), width="stretch", key="btn_sample_en"):
-                st.session_state["raw_data"] = sample_dataset_en()
-                st.session_state["data_source_id"] = "sample_data_en"
-                st.session_state.prep_done = False
-                st.session_state["step1_done"] = False
-                st.rerun()
-        with sample_col_3:
-            if st.button(tt("📙 Panel Veri (EN)", "📙 Panel Data (EN)"), width="stretch", key="btn_sample_panel_en"):
-                st.session_state["raw_data"] = sample_panel_dataset_en()
-                st.session_state["data_source_id"] = "sample_panel_en"
-                st.session_state.prep_done = False
-                st.session_state["step1_done"] = False
-                st.rerun()
-
-        if uploaded is not None and st.session_state.get("data_source_id") != uploaded.name:
-            try:
-                loaded_df = load_uploaded_file(uploaded)
-            except ValueError as upload_exc:
-                st.error(str(upload_exc))
-            except Exception as upload_exc:
-                st.error(tt("Dosya okunamadı. Lütfen dosya formatını kontrol edip tekrar deneyin.", "File could not be read. Please verify the file format and try again."))
-                st.caption(tt(f"Hata kodu: {_safe_error_code(upload_exc)}", f"Error code: {_safe_error_code(upload_exc)}"))
-            else:
-                st.session_state["raw_data"] = loaded_df
-                st.session_state["data_source_id"] = uploaded.name
-                st.session_state.prep_done = False
-                st.session_state["step1_done"] = False
-                st.rerun()
+    )
 
     # ── Veri Ön İşleme ──
     if is_data_loaded:
         st.markdown(f"<div class='sb-section-label'>🧹 {tt('Veri Ön İşleme', 'Data Preprocessing')}</div>", unsafe_allow_html=True)
-
-        # Session state başlat
-        if "impute_mode_open" not in st.session_state:
-            st.session_state["impute_mode_open"] = False
-        if "missing_strategy_saved" not in st.session_state:
-            st.session_state["missing_strategy_saved"] = "Sil"
+        _method_options = [
+            tt("Medyan", "Median"),
+            tt("Ortalama", "Mean"),
+            tt("Interpolasyon", "Interpolation"),
+            tt("Sıfır", "Zero"),
+        ]
+        _saved_missing = str(st.session_state.get("missing_strategy_saved", "Sil") or "Sil")
+        _saved_to_widget = {
+            "Medyan": tt("Medyan", "Median"),
+            "Median": tt("Medyan", "Median"),
+            "Ortalama": tt("Ortalama", "Mean"),
+            "Mean": tt("Ortalama", "Mean"),
+            "Interpolasyon": tt("Interpolasyon", "Interpolation"),
+            "Interpolation": tt("Interpolasyon", "Interpolation"),
+            "Sıfır": tt("Sıfır", "Zero"),
+            "Zero": tt("Sıfır", "Zero"),
+        }
+        _default_method = _saved_to_widget.get(_saved_missing, _method_options[0])
+        if st.session_state.get("impute_method_select") not in _method_options:
+            st.session_state["impute_method_select"] = _default_method
+        if "cb_clip_outliers" not in st.session_state:
+            st.session_state["cb_clip_outliers"] = bool(st.session_state.get("clip_outliers_saved", False))
 
         impute_checked = st.checkbox(
             tt("Eksik Veri Tamamla", "Impute Missing Values"),
@@ -4343,18 +6999,41 @@ with st.sidebar:
         if impute_checked:
             _impute_method = st.selectbox(
                 tt("Tamamlama yöntemi", "Imputation method"),
-                [tt("Medyan", "Median"), tt("Ortalama", "Mean"), tt("Interpolasyon", "Interpolation"), tt("Sıfır", "Zero")],
+                _method_options,
                 key="impute_method_select",
             )
-            if st.button(tt("✅ Uygula", "✅ Apply"), width="stretch", key="btn_impute_apply"):
-                st.session_state["missing_strategy_saved"] = _impute_method
-                st.rerun()
-            _strat_label = st.session_state["missing_strategy_saved"]
-            st.caption(tt(f"Aktif yöntem: {_strat_label}", f"Active method: {_strat_label}"))
+        else:
+            _impute_method = st.session_state.get("impute_method_select", _default_method)
 
-        missing_strategy = st.session_state["missing_strategy_saved"] if impute_checked else "Sil"
-        clip_outliers = st.checkbox(tt("Aykırı Değerleri (Outlier) Temizle", "Clean Outliers"), value=False)
+        _clip_outliers_selected = st.checkbox(
+            tt("Aykırı Değerleri (Outlier) Temizle", "Clean Outliers"),
+            value=bool(st.session_state.get("cb_clip_outliers", st.session_state.get("clip_outliers_saved", False))),
+            key="cb_clip_outliers",
+        )
         st.caption(tt("Yalnız sayısal sütunlara uygulanır.", "Applied to numeric columns only."))
+        if st.button(tt("✅ Ön İşlemeyi Uygula", "✅ Apply Preprocessing"), width="stretch", key="btn_apply_preprocessing"):
+            st.session_state["missing_strategy_saved"] = _impute_method if impute_checked else "Sil"
+            st.session_state["clip_outliers_saved"] = bool(_clip_outliers_selected)
+            st.session_state["prep_done"] = False
+            st.session_state["analysis_result"] = None
+            st.session_state["panel_results"] = None
+            st.session_state["report_docx"] = None
+            st.session_state["download_blob_cache"] = {}
+            st.session_state["download_blob_sig"] = None
+            st.session_state["clean_data"] = None
+            st.rerun()
+
+        _active_missing = st.session_state.get("missing_strategy_saved", "Sil")
+        _missing_label = _active_missing if _active_missing not in {"Sil", "Drop"} else tt("Kapalı / Sil", "Off / Drop")
+        st.caption(tt(f"Aktif eksik veri ayarı: {_missing_label}", f"Active missing-data setting: {_missing_label}"))
+        st.caption(
+            tt(
+                f"Aktif uç değer temizliği: {'Açık' if st.session_state.get('clip_outliers_saved', False) else 'Kapalı'}",
+                f"Active outlier cleaning: {'On' if st.session_state.get('clip_outliers_saved', False) else 'Off'}",
+            )
+        )
+        missing_strategy = st.session_state.get("missing_strategy_saved", "Sil")
+        clip_outliers = bool(st.session_state.get("clip_outliers_saved", False))
     else:
         missing_strategy, clip_outliers = "Sil", False
 
@@ -4395,7 +7074,7 @@ if raw_data is None:
         f"""
         <div style="text-align:center;padding:4.5rem 1rem 3rem 1rem;">
             <h3 style="color:#1B365D;font-weight:700;font-size:1.6rem;margin-bottom:0.45rem;">{tt("Karar Destek Sistemine Hoş Geldiniz", "Welcome to the Decision Support System")}</h3>
-            <p style="color:#64748B;font-size:1.02rem;max-width:760px;margin:0 auto;line-height:1.65;">{tt("Başlamak için sol panelden veri setinizi yükleyin veya örnek veriyi kullanın. Veri yüklendiğinde analiz amacı, kriter doğrulama ve yöntem seçimi adımları burada görünür olacaktır.", "To begin, upload your dataset from the left panel or use the sample data. Once data is loaded, the analysis objective, criteria validation, and method selection steps will appear here.")}</p>
+            <p style="color:#64748B;font-size:1.02rem;max-width:760px;margin:0 auto;line-height:1.65;">{tt("Başlamak için aşağıdaki veri girişi alanından dosya yükleyin, örnek veriyi kullanın veya manuel tablo seçeneğine geçin. Veri yüklendiğinde üstteki veri girişi alanı kapanır ve analiz adımları burada görünür.", "To begin, use the data input area below to upload a file, use sample data, or switch to manual entry. Once data is loaded, the data input section collapses and the analysis steps appear here.")}</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -4415,7 +7094,53 @@ if raw_data is None:
         """,
         unsafe_allow_html=True,
     )
+_render_data_input_workspace(st.session_state.get("ui_lang", "TR"), raw_data is not None)
+raw_data = st.session_state.get("raw_data")
+if raw_data is None:
     st.stop()
+_ui_stage = _current_ui_stage()
+_loaded_shape = raw_data.shape if isinstance(raw_data, pd.DataFrame) else (0, 0)
+_loaded_numeric_cols = raw_data.select_dtypes(include=[np.number]).columns.tolist() if isinstance(raw_data, pd.DataFrame) else []
+_loaded_year_candidates = _guess_year_columns(raw_data) if isinstance(raw_data, pd.DataFrame) else []
+_loaded_entity_candidates = _guess_entity_columns(raw_data, _loaded_year_candidates[0] if _loaded_year_candidates else None) if isinstance(raw_data, pd.DataFrame) else []
+_render_tracking_panel(
+    tt("Veri Durum Özeti", "Data Status Snapshot"),
+    tt(
+        "Veri doğrulandı. Şimdi çalışma yönünü seçebilirsiniz.",
+        "Data validated. You can now choose the study direction.",
+    ),
+    [
+        (tt("Veri kaynağı", "Data source"), _data_source_label(st.session_state.get("data_source_id")), "green"),
+        (tt("Boyut", "Shape"), f"{_loaded_shape[0]} {tt('satır', 'rows')} · {_loaded_shape[1]} {tt('sütun', 'columns')}", "blue"),
+        (tt("Sayısal aday", "Numeric candidates"), f"{len(_loaded_numeric_cols)} {tt('sütun', 'columns')}", "blue"),
+        (
+            tt("Yapı sinyali", "Structure hint"),
+            tt("Panel veri olasılığı yüksek", "Likely panel-ready")
+            if _loaded_year_candidates
+            else tt("Tek dönem / düz tablo", "Single-period / flat table"),
+            "amber" if _loaded_year_candidates else "slate",
+        ),
+        (
+            tt("Etiket tahmini", "Label guess"),
+            _preview_list_text(_loaded_entity_candidates[:2]) if _loaded_entity_candidates else tt("Otomatik etiketleme", "Automatic labels"),
+            "slate",
+        ),
+    ],
+    note=tt(
+        "Sıradaki adım: amaç ve veri yapısı seçimi.",
+        "Next step: select the objective and data structure.",
+    ),
+    tone="blue",
+    expanded=_ui_stage == "step1",
+    icon="📂",
+)
+if not st.session_state.get("step1_done"):
+    _show_step_hint_once(
+        "stage_objective",
+        "Veri hazır. Şimdi analiz amacınızı ve veri yapınızı belirleyin.",
+        "Your data is ready. Now define the analysis objective and data structure.",
+        icon="📂",
+    )
 _needs_ranking_default = bool(st.session_state.get("needs_ranking", True))
 _purpose_options = [
     tt("⚖️ Kriterleri önem düzeyine göre sıralamak (Yalnızca Ağırlık)", "⚖️ Rank criteria by importance level (Weights Only)"),
@@ -4425,9 +7150,13 @@ _purpose_default_idx = 1 if _needs_ranking_default else 0
 _step1_done = bool(st.session_state.get("step1_done"))
 _step1_label = f"🎯 {tt('1. Adım: Analizi Amacınız Ne?', 'Step 1: What Is Your Analysis Objective?')}{' ✅' if _step1_done else ''}"
 
-with st.expander(_step1_label, expanded=(raw_data is not None) and not _step1_done):
-    st.caption(tt("Bu adımda analiz hedefinizi ve veri yapınızı belirleyin.", "In this step, define your analysis objective and data structure."))
-    st.caption(tt("Tek yıl veya panel veri seçimi, sonraki hesaplama ve çıktı akışını doğrudan değiştirir.", "Your single-year or panel-data choice directly changes the next calculation and output flow."))
+with st.expander(_step1_label, expanded=(raw_data is not None) and (_ui_stage == "step1")):
+    _show_step_caption(
+        "Analiz amacı ve veri yapısını seçin.",
+        "Choose the analysis objective and data structure.",
+        "Tek dönem veya panel seçimi sonraki hesaplama ve çıktı akışını belirler.",
+        "Single-period or panel selection determines the downstream computation and output flow.",
+    )
     st.markdown(
         f"<p style='font-size:0.82rem; color:#5C5650; margin:0 0 0.5rem 0;'>"
         f"{tt('Lütfen bu analizde yapmak istediğiniz işlemi seçin:', 'Please select what you want to accomplish in this analysis:')}"
@@ -4658,10 +7387,67 @@ if panel_mode and isinstance(raw_data, pd.DataFrame):
         panel_entity_col = _guessed_entities[0] if _guessed_entities else _entity_opts[0]
         st.session_state["panel_entity_column"] = panel_entity_col
 
+_step1_scope_summary = tt("Panel veri", "Panel data") if panel_mode else tt("Tek dönem", "Single-period")
+_step1_objective_summary = (
+    tt("Ağırlık + sıralama", "Weights + ranking")
+    if needs_ranking
+    else tt("Yalnızca ağırlık", "Weights only")
+)
+_step1_period_summary = (
+    _preview_list_text(st.session_state.get("panel_selected_years", []), 4)
+    if panel_mode
+    else tt("Panel kullanılmıyor", "Panel not used")
+)
+_step1_strategy_summary = (
+    tt("Yıl bazlı", "Year-specific")
+    if panel_mode and panel_weight_strategy == "yearly"
+    else (tt("Global", "Global") if panel_mode else tt("Gerekli değil", "Not required"))
+)
+_step1_output_summary = (
+    tt("Ağırlık tablosu + alternatif sıralaması", "Weight table + alternative ranking")
+    if needs_ranking
+    else tt("Ağırlık tablosu", "Weight table only")
+)
+_render_tracking_panel(
+    tt("Çalışma Yönü Özeti", "Study Direction Summary"),
+    tt(
+        "Bu seçimler yöntem ve rapor akışını belirler.",
+        "These choices determine the method and reporting flow.",
+    ),
+    [
+        (tt("Analiz amacı", "Objective"), _step1_objective_summary, "blue"),
+        (tt("Veri yapısı", "Data structure"), _step1_scope_summary, "blue"),
+        (tt("Panel dönemleri", "Panel periods"), _step1_period_summary, "amber" if panel_mode else "slate"),
+        (tt("Ağırlık stratejisi", "Weight strategy"), _step1_strategy_summary, "amber" if panel_mode else "slate"),
+        (tt("Beklenen çıktı", "Expected output"), _step1_output_summary, "green"),
+    ],
+    note=(
+        tt(
+            "Sıradaki adım: seçimi sabitleyin.",
+            "Next step: lock this setup.",
+        )
+        if not st.session_state.get("step1_done")
+        else tt(
+            "Sıradaki adım: kriterleri doğrulayın.",
+            "Next step: validate the criteria.",
+        )
+    ),
+    tone="blue" if not st.session_state.get("step1_done") else "green",
+    expanded=_ui_stage == "step1",
+    icon="🎯",
+)
+if st.session_state.get("step1_done") and not st.session_state.get("prep_done"):
+    _show_step_hint_once(
+        "stage_prep",
+        "Amaç seçimi tamamlandı. Şimdi kriterleri ve yönlerini doğrulayın.",
+        "Objective selection is complete. Now validate the criteria and their directions.",
+        icon="🧭",
+    )
+
 if raw_data is not None and not st.session_state.get("step1_done"):
-    st.caption(tt("Seçiminizi yaptıysanız aşağıdaki butona tıklayın.", "If you made your selection, click the button below."))
+    st.caption(tt("Hazırsanız devam edin.", "Continue when ready."))
     if st.button(
-        tt("✨ Şimdi verilerimizi hazırlama zamanı.. Hazırsanız devam edelim", "✨ It is time to prepare our data.. If you are ready, let us continue"),
+        tt("✨ Veri hazırlığına geç", "✨ Continue to data preparation"),
         width="stretch",
         key="step1_continue_btn",
     ):
@@ -4674,7 +7460,16 @@ working = raw_data.copy()
 working = clean_dataframe(working, missing_strategy, clip_outliers)
 if panel_mode and panel_year_col and panel_year_col in raw_data.columns:
     working[panel_year_col] = raw_data[panel_year_col]
-working.index = [f"A{idx+1}" for idx in range(len(working))]
+st.session_state["alt_names"] = {}
+if (not panel_mode) and isinstance(raw_data, pd.DataFrame):
+    _entity_candidates = _guess_entity_columns(raw_data)
+    if _entity_candidates:
+        _single_entity_col = _entity_candidates[0]
+        working.index = _make_unique_labels(raw_data[_single_entity_col].tolist(), fallback_prefix="A")
+    else:
+        working.index = [f"A{idx+1}" for idx in range(len(working))]
+else:
+    working.index = [f"A{idx+1}" for idx in range(len(working))]
 numeric_cols = working.select_dtypes(include=[np.number]).columns.tolist()
 if panel_mode and panel_year_col in numeric_cols:
     numeric_cols = [c for c in numeric_cols if c != panel_year_col]
@@ -4717,9 +7512,13 @@ else:
     _rank_reason = tt("Varsayılan olarak TOPSIS, VIKOR ve EDAS başlangıç önerileri kullanılıyor.", "TOPSIS, VIKOR, and EDAS are used as the default initial suggestions.")
 
 _prep_label = f"🔍 {tt('2. Adım: Ön inceleme - Veri Ön Hazırlığı', 'Step 2: Preliminary Review - Data Preparation')}{' ✅' if st.session_state.get('prep_done') else ''}"
-with st.expander(_prep_label, expanded=not st.session_state.get("prep_done")):
-    st.caption(tt("Bu adımda veri yapısını inceleyin, ilk görünümü kontrol edin ve kullanılacak kriterleri netleştirin.", "In this step, inspect the data structure, review the first preview, and clarify the criteria to be used."))
-    st.caption(tt("Eksik, uygunsuz veya yanlış yönlü kriter bırakmamaya dikkat edin.", "Be careful not to leave missing, unsuitable, or wrongly directed criteria in the analysis."))
+with st.expander(_prep_label, expanded=_ui_stage == "step2"):
+    _show_step_caption(
+        "Kriterleri ve ön temizliği netleştirin.",
+        "Clarify the criteria and preprocessing choices.",
+        "Yanlış yönlü veya analize girmeyecek kriter bırakmamaya dikkat edin.",
+        "Avoid leaving wrongly directed or excluded criteria in the analysis set.",
+    )
 
     # ── 1) Ön İnceleme Sonuçları ──
     if _has_diag:
@@ -4781,7 +7580,7 @@ with st.expander(_prep_label, expanded=not st.session_state.get("prep_done")):
         render_table(working.head(3))
 
     # ── 3) Kriter Yapılandırması ──
-    with st.expander(f"⚙️ {tt('Kriter Yapılandırması', 'Criteria Configuration')}", expanded=False):
+    with st.expander(f"⚙️ {tt('Kriter Yapılandırması', 'Criteria Configuration')}", expanded=True):
         st.markdown("""<style>
         .ct-wrap {
             border:1px solid #D0D8E4;
@@ -4962,13 +7761,57 @@ with st.expander(_prep_label, expanded=not st.session_state.get("prep_done")):
         st.divider()
 
 if not st.session_state.get("prep_done"):
-    st.markdown(f"**{tt('Harika.. şimdi de yöntemlerimizi seçelim', 'Great.. now let us choose our methods')}**")
-    if st.button(tt("✅ Veri Ön İşleme Bitti (Yöntem Seçimine Geç)", "✅ Preprocessing Complete (Proceed to Method Selection)"), width="stretch"):
+    st.caption(tt("Hazırsanız yöntem seçimine geçin.", "Proceed to method selection when ready."))
+    if st.button(
+        tt("✅ Veri Ön İşleme Bitti (Yöntem Seçimine Geç)", "✅ Preprocessing Complete (Proceed to Method Selection)"),
+        width="stretch",
+        key="btn_prep_complete_main",
+    ):
         st.session_state.prep_done = True
         st.rerun()
 
 criteria = [c for c in numeric_cols if st.session_state["crit_include"].get(c, True)]
 criteria_types = {c: ("max" if st.session_state["crit_dir"].get(c, True) else "min") for c in criteria}
+_benefit_count = sum(1 for c in criteria if criteria_types.get(c) == "max")
+_cost_count = sum(1 for c in criteria if criteria_types.get(c) == "min")
+_missing_label_summary = missing_strategy if missing_strategy not in {"Sil", "Drop"} else tt("Kapalı / Sil", "Off / Drop")
+_prep_scope_summary = (
+    f"{len(st.session_state.get('panel_selected_years', []))} {tt('dönem', 'periods')} · {_preview_list_text(st.session_state.get('panel_selected_years', []), 4)}"
+    if panel_mode
+    else tt("Tek veri dilimi", "Single data slice")
+)
+_render_tracking_panel(
+    tt("Hazırlık Özeti", "Preparation Summary"),
+    tt(
+        "Analize girecek kriter ve temizlik yapısı.",
+        "Criteria and cleaning setup for the analysis.",
+    ),
+    [
+        (tt("Dahil kriterler", "Included criteria"), f"{len(criteria)} · {_preview_list_text(criteria, 4)}", "green"),
+        (tt("Yön dağılımı", "Direction split"), f"{_benefit_count} {tt('fayda', 'benefit')} · {_cost_count} {tt('maliyet', 'cost')}", "blue"),
+        (tt("Hariç kriterler", "Excluded criteria"), str(max(0, len(numeric_cols) - len(criteria))), "amber" if len(criteria) < len(numeric_cols) else "slate"),
+        (
+            tt("Temizlik ayarı", "Cleaning setup"),
+            f"{tt('Eksik', 'Missing')}: {_missing_label_summary} · {tt('Aykırı', 'Outlier')}: {tt('Açık', 'On') if clip_outliers else tt('Kapalı', 'Off')}",
+            "amber",
+        ),
+        (tt("Analiz kapsamı", "Analysis scope"), _prep_scope_summary, "blue"),
+    ],
+    note=(
+        tt(
+            "En az 2 kriter bırakın; hazırsanız yöntem seçimine geçin.",
+            "Keep at least 2 criteria; continue to method selection when ready.",
+        )
+        if len(criteria) >= 2
+        else tt(
+            "Devam için en az 2 kriter seçin.",
+            "Select at least 2 criteria to continue.",
+        )
+    ),
+    tone="amber" if not st.session_state.get("prep_done") else "green",
+    expanded=_ui_stage == "step2",
+    icon="🔍",
+)
 
 if len(criteria) < 2:
     st.error(tt("En az 2 kriter seçmelisiniz.", "You must select at least 2 criteria."))
@@ -4987,9 +7830,13 @@ else:
 # ---------------------------------------------------------
 st.divider()
 _step3_title = tt("⚙️ 3. Adım: Yöntem Seçimi ve Karşılaştırma", "⚙️ Step 3: Method Selection and Comparison")
-with st.expander(_step3_title, expanded=True):
-    st.caption(tt("Bu adımda analizin omurgasını kuran yöntem tercihlerini yapın.", "In this step, make the method choices that build the backbone of the analysis."))
-    st.caption(tt("Seçimleriniz, sonuçların nasıl okunacağını ve hangi tablolarda raporlanacağını belirler.", "Your selections determine how results are interpreted and which tables are reported."))
+with st.expander(_step3_title, expanded=_ui_stage == "step3"):
+    _show_step_caption(
+        "Yöntem kurulumunu tamamlayın.",
+        "Complete the method setup.",
+        "Bu seçimler sonuçların yorum ve rapor akışını belirler.",
+        "These selections determine the interpretation and reporting flow.",
+    )
 
     weight_mode = ""
     weight_method: str | None = None
@@ -5000,9 +7847,13 @@ with st.expander(_step3_title, expanded=True):
     _weight_expander_title = tt("🧩 3.1. Adım: Ağırlıklandırma Modu ve Yöntemi", "🧩 Step 3.1: Weighting Mode and Method")
     if _weight_missing_prev:
         _weight_expander_title += f" ❗ {tt('Lütfen seçiminizi yapın.', 'Please make your selection.')}"
-    with st.expander(_weight_expander_title, expanded=False):
-        st.caption(tt("Bu bölümde kriter önemini hangi mantıkla hesaplayacağınızı belirleyin.", "In this section, choose how criterion importance will be calculated."))
-        st.caption(tt("Objektif, eşit veya manuel yaklaşım seçiminin sonuç yorumunu doğrudan etkilediğini unutmayın.", "Remember that objective, equal, or manual weighting directly affects result interpretation."))
+    with st.expander(_weight_expander_title, expanded=_ui_stage == "step3"):
+        _show_step_caption(
+            "Ağırlık mantığını seçin.",
+            "Choose the weighting logic.",
+            "Objektif, eşit ve manuel yaklaşım farklı yorum çerçeveleri üretir.",
+            "Objective, equal, and manual approaches create different interpretation frames.",
+        )
 
         methods_internal = me.OBJECTIVE_WEIGHT_METHODS
         _weight_groups = weight_method_groups()
@@ -5179,9 +8030,13 @@ with st.expander(_step3_title, expanded=True):
         _rank_expander_title = tt("🧩 3.2. Adım: Sıralama Yöntemleri", "🧩 Step 3.2: Ranking Methods")
         if _ranking_missing_prev:
             _rank_expander_title += f" ❗ {tt('Lütfen seçiminizi yapın.', 'Please make your selection.')}"
-        with st.expander(_rank_expander_title, expanded=False):
-            st.caption(tt("Bu bölümde alternatifleri hangi karar mantığıyla sıralayacağınızı belirleyin.", "In this section, choose the decision logic used to rank alternatives."))
-            st.caption(tt("Birden fazla yöntem seçerseniz yöntem uyumunu da karşılaştırabilirsiniz.", "If you select more than one method, you can also compare method agreement."))
+        with st.expander(_rank_expander_title, expanded=_ui_stage == "step3"):
+            _show_step_caption(
+                "Sıralama yöntemlerini seçin.",
+                "Choose the ranking methods.",
+                "Birden fazla yöntem seçerseniz yöntem uyumu da karşılaştırılır.",
+                "If you choose multiple methods, method agreement is also compared.",
+            )
             _layer_options = [
                 tt("Temel Yöntemler (Klasik Mantık)", "Core Methods (Classical Logic)"),
                 tt("İleri Düzey Yöntemler (Fuzzy)", "Advanced Methods (Fuzzy)"),
@@ -5310,6 +8165,12 @@ with st.expander(_step3_title, expanded=True):
                 rec = recommend_parameter_defaults(ranking_methods_selected, len(working), len(criteria), uses_fuzzy)
 
                 with st.expander(tt("🧩 3.3. Adım: Parametreler", "🧩 Step 3.3: Parameters"), expanded=False):
+                    _show_step_caption(
+                        "Yalnız gerekli yöntem parametreleri burada yer alır.",
+                        "Only required method parameters appear here.",
+                        "Monte Carlo ve sağlamlık ayarları bir sonraki ayrı adımda yer alır.",
+                        "Monte Carlo and robustness settings are placed in the next dedicated step.",
+                    )
                     param_mode = st.radio(
                         tt("Parametre Modu", "Parameter Mode"),
                         [tt("🎯 Önerilen Varsayılan", "🎯 Recommended Default"), tt("✍️ Manuel Değiştir", "✍️ Manual Override")],
@@ -5352,8 +8213,6 @@ with st.expander(_step3_title, expanded=True):
                             ])
                         if uses_fuzzy:
                             rec_rows.append({tt("Parametre", "Parameter"): "Fuzzy spread", tt("Değer", "Value"): fuzzy_spread})
-                        rec_rows.append({tt("Parametre", "Parameter"): tt("Monte Carlo iterasyon", "Monte Carlo iterations"), tt("Değer", "Value"): sensitivity_iterations})
-                        rec_rows.append({tt("Parametre", "Parameter"): "Monte Carlo sigma", tt("Değer", "Value"): sensitivity_sigma})
                         rec_df = pd.DataFrame(rec_rows)
                         render_table(rec_df)
                     else:
@@ -5381,38 +8240,57 @@ with st.expander(_step3_title, expanded=True):
                                 promethee_p = st.slider("PROMETHEE p", 0.0, 1.0, float(promethee_p), 0.01)
                             if promethee_pref_func == "gaussian":
                                 promethee_s = st.slider("PROMETHEE s", 0.01, 1.0, float(promethee_s), 0.01)
-                        st.markdown("---")
-                        _sens_default = int(sensitivity_iterations) if int(sensitivity_iterations) > 0 else 400
-                        _sens_default = int(max(100, min(MAX_SENSITIVITY_ITERATIONS, _sens_default)))
-                        sensitivity_iterations = st.slider(
-                            tt("Monte Carlo iterasyon", "Monte Carlo iterations"),
-                            100,
-                            MAX_SENSITIVITY_ITERATIONS,
-                            _sens_default,
-                            100,
-                        )
-                        sensitivity_sigma = st.slider(tt("Monte Carlo sigma", "Monte Carlo sigma"), 0.01, 0.50, float(sensitivity_sigma), 0.01)
 
-                st.markdown("---")
-                run_heavy_robustness = st.checkbox(
-                    tt(
-                        "🛡️ Geniş sağlamlık testlerini çalıştır (Biraz uzun sürebilir.)",
-                        "🛡️ Run full robustness tests (May take a little longer.)",
-                    ),
-                    key="run_heavy_robustness",
-                )
-                if run_heavy_robustness:
-                    if sensitivity_iterations <= 0:
-                        sensitivity_iterations = 400
-                    sensitivity_iterations = int(max(100, min(MAX_SENSITIVITY_ITERATIONS, sensitivity_iterations)))
-                else:
-                    sensitivity_iterations = 0
-                    st.caption(
-                        tt(
-                            "Sağlamlık testleri bu çalışmada kapatıldı (performans modu).",
-                            "Robustness tests are disabled for this run (performance mode).",
-                        )
+                with st.expander(tt("🧩 3.4. Adım: Sağlamlık Testleri", "🧩 Step 3.4: Robustness Tests"), expanded=_ui_stage == "step3"):
+                    _show_step_caption(
+                        "Sağlamlık testini burada ayarlayın.",
+                        "Configure robustness testing here.",
+                        "Monte Carlo ve geniş test ayarları bu adımda toplanır.",
+                        "Monte Carlo and extended robustness settings are grouped in this step.",
                     )
+                    run_heavy_robustness = st.checkbox(
+                        tt(
+                            "🛡️ Geniş sağlamlık testlerini çalıştır (Biraz uzun sürebilir.)",
+                            "🛡️ Run full robustness tests (May take a little longer.)",
+                        ),
+                        key="run_heavy_robustness",
+                    )
+                    if run_heavy_robustness:
+                        _robustness_mode = st.radio(
+                            tt("Sağlamlık Parametre Modu", "Robustness Parameter Mode"),
+                            [tt("🎯 Önerilen Varsayılan", "🎯 Recommended Default"), tt("✍️ Manuel Değiştir", "✍️ Manual Override")],
+                            horizontal=True,
+                            key="robustness_param_mode_choice",
+                        )
+                        if ("Önerilen" in _robustness_mode) or ("Recommended" in _robustness_mode):
+                            sensitivity_iterations = int(max(100, min(MAX_SENSITIVITY_ITERATIONS, int(rec["sensitivity_iterations"]))))
+                            sensitivity_sigma = float(rec["sensitivity_sigma"])
+                            _rob_df = pd.DataFrame(
+                                [
+                                    {tt("Parametre", "Parameter"): tt("Monte Carlo iterasyon", "Monte Carlo iterations"), tt("Değer", "Value"): sensitivity_iterations},
+                                    {tt("Parametre", "Parameter"): "Monte Carlo sigma", tt("Değer", "Value"): sensitivity_sigma},
+                                ]
+                            )
+                            render_table(_rob_df)
+                        else:
+                            _sens_default = int(sensitivity_iterations) if int(sensitivity_iterations) > 0 else 400
+                            _sens_default = int(max(100, min(MAX_SENSITIVITY_ITERATIONS, _sens_default)))
+                            sensitivity_iterations = st.slider(
+                                tt("Monte Carlo iterasyon", "Monte Carlo iterations"),
+                                100,
+                                MAX_SENSITIVITY_ITERATIONS,
+                                _sens_default,
+                                100,
+                            )
+                            sensitivity_sigma = st.slider(tt("Monte Carlo sigma", "Monte Carlo sigma"), 0.01, 0.50, float(sensitivity_sigma), 0.01)
+                    else:
+                        sensitivity_iterations = 0
+                        st.caption(
+                            tt(
+                                "Sağlamlık testleri bu çalışmada kapatıldı (performans modu).",
+                                "Robustness tests are disabled for this run (performance mode).",
+                            )
+                        )
 
             st.session_state["vikor_v"] = float(vikor_v)
             st.session_state["waspas_lambda"] = float(waspas_lambda)
@@ -5431,10 +8309,68 @@ _is_manual_mode = ("Manuel" in weight_mode) or ("Manual" in weight_mode)
 _weight_step_done = bool(weight_method) and (manual_weights_valid if _is_manual_mode else True)
 _ranking_step_done = bool(ranking_methods_selected) if needs_ranking else False
 _method_step_done = _weight_step_done and ((not needs_ranking) or _ranking_step_done)
+_weight_mode_summary = {
+    "objective": tt("Objektif", "Objective"),
+    "equal": tt("Eşit", "Equal"),
+    "manual": tt("Manuel", "Manual"),
+}.get(weight_mode_key, tt("Belirlenmedi", "Not set"))
+_weight_method_summary = method_display_name(weight_method) if weight_method else tt("Henüz seçilmedi", "Not selected yet")
+_ranking_methods_summary = (
+    _preview_list_text([method_display_name(m) for m in ranking_methods_selected], 3)
+    if ranking_methods_selected
+    else (tt("Bu çalışmada sıralama yok", "No ranking in this run") if not needs_ranking else tt("Henüz seçilmedi", "Not selected yet"))
+)
+_primary_rank_summary = (
+    method_display_name(primary_rank_method or ranking_methods_selected[0])
+    if ranking_methods_selected
+    else tt("Gerekli değil", "Not required")
+)
+_run_scope_summary = (
+    f"{tt('Panel veri', 'Panel data')} · {len(st.session_state.get('panel_selected_years', []))} {tt('dönem', 'periods')}"
+    if panel_mode
+    else tt("Tek dönem", "Single-period")
+)
+_robustness_summary = tt("Açık", "On") if run_heavy_robustness else tt("Kapalı", "Off")
+_render_tracking_panel(
+    tt("Analiz Öncesi Çalışma Özeti", "Pre-Run Analysis Summary"),
+    tt(
+        "Çalıştırma anındaki kurulum özeti.",
+        "Setup snapshot used at run time.",
+    ),
+    [
+        (tt("Analiz amacı", "Objective"), _step1_objective_summary, "blue"),
+        (tt("Analiz kapsamı", "Scope"), _run_scope_summary, "blue"),
+        (tt("Kriter seti", "Criteria set"), f"{len(criteria)} · {_preview_list_text(criteria, 4)}", "green"),
+        (tt("Ağırlık kurgusu", "Weighting setup"), f"{_weight_mode_summary} · {_weight_method_summary}", "amber" if weight_method else "rose"),
+        (tt("Sıralama paketi", "Ranking package"), _ranking_methods_summary, "amber" if ranking_methods_selected or not needs_ranking else "rose"),
+        (tt("Ana sıralama", "Primary ranking"), _primary_rank_summary, "slate"),
+        (tt("Sağlamlık modu", "Robustness mode"), _robustness_summary, "green" if run_heavy_robustness else "slate"),
+    ],
+    note=(
+        tt(
+            "Sıradaki adım: analizi çalıştırın.",
+            "Next step: run the analysis.",
+        )
+        if _method_step_done
+        else tt(
+            "Devam için ağırlık ve gerekiyorsa sıralama seçimini tamamlayın.",
+            "Complete weighting and ranking selection before continuing.",
+        )
+    ),
+    tone="green" if _method_step_done else "rose",
+    expanded=_ui_stage == "step3",
+    icon="🧪",
+)
 if _method_step_done:
-    st.markdown(f"**{tt('Harika.. Artık analiz yapabiliriz! Hazırsanız başlayalım', 'Great.. We can now run the analysis! If you are ready, let us begin.') }**")
+    st.caption(tt("Hazırsanız analizi çalıştırın.", "Run the analysis when ready."))
+    _show_step_hint_once(
+        "stage_methods",
+        "Yöntem seçimi tamamlandı. Analizi çalıştırabilirsiniz.",
+        "Method selection is complete. You can now run the analysis.",
+        icon="🧪",
+    )
 
-if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), width="stretch"):
+if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), width="stretch", key="btn_run_analysis_main"):
     st.session_state["panel_run_warnings"] = []
     if not weight_method:
         st.error(tt("❗ Lütfen bir ağırlıklandırma yöntemi seçin.", "❗ Please select a weighting method."))
@@ -5672,13 +8608,20 @@ if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), width="stretch"):
             st.stop()
 
         result["analysis_time"] = time.time() - start
+        result["criteria"] = list(criteria)
+        result["criteria_types"] = dict(criteria_types)
+        result["data_source_id"] = st.session_state.get("data_source_id")
         if st.session_state.get("panel_results"):
             for year_result in st.session_state["panel_results"].values():
                 year_result["analysis_time"] = result["analysis_time"]
+                year_result["criteria"] = list(criteria)
+                year_result["criteria_types"] = dict(criteria_types)
+                year_result["data_source_id"] = st.session_state.get("data_source_id")
         st.session_state["analysis_result"] = result
         st.session_state["report_docx"] = None
         st.session_state["download_blob_cache"] = {}
         st.session_state["download_blob_sig"] = None
+        st.rerun()
 
 # ---------------------------------------------------------
 # SONUÇLARIN GÖSTERİMİ
@@ -5702,6 +8645,12 @@ if isinstance(panel_results, dict) and panel_results:
 if result is None:
     st.stop()
 
+_show_step_hint_once(
+    "stage_results",
+    "Sonuçlar hazır. Önce yapı özetine, ardından KPI bandına ve sekmelere bakabilirsiniz.",
+    "Results are ready. Start with the setup summary, then use the KPI strip and tabs.",
+    icon="✅",
+)
 st.markdown(f"<h3 style='font-size: 1.2rem; margin-top:1rem;'>📥 {tt('Analiz Sonuçları ve Raporlar', 'Analysis Results and Reports')}</h3>", unsafe_allow_html=True)
 _panel_run_warnings = st.session_state.get("panel_run_warnings", [])
 if isinstance(_panel_run_warnings, list) and _panel_run_warnings:
@@ -5726,6 +8675,51 @@ _stability_txt = f"%{float(_stability) * 100:.1f}" if _stability is not None els
 _runtime = result.get("analysis_time")
 _runtime_txt = f"{float(_runtime):.2f} {tt('sn', 'sec')}" if _runtime is not None else "—"
 _shape = result.get("selected_data", pd.DataFrame()).shape
+_result_ranking_prefs = st.session_state.get("ranking_prefs") or []
+_result_scope_text = (
+    f"{tt('Panel veri', 'Panel data')} · {len(panel_results)} {tt('dönem', 'periods')}"
+    if isinstance(panel_results, dict) and panel_results
+    else tt("Tek dönem", "Single-period")
+)
+_result_scope_note = (
+    f"{_result_scope_text} · {tt('ekranda', 'showing')} {panel_active_year}"
+    if panel_active_year is not None
+    else _result_scope_text
+)
+_result_ranking_summary = (
+    _preview_list_text([method_display_name(m) for m in _result_ranking_prefs], 3)
+    if _result_ranking_prefs
+    else (method_display_name(result.get("ranking", {}).get("method")) if result.get("ranking", {}).get("method") else tt("Sıralama uygulanmadı", "Ranking not applied"))
+)
+_render_tracking_panel(
+    tt("Analiz Yapı Özeti", "Analysis Setup Snapshot"),
+    tt(
+        "KPI ve sekmeler bu kurulumdan üretildi.",
+        "KPI strip and tabs were generated from this setup.",
+    ),
+    [
+        (tt("Veri kaynağı", "Data source"), _data_source_label(result.get("data_source_id") or st.session_state.get("data_source_id")), "green"),
+        (tt("Analiz amacı", "Objective"), _step1_objective_summary, "blue"),
+        (tt("Kapsam", "Scope"), _result_scope_note, "blue"),
+        (tt("Ağırlık yöntemi", "Weighting method"), method_display_name(result.get("weights", {}).get("method") or tt("Belirlenmedi", "Not set")), "amber"),
+        (tt("Sıralama paketi", "Ranking package"), _result_ranking_summary, "rose" if result.get("ranking", {}).get("method") else "slate"),
+        (tt("Kriterler", "Criteria"), f"{len(result.get('criteria', []) or [])} · {_preview_list_text(result.get('criteria', []), 4)}", "green"),
+    ],
+    note=(
+        tt(
+            f"Not: Ana ekran şu anda {panel_active_year} dönemi için gösteriliyor.",
+            f"Note: The main screen is currently shown for period {panel_active_year}.",
+        )
+        if panel_active_year is not None
+        else tt(
+            "Not: Bu özet raporların dayandığı kurulumdur.",
+            "Note: This snapshot is the setup behind the reports.",
+        )
+    ),
+    tone="blue",
+    expanded=True,
+    icon="📌",
+)
 st.markdown(
     f"""
     <div class="kpi-strip">
@@ -6318,48 +9312,18 @@ with tabs[_tab_output]:
     _doc_sections = _build_doc_sections(result, _out_lang)
     _ref_heading = tt("Kaynakça", "References")
     _refs = _doc_sections.get(_ref_heading, [])
-    _is_panel_download = isinstance(panel_results, dict) and bool(panel_results)
-    _dl_sig = _download_signature(result, panel_results)
-    if st.session_state.get("download_blob_sig") != _dl_sig:
-        st.session_state["download_blob_sig"] = _dl_sig
-        st.session_state["download_blob_cache"] = {}
-    _blob_cache = st.session_state.get("download_blob_cache") or {}
-    _excel_key = f"excel::{_out_lang}"
-    if _excel_key not in _blob_cache:
-        _blob_cache[_excel_key] = (
-            generate_panel_excel(panel_results, lang=_out_lang)
-            if _is_panel_download
-            else generate_excel(result, result["selected_data"], lang=_out_lang)
+    st.text_input(
+        tt("Excel çalışma başlığı", "Excel study title"),
+        key="study_title",
+        placeholder=tt("Örn. OECD Sağlık Dayanıklılığı Analizi", "E.g. OECD Health Resilience Analysis"),
+    )
+    st.caption(
+        tt(
+            "Bu başlık yalnızca Excel kapağında ve dosya adında kullanılır. Word çıktısı aynen korunur.",
+            "This title is used only on the Excel cover and file name. The Word output remains unchanged.",
         )
-    dl1, dl2 = st.columns(2)
-    with dl1:
-        st.download_button(
-            tt("📊 Tüm Sonuçları İndir (Excel)", "📊 Download All Results (Excel)"),
-            data=_blob_cache[_excel_key],
-            file_name=tt("MCDM_Sonuclari.xlsx", "MCDM_Results.xlsx"),
-            width="stretch",
-        )
-    with dl2:
-        if DOCX_AVAILABLE:
-            _doc_key = f"docx::{_out_lang}"
-            if _doc_key not in _blob_cache:
-                _blob_cache[_doc_key] = (
-                    generate_panel_apa_docx(panel_results, lang=_out_lang)
-                    if _is_panel_download
-                    else generate_apa_docx(result, result["selected_data"], lang=_out_lang)
-                )
-            _doc_bytes = _blob_cache[_doc_key]
-            st.session_state["report_docx"] = _doc_bytes
-            st.download_button(
-                tt("📄 Akademik Raporu İndir — APA Word", "📄 Download Academic Report — APA Word"),
-                data=_doc_bytes,
-                file_name=tt("MCDM_Akademik_Rapor.docx", "MCDM_Academic_Report.docx"),
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                width="stretch",
-            )
-        else:
-            st.warning(tt("Word çıktısı için python-docx kurulu olmalıdır.", "python-docx must be installed for Word output."))
-    st.session_state["download_blob_cache"] = _blob_cache
+    )
+    _render_report_download_controls(_out_lang)
 
     st.markdown(_reference_notice_html(_out_lang), unsafe_allow_html=True)
     st.markdown(f"### 📚 {_ref_heading}")

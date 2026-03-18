@@ -371,7 +371,8 @@ def _shift_positive(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, float]]:
     for c in shifted.columns:
         minv = float(shifted[c].min())
         if minv <= 0:
-            delta = abs(minv) + 1.0
+            magnitude = max(abs(minv), 1.0)
+            delta = (abs(minv) * (1.0 + EPS)) if abs(minv) > EPS else (magnitude * EPS)
             shifted[c] = shifted[c] + delta
             shifts[c] = delta
     return shifted, shifts
@@ -398,14 +399,16 @@ def _normalize_minmax(data: pd.DataFrame, criteria_types: Dict[str, str]) -> pd.
 def _normalize_sum(data: pd.DataFrame, criteria_types: Dict[str, str]) -> pd.DataFrame:
     df = data.copy().astype(float)
     out = pd.DataFrame(index=df.index, columns=df.columns, dtype=float)
-    pos_df, _ = _shift_positive(df)
-    for c in pos_df.columns:
-        col = pos_df[c].to_numpy(dtype=float)
+    for c in df.columns:
+        col = df[c].to_numpy(dtype=float)
+        cmin = float(np.nanmin(col))
+        cmax = float(np.nanmax(col))
         if criteria_types.get(c, "max") == "max":
-            out[c] = _safe_divide(col, col.sum())
+            transformed = col - cmin
         else:
-            inv = _safe_divide(1.0, col)
-            out[c] = _safe_divide(inv, inv.sum())
+            transformed = cmax - col
+        transformed = np.clip(transformed, 0.0, None) + EPS
+        out[c] = _safe_divide(transformed, transformed.sum())
     return out.fillna(0.0)
 
 
@@ -1351,7 +1354,11 @@ def _rank_gra(data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[
 
 def _triangular_fuzzy_from_crisp(data: pd.DataFrame, spread: float = 0.10) -> np.ndarray:
     x = data.to_numpy(dtype=float)
-    delta = np.maximum(np.abs(x) * max(spread, EPS), EPS)
+    eff_spread = max(float(spread), 0.0)
+    if eff_spread <= 0.0:
+        delta = np.zeros_like(x, dtype=float)
+    else:
+        delta = np.abs(x) * eff_spread
     low = x - delta
     mid = x
     high = x + delta
@@ -1362,7 +1369,8 @@ def _shift_positive_tfn(tfn: np.ndarray) -> Tuple[np.ndarray, float]:
     minv = float(tfn[:, :, 0].min())
     if minv > 0:
         return tfn.copy(), 0.0
-    delta = abs(minv) + 1.0
+    magnitude = max(abs(minv), 1.0)
+    delta = (abs(minv) * (1.0 + EPS)) if abs(minv) > EPS else (magnitude * EPS)
     return tfn + delta, delta
 
 
@@ -1396,6 +1404,13 @@ def _fuzzy_distance(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 def _rank_fuzzy_topsis(
     data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
+    if float(spread) <= 0.0:
+        score, det = _rank_topsis(data, criteria_types, weights)
+        det = dict(det)
+        params = dict(det.get("parameters", {}) if isinstance(det.get("parameters"), dict) else {})
+        params["spread"] = 0.0
+        det["parameters"] = params
+        return score, det
     criteria = list(data.columns)
     tfn = _triangular_fuzzy_from_crisp(data, spread)
     norm = _normalize_fuzzy_tfn(tfn, criteria, criteria_types)
@@ -1425,6 +1440,15 @@ def _rank_fuzzy_by_scenarios(
     *,
     extra_params: Optional[Dict[str, float]] = None,
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
+    if float(spread) <= 0.0:
+        score, det = ranker(data, criteria_types, weights)
+        det = dict(det) if isinstance(det, dict) else {}
+        merged_params = dict(det.get("parameters", {}) if isinstance(det.get("parameters"), dict) else {})
+        merged_params["spread"] = 0.0
+        if extra_params:
+            merged_params.update(extra_params)
+        det["parameters"] = merged_params
+        return score, det
     criteria = list(data.columns)
     tfn = _triangular_fuzzy_from_crisp(data, spread)
     labels = ("Lower", "Middle", "Upper")
@@ -1926,6 +1950,107 @@ def _top_weight_criterion(weights: Dict[str, float]) -> Tuple[str, float]:
     item = max(weights.items(), key=lambda x: x[1])
     return item[0], float(item[1])
 
+def _comparison_agreement_metrics(comparison: Dict[str, Any]) -> Dict[str, float]:
+    corr_df = comparison.get("spearman_matrix") if isinstance(comparison, dict) else None
+    if not isinstance(corr_df, pd.DataFrame) or corr_df.empty or "Yöntem" not in corr_df.columns:
+        return {"mean_rho": np.nan, "min_rho": np.nan}
+    corr_only = corr_df.set_index("Yöntem")
+    tri_mask = np.triu(np.ones(corr_only.shape, dtype=bool), k=1)
+    upper_vals = corr_only.where(tri_mask).stack()
+    upper_vals = pd.to_numeric(upper_vals, errors="coerce").dropna()
+    if upper_vals.empty:
+        return {"mean_rho": np.nan, "min_rho": np.nan}
+    return {"mean_rho": float(upper_vals.mean()), "min_rho": float(upper_vals.min())}
+
+def _decision_confidence_summary(
+    ranking_method: Optional[str],
+    ranking_table: Optional[pd.DataFrame],
+    comparison: Dict[str, Any],
+    sensitivity: Optional[Dict[str, Any]],
+    ranking_details: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    verdict = "medium"
+    notes: List[str] = []
+    actions: List[str] = []
+
+    agreement_metrics = _comparison_agreement_metrics(comparison or {})
+    mean_rho = agreement_metrics["mean_rho"]
+    stability = float((sensitivity or {}).get("top_stability", np.nan)) if sensitivity else np.nan
+
+    if pd.notna(mean_rho):
+        if mean_rho >= 0.85:
+            notes.append(f"Yöntemler arası uyum yüksek (ρ = {mean_rho:.3f}).")
+        elif mean_rho >= 0.70:
+            notes.append(f"Yöntemler arası uyum orta düzeyde (ρ = {mean_rho:.3f}).")
+            actions.append("Yöntem seçimi gerekçesi raporda açıkça savunulmalıdır.")
+        else:
+            verdict = "low"
+            notes.append(f"Yöntemler arası uyum düşük (ρ = {mean_rho:.3f}).")
+            actions.append("Tek bir yönteme dayalı kesin öneri verilmemeli; uzlaşı odaklı yöntemlerle çapraz kontrol yapılmalıdır.")
+
+    if pd.notna(stability):
+        if stability >= 0.80:
+            notes.append(f"Lider alternatif Monte Carlo altında güçlü biçimde korunuyor (%{stability*100:.1f}).")
+        elif stability >= 0.60:
+            verdict = "medium" if verdict == "high" else verdict
+            notes.append(f"Lider alternatif orta düzeyde kararlı (%{stability*100:.1f}).")
+            actions.append("Sonuç duyarlılık analiziyle birlikte sunulmalıdır.")
+        else:
+            verdict = "low"
+            notes.append(f"Lider alternatifin kararlılığı zayıf (%{stability*100:.1f}).")
+            actions.append("Kesin lider ilan etmek yerine ilk iki-üç alternatifi birlikte değerlendirin.")
+
+    method_name = str(ranking_method or "")
+    if "VIKOR" in method_name.upper() and isinstance(ranking_details, dict):
+        conditions = ranking_details.get("compromise_conditions") or {}
+        adv = bool(conditions.get("acceptable_advantage", False))
+        stab = bool(conditions.get("acceptable_stability", False))
+        if adv and stab:
+            notes.append("VIKOR uzlaşı koşullarının tamamı sağlandı.")
+            if verdict != "low" and pd.isna(stability) and pd.isna(mean_rho):
+                verdict = "high"
+        else:
+            verdict = "low"
+            notes.append("VIKOR uzlaşı koşulları tam sağlanmadı.")
+            actions.append("Uzlaşı koşulları sağlanmadığı için lider sonuç ihtiyat kaydıyla yorumlanmalıdır.")
+
+    if isinstance(ranking_table, pd.DataFrame) and not ranking_table.empty:
+        top_score = float(pd.to_numeric(ranking_table.iloc[0]["Skor"], errors="coerce"))
+        second_score = float(pd.to_numeric(ranking_table.iloc[1]["Skor"], errors="coerce")) if len(ranking_table) > 1 else top_score
+        last_score = float(pd.to_numeric(ranking_table.iloc[-1]["Skor"], errors="coerce"))
+        lower_is_better = _is_lower_better_method(ranking_method)
+        gap = (second_score - top_score) if lower_is_better else (top_score - second_score)
+        score_range = (last_score - top_score) if lower_is_better else (top_score - last_score)
+        rel_gap = gap / (score_range + EPS)
+        if rel_gap < 0.08 and len(ranking_table) > 1:
+            if verdict != "low":
+                verdict = "medium"
+            notes.append(f"İlk iki alternatif arasındaki ayrışma sınırlı (göreli fark = {rel_gap:.3f}).")
+            actions.append("Lider ile ikinci alternatif arasındaki fark küçük olduğu için ek senaryo analizi önerilir.")
+        elif rel_gap >= 0.15 and verdict == "medium" and (pd.notna(stability) and stability >= 0.8 or pd.notna(mean_rho) and mean_rho >= 0.85):
+            verdict = "high"
+
+    positive_signals = int(pd.notna(mean_rho) and mean_rho >= 0.85) + int(pd.notna(stability) and stability >= 0.80)
+    if verdict == "medium" and positive_signals >= 2:
+        verdict = "high"
+
+    if verdict == "medium" and not notes:
+        notes.append("Karar sinyali kullanılabilir düzeyde, ancak tek başına kesinlik iddiası taşımaz.")
+    if verdict == "high" and not actions:
+        actions.append("Sonuç yayın ve raporlamada ana öneri olarak sunulabilir.")
+    elif verdict == "medium" and not actions:
+        actions.append("Sonuç orta güven düzeyinde sunulmalı ve sınırları açıklanmalıdır.")
+    elif verdict == "low" and not actions:
+        actions.append("Sonuç keşifsel nitelikte sunulmalı; ek doğrulama yapılmadan kesin öneri verilmemelidir.")
+
+    return {
+        "verdict": verdict,
+        "mean_rho": mean_rho,
+        "stability": stability,
+        "notes": notes,
+        "actions": actions,
+    }
+
 
 def _base_method_name(method: Optional[str]) -> Optional[str]:
     if not method:
@@ -2037,6 +2162,7 @@ def _section_bulgular(
     sensitivity: Optional[Dict[str, Any]],
     weight_method: str,
     ranking_method: Optional[str],
+    ranking_details: Optional[Dict[str, Any]] = None,
 ) -> str:
     top_criterion = str(weight_table.iloc[0]["Kriter"])
     top_weight = float(weight_table.iloc[0]["Ağırlık"])
@@ -2058,15 +2184,12 @@ def _section_bulgular(
             f"veya hassas olduğunu göstermektedir."
         )
     if comparison:
-        corr_df = comparison.get("spearman_matrix")
-        if isinstance(corr_df, pd.DataFrame) and corr_df.shape[1] > 2:
-            corr_only = corr_df.set_index("Yöntem")
-            upper_vals = corr_only.where(~np.eye(corr_only.shape[0], dtype=bool)).stack()
-            if len(upper_vals) > 0:
-                text += (
-                    f" Çoklu yöntem karşılaştırmasında yöntemler arası ortalama Spearman uyumu {upper_vals.mean():.3f} "
-                    "olarak bulunmuştur; bu değer farklı yöntem aileleri arasında orta-yüksek düzeyde bir yapısal tutarlılığa işaret etmektedir."
-                )
+        agreement_metrics = _comparison_agreement_metrics(comparison)
+        if pd.notna(agreement_metrics["mean_rho"]):
+            text += (
+                f" Çoklu yöntem karşılaştırmasında yöntemler arası ortalama Spearman uyumu {agreement_metrics['mean_rho']:.3f} "
+                "olarak bulunmuştur; bu değer farklı yöntem aileleri arasında yapısal tutarlılık düzeyini göstermektedir."
+            )
     if sensitivity:
         stability = sensitivity.get("top_stability")
         if stability is not None:
@@ -2074,6 +2197,21 @@ def _section_bulgular(
                 f" Monte Carlo temelli ağırlık bozulmalarında birinci alternatifin korunma oranı {stability:.2%} "
                 "olarak hesaplanmıştır. Bu oran, bulguların ağırlık sapmalarına karşı dayanıklılığı hakkında doğrudan kanıt sunmaktadır."
             )
+    confidence = _decision_confidence_summary(ranking_method, ranking_table, comparison, sensitivity, ranking_details)
+    verdict_map = {
+        "high": "yüksek güven düzeyinde",
+        "medium": "orta güven düzeyinde",
+        "low": "düşük güven düzeyinde",
+    }
+    if ranking_table is not None and not ranking_table.empty and ranking_method:
+        text += (
+            f" Bütüncül karar sinyali {verdict_map.get(confidence['verdict'], 'orta güven düzeyinde')} "
+            "değerlendirilmektedir."
+        )
+        if confidence["notes"]:
+            text += " " + " ".join(confidence["notes"][:2])
+        if confidence["actions"]:
+            text += " " + " ".join(confidence["actions"][:2])
     return text
 
 
@@ -2087,6 +2225,7 @@ def build_report_sections(
     ranking_method: Optional[str],
     weight_table: pd.DataFrame,
     ranking_table: Optional[pd.DataFrame],
+    ranking_details: Optional[Dict[str, Any]],
     comparison: Dict[str, Any],
     sensitivity: Optional[Dict[str, Any]],
     pca_info: Dict[str, Any],
@@ -2097,7 +2236,7 @@ def build_report_sections(
         "Çalışmanın Amacı": _section_amac(stats_df, criteria, criteria_types, ranking_method),
         "Çalışmanın Felsefesi": _section_felsefe(weight_method, ranking_method, fuzzy_spread, is_fuzzy),
         "Metodoloji": _section_metodoloji(validation, weight_method, ranking_method, pca_info, is_fuzzy, fuzzy_spread),
-        "Bulgular": _section_bulgular(weight_table, ranking_table, comparison, sensitivity, weight_method, ranking_method),
+        "Bulgular": _section_bulgular(weight_table, ranking_table, comparison, sensitivity, weight_method, ranking_method, ranking_details),
         "Kaynakça": _report_references(weight_method, ranking_method),
     }
     return sections
@@ -2217,11 +2356,20 @@ def run_full_analysis(data: pd.DataFrame, config: AnalysisConfig) -> Dict[str, A
         ranking_method=config.ranking_method,
         weight_table=weight_details["weight_table"],
         ranking_table=ranking_table,
+        ranking_details=ranking_details,
         comparison=compare,
         sensitivity=sensitivity,
         pca_info=pca_info,
         fuzzy_spread=config.fuzzy_spread,
     )
+
+    decision_confidence = _decision_confidence_summary(
+        config.ranking_method,
+        ranking_table,
+        compare,
+        sensitivity,
+        ranking_details,
+    ) if config.ranking_method else {}
 
     result = {
         "validation": validation,
@@ -2242,6 +2390,7 @@ def run_full_analysis(data: pd.DataFrame, config: AnalysisConfig) -> Dict[str, A
         },
         "comparison": compare,
         "sensitivity": sensitivity,
+        "decision_confidence": decision_confidence,
         "contribution_table": contribution_df,
         "report_sections": report_sections,
         "method_philosophy": {
@@ -2298,9 +2447,12 @@ def generate_data_diagnostics(
     max_corr = max((abs(v) for _, _, v in high_corr_pairs), default=0.0)
 
     constant = [c for c in criteria if df[c].nunique() <= 1]
+    non_positive = [c for c in criteria if float(df[c].min()) <= 0.0]
     benefit = [c for c in criteria if criteria_types.get(c, "max") == "max"]
     cost = [c for c in criteria if criteria_types.get(c, "max") == "min"]
     cost_ratio = len(cost) / max(n_crit, 1)
+    alt_crit_ratio = n_alt / max(n_crit, 1)
+    risk_flags: List[str] = []
 
     recommendations: List[Dict[str, str]] = []
     suggested_weight: Optional[str] = None
@@ -2316,6 +2468,73 @@ def generate_data_diagnostics(
             "text_en": f"Constant criteria detected: {', '.join(constant)}. These criteria do not carry analytical information.",
             "action_en": "You should remove these criteria from the active analysis set.",
         })
+        risk_flags.append("constant_criteria")
+
+    if non_positive:
+        recommendations.append({
+            "level": "warning",
+            "icon": "➖",
+            "text": f"Sıfır veya negatif değer içeren kriterler var: {', '.join(non_positive)}.",
+            "action": "Oran/çarpım mantıklı yöntemleri yorumlarken dikkatli olun; gerekiyorsa veri dönüşümü veya sağlamlık kontrolü uygulayın.",
+            "text_en": f"Some criteria contain zero or negative values: {', '.join(non_positive)}.",
+            "action_en": "Interpret ratio/product-based methods carefully; apply data transformation or robustness checks when needed.",
+        })
+        risk_flags.append("non_positive_values")
+
+    if outlier_ratio >= 0.12:
+        recommendations.append({
+            "level": "warning",
+            "icon": "📍",
+            "text": f"Aykırı gözlem oranı %{outlier_ratio*100:.1f} ile yüksektir.",
+            "action": "Ön işlemde aykırı değer temizleme veya winsorization uygulayın; ardından sonuçları EDAS/CODAS ve Monte Carlo ile çapraz kontrol edin.",
+            "text_en": f"The outlier ratio is high at {outlier_ratio*100:.1f}%.",
+            "action_en": "Apply outlier treatment or winsorization in preprocessing, then cross-check results with EDAS/CODAS and Monte Carlo robustness.",
+        })
+        risk_flags.append("high_outliers")
+    elif outlier_ratio >= 0.06:
+        recommendations.append({
+            "level": "info",
+            "icon": "📍",
+            "text": f"Sınırlı ama izlenmesi gereken aykırı değer oranı tespit edildi (%{outlier_ratio*100:.1f}).",
+            "action": "İlk üç alternatifi aykırı değer temizliği öncesi ve sonrası karşılaştırın.",
+            "text_en": f"A moderate but notable outlier ratio was detected ({outlier_ratio*100:.1f}%).",
+            "action_en": "Compare the top three alternatives before and after outlier treatment.",
+        })
+        risk_flags.append("moderate_outliers")
+
+    if mean_abs_skew >= 1.0:
+        recommendations.append({
+            "level": "info",
+            "icon": "📈",
+            "text": f"Ortalama mutlak çarpıklık {mean_abs_skew:.2f}; dağılımlar belirgin biçimde asimetrik.",
+            "action": "Sonuçları yalnızca tek bir mesafe yöntemiyle bırakmayın; EDAS veya CODAS ile karşılaştırma sekmesini açık tutun.",
+            "text_en": f"Mean absolute skewness is {mean_abs_skew:.2f}; the distributions are materially asymmetric.",
+            "action_en": "Do not rely on a single distance method; keep EDAS or CODAS in the comparison set.",
+        })
+        risk_flags.append("high_skewness")
+
+    if alt_crit_ratio < 2.0:
+        recommendations.append({
+            "level": "warning",
+            "icon": "🧪",
+            "text": f"Alternatif/kriter oranı {alt_crit_ratio:.2f}; problem boyutu sıkışık.",
+            "action": "Bulguları keşifsel düzeyde yorumlayın, güçlü korelasyonlu kriterleri azaltın ve mümkünse alternatif sayısını artırın.",
+            "text_en": f"The alternative-to-criterion ratio is {alt_crit_ratio:.2f}; the problem is data-tight.",
+            "action_en": "Interpret findings as exploratory, reduce highly correlated criteria, and increase the number of alternatives when possible.",
+        })
+        risk_flags.append("tight_sample")
+
+    if high_corr_pairs:
+        lead_pairs = ", ".join(f"{c1}-{c2} ({val:.2f})" for c1, c2, val in high_corr_pairs[:3])
+        recommendations.append({
+            "level": "info",
+            "icon": "🔗",
+            "text": f"Yüksek korelasyonlu kriter çiftleri mevcut: {lead_pairs}.",
+            "action": "CRITIC/IDOCRIW ile ağırlıklandırmayı koruyun ve gereksiz tekrar yaratan kriterleri raporda gerekçelendirin.",
+            "text_en": f"Highly correlated criterion pairs are present: {lead_pairs}.",
+            "action_en": "Prefer CRITIC/IDOCRIW weighting and justify potentially redundant criteria in the report.",
+        })
+        risk_flags.append("high_correlation")
 
     if max_corr >= 0.85:
         suggested_weight = "CRITIC"
@@ -2448,6 +2667,7 @@ def generate_data_diagnostics(
             "text_en": "All criteria are currently marked as benefit criteria; there is no cost criterion.",
             "action_en": "Review criterion directions and verify whether at least one criterion should be modeled as a cost.",
         })
+        risk_flags.append("no_cost_criterion")
 
     return {
         "n_alt": n_alt,
@@ -2460,6 +2680,9 @@ def generate_data_diagnostics(
         "outlier_ratio": outlier_ratio,
         "high_corr_pairs": high_corr_pairs,
         "constant_criteria": constant,
+        "non_positive_criteria": non_positive,
+        "alt_crit_ratio": alt_crit_ratio,
+        "risk_flags": risk_flags,
         "cv_per_criterion": cv_vals,
         "recommendations": recommendations,
         "suggested_weight": suggested_weight,
