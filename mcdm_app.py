@@ -6,7 +6,6 @@ import inspect
 import io
 import re
 import time
-import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -3457,51 +3456,52 @@ def _export_file_name(title: str, lang: str, ext: str) -> str:
         base = _xl_text(lang, "MCDM_Sonuclari", "MCDM_Results")
     return f"{base}.{ext}"
 
-def _browser_safe_download_name(file_name: str, fallback: str) -> str:
-    raw_name = str(file_name or "").strip()
-    if not raw_name:
-        raw_name = fallback
-    normalized = unicodedata.normalize("NFKD", raw_name)
-    ascii_name = normalized.encode("ascii", "ignore").decode("ascii")
-    ascii_name = re.sub(r"[^A-Za-z0-9._-]+", "_", ascii_name).strip("._")
-    if not ascii_name:
-        ascii_name = re.sub(r"[^A-Za-z0-9._-]+", "_", str(fallback or "download")).strip("._") or "download"
-    if "." not in ascii_name and "." in raw_name:
-        ext = raw_name.rsplit(".", 1)[-1].strip()
-        if ext:
-            ascii_name = f"{ascii_name}.{ext}"
-    return ascii_name
+def _save_export_via_dialog(
+    data: bytes | bytearray,
+    suggested_name: str,
+    *,
+    filetypes: List[tuple[str, str]],
+) -> Path | None:
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except Exception as exc:
+        raise RuntimeError("Native save dialog unavailable.") from exc
 
-def _preferred_export_dir() -> Path:
-    candidates = [
-        Path.home() / "Downloads" / "MCDM_exports",
-        APP_DIR / "_exports",
-    ]
-    for candidate in candidates:
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        root.attributes("-topmost", True)
+    except Exception:
+        pass
+
+    initial_dir = Path.home() / "Downloads"
+    if not initial_dir.exists():
+        initial_dir = Path.home()
+
+    suggested = str(suggested_name or "").strip() or "MCDM_Results.xlsx"
+    default_ext = Path(suggested).suffix or ".bin"
+    try:
+        selected = filedialog.asksaveasfilename(
+            title=tt("Çıktıyı Kaydet", "Save Output"),
+            initialdir=str(initial_dir),
+            initialfile=suggested,
+            defaultextension=default_ext,
+            filetypes=filetypes,
+            parent=root,
+        )
+    finally:
         try:
-            candidate.mkdir(parents=True, exist_ok=True)
-            test_path = candidate / ".write_test"
-            test_path.write_bytes(b"ok")
-            test_path.unlink(missing_ok=True)
-            return candidate
+            root.update()
         except Exception:
-            continue
-    raise OSError("No writable export directory available.")
+            pass
+        root.destroy()
 
-def _unique_export_path(export_dir: Path, file_name: str) -> Path:
-    safe_name = _browser_safe_download_name(file_name, "MCDM_Results.xlsx")
-    stem = Path(safe_name).stem or "MCDM_Results"
-    suffix = Path(safe_name).suffix or ".bin"
-    candidate = export_dir / f"{stem}{suffix}"
-    counter = 2
-    while candidate.exists():
-        candidate = export_dir / f"{stem}_{counter}{suffix}"
-        counter += 1
-    return candidate
+    if not selected:
+        return None
 
-def _save_export_blob(data: bytes | bytearray, file_name: str) -> Path:
-    export_dir = _preferred_export_dir()
-    target_path = _unique_export_path(export_dir, file_name)
+    target_path = Path(selected).expanduser()
+    target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_bytes(bytes(data))
     return target_path
 
@@ -5150,7 +5150,6 @@ def _render_report_download_controls_core(lang: str) -> None:
         else (str(st.session_state.get("study_title", "") or "").strip() or _xl_text(lang, "Panel Analiz Raporu", "Panel Analysis Report"))
     )
     excel_filename = _export_file_name(excel_title, lang, "xlsx")
-    excel_download_name = _browser_safe_download_name(excel_filename, "MCDM_Results.xlsx")
     key_suffix = f"{lang.lower()}_{abs(hash(download_sig))}"
 
     if excel_key not in blob_cache:
@@ -5196,42 +5195,53 @@ def _render_report_download_controls_core(lang: str) -> None:
             key=f"save_excel_{key_suffix}",
         ):
             try:
-                excel_path = _save_export_blob(blob_cache[excel_key], excel_download_name)
-                st.success(
-                    tt(
-                        f"Excel dosyası kaydedildi: {excel_path}",
-                        f"Excel file saved: {excel_path}",
-                    )
+                excel_path = _save_export_via_dialog(
+                    blob_cache[excel_key],
+                    excel_filename,
+                    filetypes=[(tt("Excel dosyası", "Excel workbook"), "*.xlsx")],
                 )
+                if excel_path is None:
+                    st.info(tt("Kaydetme işlemi iptal edildi.", "Save operation cancelled."))
+                else:
+                    st.success(
+                        tt(
+                            f"Excel dosyası kaydedildi: {excel_path}",
+                            f"Excel file saved: {excel_path}",
+                        )
+                    )
             except Exception as exc:
                 st.error(tt("Excel dosyası kaydedilemedi.", "Excel file could not be saved."))
                 st.caption(tt(f"Hata kodu: {_safe_error_code(exc)}", f"Error code: {_safe_error_code(exc)}"))
         st.caption(
             tt(
-                "Dosya tarayıcı indirmesi yerine yerel export klasörüne kaydedilir.",
-                "The file is saved to a local export folder instead of using browser download.",
+                "Tıklayınca yerel sistemin Kaydet penceresi açılır.",
+                "Clicking opens the native Save dialog of the local system.",
             )
         )
 
     with dl2:
         if DOCX_AVAILABLE:
-            docx_name = _browser_safe_download_name(
-                tt("MCDM_Akademik_Rapor.docx", "MCDM_Academic_Report.docx"),
-                "MCDM_Academic_Report.docx",
-            )
+            docx_name = tt("MCDM_Akademik_Rapor.docx", "MCDM_Academic_Report.docx")
             if st.button(
                 tt("📄 Akademik Raporu Kaydet — APA Word", "📄 Save Academic Report — APA Word"),
                 width="stretch",
                 key=f"save_docx_{key_suffix}",
             ):
                 try:
-                    docx_path = _save_export_blob(doc_bytes, docx_name)
-                    st.success(
-                        tt(
-                            f"Word dosyası kaydedildi: {docx_path}",
-                            f"Word file saved: {docx_path}",
-                        )
+                    docx_path = _save_export_via_dialog(
+                        doc_bytes,
+                        docx_name,
+                        filetypes=[(tt("Word dosyası", "Word document"), "*.docx")],
                     )
+                    if docx_path is None:
+                        st.info(tt("Kaydetme işlemi iptal edildi.", "Save operation cancelled."))
+                    else:
+                        st.success(
+                            tt(
+                                f"Word dosyası kaydedildi: {docx_path}",
+                                f"Word file saved: {docx_path}",
+                            )
+                        )
                 except Exception as exc:
                     st.error(tt("Word dosyası kaydedilemedi.", "Word file could not be saved."))
                     st.caption(tt(f"Hata kodu: {_safe_error_code(exc)}", f"Error code: {_safe_error_code(exc)}"))
