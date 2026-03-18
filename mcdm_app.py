@@ -3456,54 +3456,22 @@ def _export_file_name(title: str, lang: str, ext: str) -> str:
         base = _xl_text(lang, "MCDM_Sonuclari", "MCDM_Results")
     return f"{base}.{ext}"
 
-def _save_export_via_dialog(
+def _render_export_download_button(
+    label: str,
     data: bytes | bytearray,
-    suggested_name: str,
-    *,
-    filetypes: List[tuple[str, str]],
-) -> Path | None:
-    try:
-        import tkinter as tk
-        from tkinter import filedialog
-    except Exception as exc:
-        raise RuntimeError("Native save dialog unavailable.") from exc
-
-    root = tk.Tk()
-    root.withdraw()
-    try:
-        root.attributes("-topmost", True)
-    except Exception:
-        pass
-
-    initial_dir = Path.home() / "Downloads"
-    if not initial_dir.exists():
-        initial_dir = Path.home()
-
-    suggested = str(suggested_name or "").strip() or "MCDM_Results.xlsx"
-    default_ext = Path(suggested).suffix or ".bin"
-    try:
-        selected = filedialog.asksaveasfilename(
-            title=tt("Çıktıyı Kaydet", "Save Output"),
-            initialdir=str(initial_dir),
-            initialfile=suggested,
-            defaultextension=default_ext,
-            filetypes=filetypes,
-            parent=root,
-        )
-    finally:
-        try:
-            root.update()
-        except Exception:
-            pass
-        root.destroy()
-
-    if not selected:
-        return None
-
-    target_path = Path(selected).expanduser()
-    target_path.parent.mkdir(parents=True, exist_ok=True)
-    target_path.write_bytes(bytes(data))
-    return target_path
+    file_name: str,
+    mime: str,
+    key: str,
+) -> None:
+    st.download_button(
+        label,
+        data=bytes(data),
+        file_name=file_name,
+        mime=mime,
+        width="stretch",
+        on_click="ignore",
+        key=key,
+    )
 
 def _safe_sheet_name(name: str, used_names: set[str]) -> str:
     clean = re.sub(r"[\[\]:*?/\\]", "_", str(name or "Sheet")).strip() or "Sheet"
@@ -5150,7 +5118,6 @@ def _render_report_download_controls_core(lang: str) -> None:
         else (str(st.session_state.get("study_title", "") or "").strip() or _xl_text(lang, "Panel Analiz Raporu", "Panel Analysis Report"))
     )
     excel_filename = _export_file_name(excel_title, lang, "xlsx")
-    key_suffix = f"{lang.lower()}_{abs(hash(download_sig))}"
 
     if excel_key not in blob_cache:
         try:
@@ -5189,62 +5156,30 @@ def _render_report_download_controls_core(lang: str) -> None:
 
     dl1, dl2 = st.columns(2)
     with dl1:
-        if st.button(
-            tt("📊 Tüm Sonuçları Kaydet (Excel)", "📊 Save All Results (Excel)"),
-            width="stretch",
-            key=f"save_excel_{key_suffix}",
-        ):
-            try:
-                excel_path = _save_export_via_dialog(
-                    blob_cache[excel_key],
-                    excel_filename,
-                    filetypes=[(tt("Excel dosyası", "Excel workbook"), "*.xlsx")],
-                )
-                if excel_path is None:
-                    st.info(tt("Kaydetme işlemi iptal edildi.", "Save operation cancelled."))
-                else:
-                    st.success(
-                        tt(
-                            f"Excel dosyası kaydedildi: {excel_path}",
-                            f"Excel file saved: {excel_path}",
-                        )
-                    )
-            except Exception as exc:
-                st.error(tt("Excel dosyası kaydedilemedi.", "Excel file could not be saved."))
-                st.caption(tt(f"Hata kodu: {_safe_error_code(exc)}", f"Error code: {_safe_error_code(exc)}"))
+        _render_export_download_button(
+            tt("📊 Tüm Sonuçları İndir (Excel)", "📊 Download All Results (Excel)"),
+            blob_cache[excel_key],
+            excel_filename,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key=f"download_excel_results_{lang}",
+        )
         st.caption(
             tt(
-                "Tıklayınca yerel sistemin Kaydet penceresi açılır.",
-                "Clicking opens the native Save dialog of the local system.",
+                "Tarayıcı indirme akışı kullanılır. Tarayıcınızda konum sorma açıksa yer seçme penceresi açılır.",
+                "The browser download flow is used. If your browser asks for a location, a save dialog will open.",
             )
         )
 
     with dl2:
         if DOCX_AVAILABLE:
             docx_name = tt("MCDM_Akademik_Rapor.docx", "MCDM_Academic_Report.docx")
-            if st.button(
-                tt("📄 Akademik Raporu Kaydet — APA Word", "📄 Save Academic Report — APA Word"),
-                width="stretch",
-                key=f"save_docx_{key_suffix}",
-            ):
-                try:
-                    docx_path = _save_export_via_dialog(
-                        doc_bytes,
-                        docx_name,
-                        filetypes=[(tt("Word dosyası", "Word document"), "*.docx")],
-                    )
-                    if docx_path is None:
-                        st.info(tt("Kaydetme işlemi iptal edildi.", "Save operation cancelled."))
-                    else:
-                        st.success(
-                            tt(
-                                f"Word dosyası kaydedildi: {docx_path}",
-                                f"Word file saved: {docx_path}",
-                            )
-                        )
-                except Exception as exc:
-                    st.error(tt("Word dosyası kaydedilemedi.", "Word file could not be saved."))
-                    st.caption(tt(f"Hata kodu: {_safe_error_code(exc)}", f"Error code: {_safe_error_code(exc)}"))
+            _render_export_download_button(
+                tt("📄 Akademik Raporu İndir — APA Word", "📄 Download Academic Report — APA Word"),
+                doc_bytes,
+                docx_name,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key=f"download_docx_results_{lang}",
+            )
         else:
             st.warning(tt("Word çıktısı için python-docx kurulu olmalıdır.", "python-docx must be installed for Word output."))
 
