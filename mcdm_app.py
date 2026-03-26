@@ -7379,23 +7379,6 @@ def _render_auth_gate(auth_settings: access.AuthSettings) -> None:
         unsafe_allow_html=True,
     )
 
-    if not auth_settings.configured:
-        st.error(
-            tt(
-                "Kimlik dogrulama henuz tam yapilandirilmamis. Yayin oncesi .streamlit/secrets.toml ve Auth0 ayarlari tamamlanmali.",
-                "Authentication is not fully configured yet. Complete the .streamlit/secrets.toml and Auth0 setup before enabling sign-in.",
-            )
-        )
-        st.stop()
-    if not auth_settings.enabled:
-        st.error(
-            tt(
-                "Bu Streamlit surumu yerlesik giris altyapisini desteklemiyor. requirements.txt icindeki Streamlit auth surumunu yukselttikten sonra tekrar deploy edin.",
-                "This Streamlit build does not support built-in login. Upgrade the Streamlit auth version in requirements.txt and redeploy.",
-            )
-        )
-        st.stop()
-
     auth_col1, auth_col2 = st.columns(2)
     with auth_col1:
         st.button(
