@@ -132,7 +132,7 @@ def get_auth_settings() -> AuthSettings:
     cfg = _section("mcdm_auth")
     provider = str(cfg.get("provider") or "").strip() or None
     signup_provider = str(cfg.get("signup_provider") or "").strip() or provider
-    require_login = _as_bool(cfg.get("require_login"), default=True)
+    require_login = _as_bool(cfg.get("require_login"), default=False)
     admin_emails = frozenset(email.lower() for email in _as_list(cfg.get("admin_emails")))
     auth_root = _section("auth")
     has_shared = bool(auth_root.get("redirect_uri")) and bool(auth_root.get("cookie_secret"))
