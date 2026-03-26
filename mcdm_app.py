@@ -16,6 +16,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from scipy.stats import spearmanr
 
+import mcdm_access as access
 import mcdm_engine as me
 
 try:
@@ -31,6 +32,7 @@ MAX_UPLOAD_ROWS = 50_000
 MAX_UPLOAD_COLS = 120
 MAX_PANEL_YEAR_SELECTION = 10
 MAX_SENSITIVITY_ITERATIONS = 1500
+SESSION_INACTIVITY_SECONDS = 4 * 3600  # 4 saat hareketsizlikte otomatik çıkış
 
 try:
     from docx import Document
@@ -41,6 +43,14 @@ try:
     DOCX_AVAILABLE = True
 except Exception:
     DOCX_AVAILABLE = False
+
+try:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    MPL_AVAILABLE = True
+except Exception:
+    MPL_AVAILABLE = False
 
 st.set_page_config(
     page_title="MCDM Toolbox — Prof. Dr. Ömer Faruk Rençber",
@@ -777,6 +787,8 @@ def init_state() -> None:
         "manual_criteria_names": "",
         "manual_name_inputs_mode": False,
         "manual_criteria_inputs_seed": "",
+        "manual_bulk_paste_text": "",
+        "manual_paste_has_header": True,
         "data_entry_mode": "upload",
         "pending_data": None,
         "pending_data_source_id": None,
@@ -1024,7 +1036,7 @@ def weight_method_groups() -> List[tuple[str, List[str]]]:
         ),
         (
             tt("Etki ve hibrit temelli", "Impact and hybrid based"),
-            ["MEREC", "IDOCRIW", "Fuzzy IDOCRIW"],
+            ["MEREC", "CILOS", "IDOCRIW", "Fuzzy IDOCRIW"],
         ),
     ]
 
@@ -1045,19 +1057,19 @@ def ranking_method_groups(layer_key: str) -> List[tuple[str, List[str]]]:
     base_groups: List[tuple[str, List[str]]] = [
         (
             tt("İdeal ve uzlaşı odaklı", "Ideal and compromise oriented"),
-            ["TOPSIS", "VIKOR", "MARCOS", "ARAS"],
+            ["TOPSIS", "VIKOR", "MARCOS", "ARAS", "SPOTIS"],
         ),
         (
             tt("Sapma ve mesafe odaklı", "Deviation and distance oriented"),
-            ["EDAS", "CODAS", "MABAC", "GRA"],
+            ["EDAS", "CODAS", "MABAC", "GRA", "RAFSI"],
         ),
         (
             tt("Fayda toplulaştırma odaklı", "Utility aggregation oriented"),
-            ["SAW", "WPM", "MAUT", "WASPAS", "CoCoSo"],
+            ["SAW", "WPM", "MAUT", "WASPAS", "CoCoSo", "ROV", "AROMAN", "DNMA"],
         ),
         (
             tt("Göreli üstünlük ve rekabet odaklı", "Relative dominance and competitiveness oriented"),
-            ["COPRAS", "OCRA", "MOORA", "PROMETHEE"],
+            ["COPRAS", "OCRA", "MOORA", "MULTIMOORA", "PROMETHEE", "RAWEC"],
         ),
     ]
     if layer_key != "fuzzy":
@@ -1183,6 +1195,88 @@ def _seed_manual_entry_df(
         else:
             out[col] = pd.Series([np.nan] * row_count, dtype="float")
     return out
+
+def _manual_schema_columns(entity_col: str, criteria_cols: List[str], year_col: str | None = None) -> List[str]:
+    return [entity_col] + ([year_col] if year_col else []) + list(criteria_cols)
+
+def _normalize_header_label(value: Any) -> str:
+    return re.sub(r"[\W_]+", "", str(value or "").strip().lower(), flags=re.UNICODE)
+
+def _looks_numeric_token(value: Any) -> bool:
+    token = str(value or "").strip()
+    if not token:
+        return False
+    try:
+        float(token.replace(",", "."))
+    except Exception:
+        return False
+    return True
+
+def _parse_manual_paste_text(
+    raw_text: str,
+    entity_col: str,
+    criteria_cols: List[str],
+    year_col: str | None = None,
+    *,
+    has_header: bool = True,
+) -> pd.DataFrame:
+    raw_text = str(raw_text or "").strip()
+    if not raw_text:
+        raise ValueError(
+            tt(
+                "Yapistirilacak veri bulunamadi. Excel veya tablodan bir blok kopyalayip buraya yapistirin.",
+                "No pasted data was found. Copy a block from Excel or another table and paste it here.",
+            )
+        )
+
+    expected_cols = _manual_schema_columns(entity_col, criteria_cols, year_col)
+    expected_norm = [_normalize_header_label(col) for col in expected_cols]
+    parse_orders = [0, None] if has_header else [None, 0]
+
+    for sep in ("\t", ";", ","):
+        for header in parse_orders:
+            try:
+                parsed = pd.read_csv(io.StringIO(raw_text), sep=sep, header=header, engine="python")
+            except Exception:
+                continue
+            if not isinstance(parsed, pd.DataFrame) or parsed.empty:
+                continue
+            parsed = parsed.dropna(axis=1, how="all").dropna(how="all").reset_index(drop=True)
+            if parsed.empty:
+                continue
+
+            if len(parsed.columns) == len(expected_cols) + 1:
+                first_col = str(parsed.columns[0]).strip().lower()
+                if first_col.startswith("unnamed") or first_col in {"", "index"}:
+                    parsed = parsed.iloc[:, 1:].copy()
+
+            if len(parsed.columns) != len(expected_cols):
+                continue
+
+            if header == 0:
+                header_values = [str(col).strip() for col in parsed.columns]
+                header_norm = [_normalize_header_label(col) for col in header_values]
+                numeric_header_cells = sum(_looks_numeric_token(col) for col in header_values)
+                exact_header_match = header_norm == expected_norm
+                likely_data_row = numeric_header_cells >= max(1, len(header_values) - 1)
+                if not exact_header_match and has_header and likely_data_row:
+                    continue
+
+            parsed.columns = expected_cols
+            return _seed_manual_entry_df(
+                parsed,
+                max(2, len(parsed)),
+                entity_col,
+                criteria_cols,
+                year_col,
+            )
+
+    raise ValueError(
+        tt(
+            f"Yapistirilan tablo beklenen yapıya uymuyor. Beklenen sutun sirasi: {', '.join(expected_cols)}",
+            f"The pasted table does not match the expected structure. Expected column order: {', '.join(expected_cols)}",
+        )
+    )
 
 def _prepare_manual_entry_df(
     edited_df: pd.DataFrame,
@@ -1482,6 +1576,15 @@ def _activate_data_source(df: pd.DataFrame, source_id: str, entry_mode: str) -> 
     st.session_state["panel_view_choice"] = None
     st.session_state["panel_run_warnings"] = []
     st.session_state["analysis_scope"] = "panel" if _guess_year_columns(df) else "single"
+    access.track_event(
+        "data_source_loaded",
+        {
+            "entry_mode": entry_mode,
+            "rows": int(df.shape[0]),
+            "columns": int(df.shape[1]),
+            "source_id": str(source_id),
+        },
+    )
 
 def _manual_preset_catalog(lang: str) -> List[Dict[str, Any]]:
     entity_default = "Alternative" if lang == "EN" else "Alternatif"
@@ -1613,7 +1716,7 @@ def _render_upload_data_source_section(lang: str) -> None:
         render_table(sample_dataset().head(5) if lang != "EN" else sample_dataset_en().head(5))
         _tpl_col1, _tpl_col2 = st.columns(2)
         with _tpl_col1:
-            st.download_button(
+            _single_tpl_clicked = st.download_button(
                 tt("⬇️ Tek dönem şablonu indir", "⬇️ Download single-period template"),
                 data=generate_input_template_excel(lang=lang, panel=False),
                 file_name=tt("MCDM_Ornek_Format.xlsx", "MCDM_Sample_Format.xlsx"),
@@ -1621,8 +1724,13 @@ def _render_upload_data_source_section(lang: str) -> None:
                 width="stretch",
                 on_click="ignore",
             )
+            if _single_tpl_clicked:
+                access.track_event(
+                    "template_downloaded",
+                    {"template_type": "single", "lang": lang},
+                )
         with _tpl_col2:
-            st.download_button(
+            _panel_tpl_clicked = st.download_button(
                 tt("⬇️ Panel şablonu indir", "⬇️ Download panel template"),
                 data=generate_input_template_excel(lang="EN", panel=True),
                 file_name="MCDM_Panel_Template.xlsx",
@@ -1630,6 +1738,11 @@ def _render_upload_data_source_section(lang: str) -> None:
                 width="stretch",
                 on_click="ignore",
             )
+            if _panel_tpl_clicked:
+                access.track_event(
+                    "template_downloaded",
+                    {"template_type": "panel", "lang": "EN"},
+                )
 
     uploaded = st.file_uploader(
         tt("CSV, XLSX veya SAV yükleyin", "Upload CSV, XLSX, or SAV"),
@@ -1719,49 +1832,50 @@ def _render_data_input_workspace(lang: str, is_data_loaded: bool) -> None:
         _render_data_input_workspace_body(lang)
 
 def _render_manual_entry_workspace(lang: str) -> None:
-    with st.expander(tt("✍️ Manuel tablo girişi", "✍️ Manual table entry"), expanded=True):
+    with st.expander(tt("✍️ Manuel tablo girişi", "✍️ Manual table entry"), expanded=st.session_state.get("analysis_result") is None):
         st.caption(
             tt(
-                "Dosya yüklemeden ilerlemek için bu alanı açın. En hızlı akış: alternatif ve kriter sayısını girin, adları düzenleyin, tabloya yapıştırın.",
-                "Open this area if you want to proceed without uploading a file. Fastest flow: enter the number of alternatives and criteria, edit the names, then paste into the table.",
+                "Dosya yuklemeden ilerlemek icin bu alani kullanin. En hizli akis: yapıyı bir kez kurun, sonra Excel'den toplu yapistirin veya tabloyu kaydedip devam edin.",
+                "Use this area to proceed without uploading a file. Fastest flow: set the structure once, then bulk-paste from Excel or save the grid and continue.",
             )
         )
-        _controls_col, _editor_col = st.columns([0.95, 1.7], gap="large")
+        _controls_col, _editor_col = st.columns([0.95, 1.8], gap="large")
 
         with _controls_col:
             st.markdown(f"**{tt('1. Hızlı kurulum', '1. Quick setup')}**")
-            _quick_col1, _quick_col2 = st.columns(2)
-            with _quick_col1:
-                _manual_rows = int(
-                    st.number_input(
-                        tt("Alternatif sayısı", "Number of alternatives"),
-                        min_value=2,
-                        max_value=200,
-                        value=int(st.session_state.get("manual_row_count", 8) or 8),
-                        step=1,
-                        key="manual_row_count",
+            _sync_manual_criteria_names_state(int(st.session_state.get("manual_criteria_count", 4) or 4), lang)
+            with st.form("manual_structure_form"):
+                _quick_col1, _quick_col2 = st.columns(2)
+                with _quick_col1:
+                    _manual_rows = int(
+                        st.number_input(
+                            tt("Alternatif sayısı", "Number of alternatives"),
+                            min_value=2,
+                            max_value=500,
+                            value=int(st.session_state.get("manual_row_count", 8) or 8),
+                            step=1,
+                            key="manual_row_count",
+                        )
+                    )
+                with _quick_col2:
+                    _manual_crit_count = int(
+                        st.number_input(
+                            tt("Kriter sayısı", "Criterion count"),
+                            min_value=2,
+                            max_value=30,
+                            value=int(st.session_state.get("manual_criteria_count", 4) or 4),
+                            step=1,
+                            key="manual_criteria_count",
+                        )
+                    )
+                st.caption(
+                    tt(
+                        "Hiz icin tablo artik sabit satirli calisir. Daha fazla satir gerekirse asagidaki hizli ekleme dugmelerini kullanin.",
+                        "For speed, the editor now uses a fixed row count. Use the quick add-row buttons below when you need more rows.",
                     )
                 )
-            with _quick_col2:
-                _manual_crit_count = int(
-                    st.number_input(
-                        tt("Kriter sayısı", "Criterion count"),
-                        min_value=2,
-                        max_value=20,
-                        value=int(st.session_state.get("manual_criteria_count", 4) or 4),
-                        step=1,
-                        key="manual_criteria_count",
-                    )
-                )
-            st.caption(
-                tt(
-                    "Bu alan başlangıç tablosunun boyutunu belirler; isterseniz tabloda sonradan satır ekleyebilirsiniz.",
-                    "This sets the initial table size; you can still add more rows later in the editor.",
-                )
-            )
 
-            st.markdown(f"**{tt('2. Yapıyı özelleştir', '2. Customize structure')}**")
-            with st.expander(tt("Satır, sütun ve alan adlarını düzenle", "Adjust rows, columns, and field names"), expanded=True):
+                st.markdown(f"**{tt('2. Yapıyı özelleştir', '2. Customize structure')}**")
                 _cfg_col1, _cfg_col2 = st.columns(2)
                 with _cfg_col1:
                     _manual_entity_col = st.text_input(
@@ -1796,18 +1910,23 @@ def _render_manual_entry_workspace(lang: str) -> None:
                                 key=f"manual_criteria_name_{idx + 1}",
                             ).strip()
                         )
+                _apply_structure = st.form_submit_button(
+                    tt("🧱 Yapıyı tabloya uygula", "🧱 Apply structure to table"),
+                    width="stretch",
+                )
+
+            if _apply_structure:
                 _manual_criteria_now = _parse_manual_criteria(", ".join(_typed_names), _manual_crit_count, lang)
                 st.session_state["manual_criteria_names"] = ", ".join(_manual_criteria_now)
                 st.session_state["manual_criteria_inputs_seed"] = "||".join(_manual_criteria_now)
-                if st.button(tt("🧱 Yapıyı tabloya uygula", "🧱 Apply structure to table"), key="btn_refresh_manual_schema_main", width="stretch"):
-                    st.session_state["manual_entry_df"] = _seed_manual_entry_df(
-                        st.session_state.get("manual_entry_df"),
-                        _manual_rows,
-                        _manual_entity_col,
-                        _manual_criteria_now,
-                        _manual_year_col,
-                    )
-                    st.rerun()
+                st.session_state["manual_entry_df"] = _seed_manual_entry_df(
+                    st.session_state.get("manual_entry_df"),
+                    _manual_rows,
+                    _manual_entity_col,
+                    _manual_criteria_now,
+                    _manual_year_col,
+                )
+                st.rerun()
 
             _manual_rows = int(st.session_state.get("manual_row_count", 8) or 8)
             _manual_crit_count = int(st.session_state.get("manual_criteria_count", 4) or 4)
@@ -1826,7 +1945,7 @@ def _render_manual_entry_workspace(lang: str) -> None:
                     f"Current setup: {_manual_rows} rows, {_manual_crit_count} criteria, label column '{_manual_entity_col}'.",
                 )
             )
-            _action_cols = st.columns(2)
+            _action_cols = st.columns(4)
             with _action_cols[0]:
                 if st.button(tt("🧪 Örnek değer yükle", "🧪 Load sample values"), key="btn_fill_manual_sample_main", width="stretch"):
                     _base_manual = _seed_manual_entry_df(
@@ -1853,10 +1972,34 @@ def _render_manual_entry_workspace(lang: str) -> None:
                         _manual_year_col,
                     )
                     st.rerun()
+            with _action_cols[2]:
+                if st.button(tt("➕ 5 satır", "➕ Add 5 rows"), key="btn_add_5_manual_rows", width="stretch"):
+                    _new_rows = _manual_rows + 5
+                    st.session_state["manual_row_count"] = _new_rows
+                    st.session_state["manual_entry_df"] = _seed_manual_entry_df(
+                        st.session_state.get("manual_entry_df"),
+                        _new_rows,
+                        _manual_entity_col,
+                        _manual_criteria,
+                        _manual_year_col,
+                    )
+                    st.rerun()
+            with _action_cols[3]:
+                if st.button(tt("➕ 20 satır", "➕ Add 20 rows"), key="btn_add_20_manual_rows", width="stretch"):
+                    _new_rows = _manual_rows + 20
+                    st.session_state["manual_row_count"] = _new_rows
+                    st.session_state["manual_entry_df"] = _seed_manual_entry_df(
+                        st.session_state.get("manual_entry_df"),
+                        _new_rows,
+                        _manual_entity_col,
+                        _manual_criteria,
+                        _manual_year_col,
+                    )
+                    st.rerun()
             st.caption(
                 tt(
-                    "İpucu: Kriter adlarını burada doğrudan değiştirip sonra tabloya uygulayabilirsiniz.",
-                    "Tip: Edit criterion names directly here and then apply them to the table.",
+                    "Ipuçu: Yapıyı bir kez kurduktan sonra en hizli akis toplu yapistir, ikinci en hizli akis ise tabloyu duzenleyip Kaydet demektir.",
+                    "Tip: After setting the structure once, the fastest workflow is bulk paste, and the second fastest is editing the grid and clicking Save.",
                 )
             )
 
@@ -1883,25 +2026,149 @@ def _render_manual_entry_workspace(lang: str) -> None:
             for _crit in _manual_criteria:
                 _manual_col_cfg[_crit] = st.column_config.NumberColumn(_crit, format="%.4f")
 
-            st.markdown(f"**{tt('3. Tabloyu doldurun', '3. Fill the table')}**")
+            st.markdown(f"**{tt('3. Hızlı veri girişi', '3. Faster data entry')}**")
             st.caption(
                 tt(
-                    "Excel'den hücre bloğu yapıştırabilir veya son satıra yazarak yeni alternatif ekleyebilirsiniz.",
-                    "Paste a block of cells from Excel or type into the last row to add a new alternative.",
+                    "Buyuk tablolar icin once toplu yapistir kullanin. Hucre editorunde ise degisiklikler ancak Kaydet dugmesine bastiginizda islenir.",
+                    "For larger tables, use bulk paste first. In the grid editor, changes are applied only when you click Save.",
                 )
             )
-            _manual_edited = st.data_editor(
-                _manual_seed,
-                hide_index=True,
-                num_rows="dynamic",
-                width="stretch",
-                height=430,
-                key="manual_entry_editor",
-                column_config=_manual_col_cfg,
+            _paste_tab, _grid_tab = st.tabs(
+                [
+                    tt("⚡ Toplu yapıştır", "⚡ Bulk paste"),
+                    tt("🧮 Hücre editörü", "🧮 Grid editor"),
+                ]
             )
-            st.session_state["manual_entry_df"] = _manual_edited
+            with _paste_tab:
+                _expected_cols = _manual_schema_columns(_manual_entity_col, _manual_criteria, _manual_year_col)
+                _sample_row = ["A01"] + ([str(2024)] if _manual_year_col else []) + [f"{10.0 + idx:.2f}" for idx in range(len(_manual_criteria))]
+                with st.form("manual_paste_form"):
+                    st.checkbox(
+                        tt("İlk satır başlık içeriyor", "First row includes headers"),
+                        key="manual_paste_has_header",
+                    )
+                    st.text_area(
+                        tt("Excel veya tablodan veri yapıştırın", "Paste data from Excel or another table"),
+                        key="manual_bulk_paste_text",
+                        height=220,
+                        placeholder="\n".join(["\t".join(_expected_cols), "\t".join(_sample_row)]),
+                    )
+                    _apply_bulk_paste = st.form_submit_button(
+                        tt("⚡ Yapıştırılan veriyi tabloya uygula", "⚡ Apply pasted data to the table"),
+                        width="stretch",
+                    )
 
-            _manual_stats = _manual_editor_stats(_manual_edited, _manual_entity_col, _manual_criteria, _manual_year_col)
+                if _apply_bulk_paste:
+                    try:
+                        _parsed_manual = _parse_manual_paste_text(
+                            st.session_state.get("manual_bulk_paste_text", ""),
+                            _manual_entity_col,
+                            _manual_criteria,
+                            _manual_year_col,
+                            has_header=bool(st.session_state.get("manual_paste_has_header", True)),
+                        )
+                    except ValueError as manual_paste_exc:
+                        st.error(str(manual_paste_exc))
+                    else:
+                        st.session_state["manual_entry_df"] = _parsed_manual
+                        st.session_state["manual_row_count"] = max(int(len(_parsed_manual)), 2)
+                        access.track_event(
+                            "manual_bulk_paste_applied",
+                            {
+                                "rows": int(len(_parsed_manual)),
+                                "columns": int(len(_parsed_manual.columns)),
+                            },
+                        )
+                        st.rerun()
+
+                st.caption(
+                    tt(
+                        "Excel kopyalari genellikle sekme ayracli olur; bu alan sekme, noktalı virgul ve virgul ayraclarini dener.",
+                        "Excel copies are usually tab-delimited; this field tries tab, semicolon, and comma separators.",
+                    )
+                )
+                with st.expander(tt("👀 Kayıtlı tablo önizlemesi", "👀 Preview saved table"), expanded=False):
+                    render_table(_manual_seed.head(8))
+                if st.button(_data_ready_button_label(), key="btn_use_manual_data_from_paste_main", width="stretch"):
+                    try:
+                        _prepared_manual = _prepare_manual_entry_df(
+                            _manual_seed,
+                            _manual_entity_col,
+                            _manual_criteria,
+                            _manual_year_col,
+                        )
+                    except ValueError as manual_exc:
+                        st.error(str(manual_exc))
+                    else:
+                        st.session_state["manual_entry_df"] = _prepared_manual
+                        _activate_data_source(_prepared_manual, "manual_entry", "manual")
+                        st.rerun()
+
+            with _grid_tab:
+                with st.form("manual_editor_form"):
+                    _manual_edited = st.data_editor(
+                        _manual_seed,
+                        hide_index=True,
+                        num_rows="fixed",
+                        width="stretch",
+                        height=470,
+                        key="manual_entry_editor",
+                        column_config=_manual_col_cfg,
+                    )
+                    _grid_btn_col1, _grid_btn_col2 = st.columns(2)
+                    with _grid_btn_col1:
+                        _save_manual_grid = st.form_submit_button(
+                            tt("💾 Tablo düzenlemelerini kaydet", "💾 Save table edits"),
+                            width="stretch",
+                        )
+                    with _grid_btn_col2:
+                        _save_and_continue_manual = st.form_submit_button(
+                            tt("✅ Kaydet ve devam et", "✅ Save and continue"),
+                            type="primary",
+                            width="stretch",
+                        )
+
+                if _save_manual_grid or _save_and_continue_manual:
+                    st.session_state["manual_entry_df"] = _manual_edited.copy()
+                    if _save_and_continue_manual:
+                        try:
+                            _prepared_manual = _prepare_manual_entry_df(
+                                _manual_edited,
+                                _manual_entity_col,
+                                _manual_criteria,
+                                _manual_year_col,
+                            )
+                        except ValueError as manual_exc:
+                            st.error(str(manual_exc))
+                        else:
+                            access.track_event(
+                                "manual_grid_saved",
+                                {
+                                    "rows": int(len(_manual_edited)),
+                                    "columns": int(len(_manual_edited.columns)),
+                                },
+                            )
+                            st.session_state["manual_entry_df"] = _prepared_manual
+                            _activate_data_source(_prepared_manual, "manual_entry", "manual")
+                            st.rerun()
+                    else:
+                        access.track_event(
+                            "manual_grid_saved",
+                            {
+                                "rows": int(len(_manual_edited)),
+                                "columns": int(len(_manual_edited.columns)),
+                            },
+                        )
+                        st.rerun()
+
+                st.caption(
+                    tt(
+                        "Bu editor hiz icin sabit satirli calisir. Daha fazla satir gerekirse soldaki +5 veya +20 dugmelerini kullanin.",
+                        "This editor uses a fixed row count for speed. If you need more rows, use the +5 or +20 buttons on the left.",
+                    )
+                )
+
+            _manual_stats = _manual_editor_stats(_manual_seed, _manual_entity_col, _manual_criteria, _manual_year_col)
             _metric_col1, _metric_col2, _metric_col3 = st.columns(3)
             _metric_col1.metric(tt("Dolu satır", "Filled rows"), _manual_stats["filled_rows"])
             _metric_col2.metric(tt("Kriter", "Criteria"), _manual_stats["criteria_count"])
@@ -1921,21 +2188,6 @@ def _render_manual_entry_workspace(lang: str) -> None:
                         "If the label column is blank, the app will auto-generate A01, A02, A03...",
                     )
                 )
-
-            if st.button(_data_ready_button_label(), key="btn_use_manual_data_main", width="stretch"):
-                try:
-                    _prepared_manual = _prepare_manual_entry_df(
-                        _manual_edited,
-                        _manual_entity_col,
-                        _manual_criteria,
-                        _manual_year_col,
-                    )
-                except ValueError as manual_exc:
-                    st.error(str(manual_exc))
-                else:
-                    st.session_state["manual_entry_df"] = _prepared_manual
-                    _activate_data_source(_prepared_manual, "manual_entry", "manual")
-                    st.rerun()
 
 def _input_format_notes(lang: str, panel: bool = False) -> pd.DataFrame:
     if panel:
@@ -2367,7 +2619,13 @@ def diag_rec_text(rec: Dict[str, str]) -> tuple[str, str]:
     )
 
 def reset_all() -> None:
+    preserved = {
+        key: st.session_state.get(key)
+        for key in access.preserved_session_keys()
+        if key in st.session_state
+    }
     st.session_state.clear()
+    st.session_state.update(preserved)
     init_state()
 
 def _diag_score_and_label(diag: Dict[str, Any]) -> tuple[int, str]:
@@ -2673,10 +2931,17 @@ def add_table_to_doc(doc: Document, df: pd.DataFrame, max_rows: int = 25, lang_c
         for paragraph in table.rows[0].cells[i].paragraphs:
             for run in paragraph.runs:
                 _set_docx_run_style(run, lang_code=lang_code, bold=True)
+    _is_tr = lang_code.startswith("tr")
     for _, row in use_df.iterrows():
         cells = table.add_row().cells
         for j, value in enumerate(row):
-            cells[j].text = f"{value:.4f}" if isinstance(value, (float, np.floating)) else str(value)
+            if isinstance(value, (float, np.floating)) and pd.notna(value):
+                s = f"{value:.3f}"
+                cells[j].text = s.replace(".", ",") if _is_tr else s
+            elif isinstance(value, float) and pd.isna(value):
+                cells[j].text = ""
+            else:
+                cells[j].text = str(value)
             for paragraph in cells[j].paragraphs:
                 for run in paragraph.runs:
                     _set_docx_run_style(run, lang_code=lang_code)
@@ -2735,6 +3000,23 @@ def set_docx_language(run, lang_code: str = "tr-TR") -> None:
     lang = OxmlElement("w:lang")
     lang.set(qn("w:val"), lang_code)
     rpr.append(lang)
+
+def _fmt(value: float, lang: str, decimals: int = 3) -> str:
+    """Locale-aware float formatter: TR uses comma, EN uses period."""
+    s = f"{value:.{decimals}f}"
+    if lang != "EN":
+        s = s.replace(".", ",")
+    return s
+
+def _format_df_numbers(df: pd.DataFrame, lang: str, decimals: int = 3) -> pd.DataFrame:
+    """Return copy of df with float columns formatted as locale-aware strings."""
+    out = df.copy()
+    for col in out.columns:
+        if pd.api.types.is_float_dtype(out[col]):
+            out[col] = out[col].apply(
+                lambda v: _fmt(float(v), lang, decimals) if pd.notna(v) else ""
+            )
+    return out
 
 def _html_to_plain(text: str) -> str:
     if not text:
@@ -3088,6 +3370,98 @@ def _docx_detail_interpretation(method: str | None, lang: str) -> str:
         )
     return mapping.get(method or "", "")
 
+def _weight_bar_figure_bytes(weight_df: pd.DataFrame, lang: str) -> bytes | None:
+    """Horizontal bar chart of criterion weights; returns PNG bytes or None."""
+    if not MPL_AVAILABLE or weight_df is None or weight_df.empty:
+        return None
+    try:
+        c_col = col_key(weight_df, "Kriter", "Criterion")
+        w_col = col_key(weight_df, "Ağırlık", "Weight")
+        if c_col not in weight_df.columns or w_col not in weight_df.columns:
+            return None
+        df = weight_df[[c_col, w_col]].copy()
+        df[w_col] = pd.to_numeric(df[w_col], errors="coerce")
+        df = df.dropna().sort_values(w_col, ascending=True)
+        fig, ax = plt.subplots(figsize=(6, max(2.5, len(df) * 0.38)))
+        ax.barh(df[c_col].astype(str), df[w_col].astype(float), color="#2E75B6")
+        ax.set_xlabel("Ağırlık" if lang != "EN" else "Weight", fontsize=9)
+        ax.tick_params(axis="both", labelsize=8)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        plt.tight_layout()
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        return buf.getvalue()
+    except Exception:
+        return None
+
+def _ranking_bar_figure_bytes(ranking_df: pd.DataFrame, lang: str) -> bytes | None:
+    """Vertical bar chart of alternative scores; returns PNG bytes or None."""
+    if not MPL_AVAILABLE or ranking_df is None or ranking_df.empty:
+        return None
+    try:
+        alt_col = col_key(ranking_df, "Alternatif", "Alternative")
+        score_col = col_key(ranking_df, "Skor", "Score")
+        if alt_col not in ranking_df.columns or score_col not in ranking_df.columns:
+            return None
+        df = ranking_df[[alt_col, score_col]].copy()
+        df[score_col] = pd.to_numeric(df[score_col], errors="coerce")
+        df = df.dropna().sort_values(score_col, ascending=False)
+        fig, ax = plt.subplots(figsize=(max(4, len(df) * 0.6), 4))
+        ax.bar(df[alt_col].astype(str), df[score_col].astype(float), color="#C9A227")
+        ax.set_ylabel("Skor" if lang != "EN" else "Score", fontsize=9)
+        ax.tick_params(axis="x", labelsize=8, rotation=45)
+        ax.tick_params(axis="y", labelsize=8)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        plt.tight_layout()
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        return buf.getvalue()
+    except Exception:
+        return None
+
+def _doc_add_table_block(
+    doc: "Document",
+    label: str,
+    df: pd.DataFrame,
+    interpretation: str,
+    lang_code: str,
+) -> None:
+    """SSCI-style table block: caption ABOVE → table → italic interpretation BELOW."""
+    caption = doc.add_paragraph()
+    caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _set_docx_run_style(caption.add_run(label), lang_code, bold=True)
+    add_table_to_doc(doc, df, lang_code=lang_code)
+    if interpretation and interpretation.strip():
+        interp = doc.add_paragraph()
+        interp.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        _set_docx_run_style(interp.add_run(interpretation.strip()), lang_code, italic=True)
+    doc.add_paragraph("")
+
+def _doc_add_figure_block(
+    doc: "Document",
+    label: str,
+    img_bytes: bytes,
+    interpretation: str,
+    lang_code: str,
+) -> None:
+    """SSCI-style figure block: image → caption BELOW → italic interpretation."""
+    buf = io.BytesIO(img_bytes)
+    doc.add_picture(buf, width=Inches(5.0))
+    last_para = doc.paragraphs[-1]
+    last_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    caption = doc.add_paragraph()
+    caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _set_docx_run_style(caption.add_run(label), lang_code, bold=True)
+    if interpretation and interpretation.strip():
+        interp = doc.add_paragraph()
+        interp.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        _set_docx_run_style(interp.add_run(interpretation.strip()), lang_code, italic=True)
+    doc.add_paragraph("")
+
 def _build_academic_doc_sections(result: Dict[str, Any], selected_data: pd.DataFrame, lang: str) -> Dict[str, Any]:
     headings = _docx_heading_map(lang)
     refs = _normalize_references(
@@ -3184,30 +3558,36 @@ def _build_academic_doc_sections(result: Dict[str, Any], selected_data: pd.DataF
         philosophy_parts.append("Accordingly, the findings should be interpreted within the epistemic assumptions of the selected method set rather than as method-independent truths.")
         philosophy = "\n\n".join(philosophy_parts)
 
-        table_parts = []
+        _ti_dm = (
+            f"The decision matrix presents the raw performance values for {n_alt} alternatives across {n_crit} criteria. "
+            + (f"Of these, {benefit_n} are benefit criteria (higher is better) and {cost_n} are cost criteria (lower is better). " if benefit_n or cost_n else "")
+            + "These values form the input to all subsequent weighting and ranking computations."
+        )
+        _ti_weight = ""
         if top_criterion and top_weight is not None and top3_share is not None:
-            table_parts.append(
-                f"The weight table shows that {top_criterion} is the dominant criterion with a weight of {top_weight:.4f}. "
-                f"The cumulative weight of the first three criteria reaches {top3_share:.2%}, suggesting that the decision structure concentrates around a limited number of decisive dimensions."
+            _ti_weight = (
+                f"The weight table shows that {top_criterion} is the dominant criterion with a weight of {top_weight:.3f}. "
+                f"The cumulative weight of the first three criteria reaches {top3_share:.1%}, suggesting that the decision structure concentrates around a limited number of decisive dimensions."
             )
+        _ti_ranking = ""
         if ranking_name and top_alt and top_score is not None:
-            text = f"According to {ranking_name}, {top_alt} ranks first with a score of {top_score:.4f}."
+            _ti_ranking = f"According to {ranking_name}, {top_alt} ranks first with a score of {top_score:.3f}."
             if second_alt and score_gap is not None:
-                text += f" The score gap of {score_gap:.4f} over {second_alt} indicates the degree to which the leading alternative differentiates itself from the immediate follower."
-            table_parts.append(text)
-        detail_text = _docx_detail_interpretation(ranking_method, lang)
-        if detail_text:
-            table_parts.append(detail_text)
+                _ti_ranking += f" The score gap of {score_gap:.3f} over {second_alt} indicates the degree to which the leading alternative differentiates itself from the immediate follower."
+        _ti_detail = _docx_detail_interpretation(ranking_method, lang)
+        if _ti_detail and _ti_ranking:
+            _ti_ranking = _ti_ranking + " " + _ti_detail
+        elif _ti_detail:
+            _ti_ranking = _ti_detail
+        _ti_comparison = ""
         if mean_rho is not None and len(comp_methods) >= 2:
             consistency = "high" if mean_rho >= 0.85 else "moderate" if mean_rho >= 0.70 else "limited"
-            table_parts.append(
-                f"The mean Spearman agreement across the user-selected methods is {mean_rho:.3f}, which points to {consistency} structural consistency among the reported rankings."
-            )
+            _ti_comparison = f"The mean Spearman agreement across the user-selected methods is {mean_rho:.3f}, which points to {consistency} structural consistency among the reported rankings."
+        _ti_mc = ""
         if stability is not None:
             robustness = "strong" if float(stability) >= 0.75 else "moderate" if float(stability) >= 0.50 else "limited"
-            table_parts.append(
-                f"The Monte Carlo analysis yields a first-place retention rate of {float(stability):.1%} for the leading alternative, indicating {robustness} robustness against weight perturbation."
-            )
+            _ti_mc = f"The Monte Carlo analysis yields a first-place retention rate of {float(stability):.1%} for the leading alternative, indicating {robustness} robustness against weight perturbation."
+        table_parts = [t for t in [_ti_weight, _ti_ranking, _ti_comparison, _ti_mc] if t]
         tables_text = "\n\n".join(table_parts)
 
         conclusion_parts = []
@@ -3264,30 +3644,36 @@ def _build_academic_doc_sections(result: Dict[str, Any], selected_data: pd.DataF
         philosophy_parts.append("Bu nedenle bulgular, yöntemden bağımsız mutlak doğrular olarak değil, seçilen yöntem setinin epistemik varsayımları içinde okunmalıdır.")
         philosophy = "\n\n".join(philosophy_parts)
 
-        table_parts = []
+        _ti_dm = (
+            f"Karar matrisi, {n_alt} alternatifin {n_crit} kriter üzerindeki ham performans değerlerini içermektedir. "
+            + (f"Bu kriterlerden {benefit_n} tanesi fayda yönlü (yüksek değer daha iyi), {cost_n} tanesi maliyet yönlüdür (düşük değer daha iyi). " if benefit_n or cost_n else "")
+            + "Bu değerler, sonraki tüm ağırlıklandırma ve sıralama hesaplamalarına girdi oluşturmaktadır."
+        )
+        _ti_weight = ""
         if top_criterion and top_weight is not None and top3_share is not None:
-            table_parts.append(
-                f"Ağırlık tablosu, {top_criterion} kriterinin {top_weight:.4f} ağırlık ile en baskın boyut olduğunu göstermektedir. "
-                f"İlk üç kriterin toplam ağırlığı %{top3_share * 100:.2f} düzeyine ulaşmakta; bu görünüm karar yapısının sınırlı sayıda belirleyici eksen etrafında yoğunlaştığını düşündürmektedir."
+            _ti_weight = (
+                f"Ağırlık tablosu, {top_criterion} kriterinin {_fmt(top_weight, 'TR')} ağırlık ile en baskın boyut olduğunu göstermektedir. "
+                f"İlk üç kriterin toplam ağırlığı %{top3_share * 100:.1f} düzeyine ulaşmakta; bu görünüm karar yapısının sınırlı sayıda belirleyici eksen etrafında yoğunlaştığını düşündürmektedir."
             )
+        _ti_ranking = ""
         if ranking_name and top_alt and top_score is not None:
-            text = f"{ranking_name} sonuçlarına göre {top_alt}, {top_score:.4f} skoruyla ilk sırada yer almıştır."
+            _ti_ranking = f"{ranking_name} sonuçlarına göre {top_alt}, {_fmt(top_score, 'TR')} skoruyla ilk sırada yer almıştır."
             if second_alt and score_gap is not None:
-                text += f" İkinci sıradaki {second_alt} ile oluşan {score_gap:.4f} puanlık fark, lider alternatifin en yakın rakibine göre ne ölçüde ayrıştığını göstermektedir."
-            table_parts.append(text)
-        detail_text = _docx_detail_interpretation(ranking_method, lang)
-        if detail_text:
-            table_parts.append(detail_text)
+                _ti_ranking += f" İkinci sıradaki {second_alt} ile oluşan {_fmt(score_gap, 'TR')} puanlık fark, lider alternatifin en yakın rakibine göre ne ölçüde ayrıştığını göstermektedir."
+        _ti_detail = _docx_detail_interpretation(ranking_method, lang)
+        if _ti_detail and _ti_ranking:
+            _ti_ranking = _ti_ranking + " " + _ti_detail
+        elif _ti_detail:
+            _ti_ranking = _ti_detail
+        _ti_comparison = ""
         if mean_rho is not None and len(comp_methods) >= 2:
             consistency = "yüksek" if mean_rho >= 0.85 else "orta" if mean_rho >= 0.70 else "sınırlı"
-            table_parts.append(
-                f"Kullanıcı tarafından seçilen yöntemler arasındaki ortalama Spearman uyumu {mean_rho:.3f} düzeyindedir; bu değer yöntemler arası {consistency} yapısal tutarlılığa işaret etmektedir."
-            )
+            _ti_comparison = f"Kullanıcı tarafından seçilen yöntemler arasındaki ortalama Spearman uyumu {_fmt(mean_rho, 'TR')} düzeyindedir; bu değer yöntemler arası {consistency} yapısal tutarlılığa işaret etmektedir."
+        _ti_mc = ""
         if stability is not None:
             robustness = "güçlü" if float(stability) >= 0.75 else "orta" if float(stability) >= 0.50 else "sınırlı"
-            table_parts.append(
-                f"Monte Carlo incelemesinde lider alternatifin birinci sırayı koruma oranı %{float(stability) * 100:.1f} olarak hesaplanmıştır. Bu bulgu, sonucun ağırlık bozulmalarına karşı {robustness} bir dayanıklılık sergilediğini göstermektedir."
-            )
+            _ti_mc = f"Monte Carlo incelemesinde lider alternatifin birinci sırayı koruma oranı %{float(stability) * 100:.1f} olarak hesaplanmıştır. Bu bulgu, sonucun ağırlık bozulmalarına karşı {robustness} bir dayanıklılık sergilediğini göstermektedir."
+        table_parts = [t for t in [_ti_weight, _ti_ranking, _ti_comparison, _ti_mc] if t]
         tables_text = "\n\n".join(table_parts)
 
         conclusion_parts = []
@@ -3320,6 +3706,17 @@ def _build_academic_doc_sections(result: Dict[str, Any], selected_data: pd.DataF
         headings["tables"]: tables_text,
         headings["conclusion"]: conclusion,
         headings["references"]: refs,
+        "table_interp": {
+            "decision_matrix": _ti_dm,
+            "weights": _ti_weight,
+            "ranking": _ti_ranking,
+            "comparison": _ti_comparison,
+            "monte_carlo": _ti_mc,
+        },
+        "figure_interp": {
+            "weights": _ti_weight,
+            "ranking": _ti_ranking,
+        },
     }
 
 def _preferred_doc_detail_table(result: Dict[str, Any], lang: str) -> tuple[str, pd.DataFrame] | None:
@@ -3350,92 +3747,175 @@ def generate_apa_docx(result: Dict[str, Any], selected_data: pd.DataFrame, lang:
         section.top_margin, section.bottom_margin = Inches(1), Inches(1)
         section.left_margin, section.right_margin = Inches(1), Inches(1)
 
-    title = doc.add_paragraph()
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    title_run = title.add_run(
-        "Çok Kriterli Karar Verme Akademik Analiz Raporu"
-        if lang != "EN"
-        else "Multi-Criteria Decision-Making Academic Analysis Report"
+    is_tr = lang != "EN"
+    body_lang = "tr-TR" if is_tr else "en-US"
+
+    def _add_heading(text: str) -> None:
+        p = doc.add_paragraph()
+        _set_docx_run_style(p.add_run(text), body_lang, bold=True)
+
+    def _add_body(text: str) -> None:
+        for block in [b.strip() for b in str(text or "").split("\n\n") if b.strip()]:
+            p = doc.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            _set_docx_run_style(p.add_run(block), body_lang)
+
+    # ── Title ────────────────────────────────────────────────────────────────
+    title_p = doc.add_paragraph()
+    title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _set_docx_run_style(
+        title_p.add_run(
+            "Çok Kriterli Karar Verme Akademik Analiz Raporu"
+            if is_tr else
+            "Multi-Criteria Decision-Making Academic Analysis Report"
+        ),
+        body_lang, bold=True,
     )
-    _set_docx_run_style(title_run, "en-US" if lang == "EN" else "tr-TR", bold=True)
     doc.add_paragraph("")
 
+    # ── Build narrative sections ──────────────────────────────────────────────
     sections = _build_academic_doc_sections(result, selected_data, lang)
     heading_map = _docx_heading_map(lang)
-    heading_order = [
-        heading_map["objective"],
-        heading_map["scope"],
-        heading_map["philosophy"],
-        heading_map["tables"],
-        heading_map["conclusion"],
-        heading_map["references"],
-    ]
-    ref_heading = heading_map["references"]
-    tables_heading = heading_map["tables"]
-    body_lang = "en-US" if lang == "EN" else "tr-TR"
+    ti = sections.get("table_interp", {})
+    fi = sections.get("figure_interp", {})
 
-    for heading in heading_order:
-        if heading == ref_heading:
-            for note_line in _reference_notice_lines(lang):
-                note_p = doc.add_paragraph()
-                note_run = note_p.add_run(note_line)
-                _set_docx_run_style(note_run, body_lang, italic=True)
+    # ── 1. Objective ─────────────────────────────────────────────────────────
+    _add_heading(heading_map["objective"])
+    _add_body(sections[heading_map["objective"]])
+
+    # ── 2. Scope ─────────────────────────────────────────────────────────────
+    _add_heading(heading_map["scope"])
+    _add_body(sections[heading_map["scope"]])
+
+    # ── 3. Philosophy ─────────────────────────────────────────────────────────
+    _add_heading(heading_map["philosophy"])
+    _add_body(sections[heading_map["philosophy"]])
+
+    # ── 4. Findings: Tables & Figures ─────────────────────────────────────────
+    findings_heading = "Bulgular" if is_tr else "Findings"
+    _add_heading(findings_heading)
+
+    tbl_num = [0]
+    fig_num = [0]
+
+    def _tbl_label(title: str) -> str:
+        tbl_num[0] += 1
+        return (f"Tablo {tbl_num[0]}: {title}" if is_tr else f"Table {tbl_num[0]}: {title}")
+
+    def _fig_label(title: str) -> str:
+        fig_num[0] += 1
+        return (f"Şekil {fig_num[0]}: {title}" if is_tr else f"Figure {fig_num[0]}: {title}")
+
+    # Table: Decision Matrix
+    dm_df = _docx_preview_df(selected_data, lang)
+    if not dm_df.empty:
+        _doc_add_table_block(
+            doc,
+            _tbl_label("Karar Matrisi Özeti" if is_tr else "Decision Matrix Snapshot"),
+            dm_df,
+            ti.get("decision_matrix", ""),
+            body_lang,
+        )
+
+    # Table + Figure: Weights
+    weight_df_raw = (result.get("weights") or {}).get("table")
+    if isinstance(weight_df_raw, pd.DataFrame) and not weight_df_raw.empty:
+        weight_df = localize_df_lang(weight_df_raw, lang)
+        _doc_add_table_block(
+            doc,
+            _tbl_label("Kriter Ağırlık Tablosu" if is_tr else "Criterion Weight Table"),
+            weight_df,
+            ti.get("weights", ""),
+            body_lang,
+        )
+        w_img = _weight_bar_figure_bytes(weight_df_raw, lang)
+        if w_img:
+            _doc_add_figure_block(
+                doc,
+                _fig_label("Kriter Ağırlıkları" if is_tr else "Criterion Weights"),
+                w_img,
+                fi.get("weights", ""),
+                body_lang,
+            )
+
+    # Table + Figure: Ranking
+    ranking_df_raw = (result.get("ranking") or {}).get("table")
+    if isinstance(ranking_df_raw, pd.DataFrame) and not ranking_df_raw.empty:
+        ranking_df = localize_df_lang(ranking_df_raw, lang)
+        _doc_add_table_block(
+            doc,
+            _tbl_label("Sıralama Tablosu" if is_tr else "Ranking Table"),
+            ranking_df,
+            ti.get("ranking", ""),
+            body_lang,
+        )
+        r_img = _ranking_bar_figure_bytes(ranking_df_raw, lang)
+        if r_img:
+            _doc_add_figure_block(
+                doc,
+                _fig_label("Alternatif Skorları" if is_tr else "Alternative Scores"),
+                r_img,
+                fi.get("ranking", ""),
+                body_lang,
+            )
+
+    # Table: Method detail (TOPSIS, VIKOR, PROMETHEE, etc.)
+    detail_info = _preferred_doc_detail_table(result, lang)
+    if detail_info is not None:
+        detail_title, detail_df = detail_info
+        detail_interp = _docx_detail_interpretation((result.get("ranking") or {}).get("method"), lang)
+        _doc_add_table_block(
+            doc,
+            _tbl_label(detail_title),
+            localize_df_lang(detail_df, lang),
+            detail_interp,
+            body_lang,
+        )
+
+    # Table: Method comparison (Spearman)
+    comp_df = (result.get("comparison") or {}).get("spearman_matrix")
+    if isinstance(comp_df, pd.DataFrame) and not comp_df.empty and comp_df.shape[0] >= 2:
+        _doc_add_table_block(
+            doc,
+            _tbl_label("Yöntem Karşılaştırma Tablosu (Spearman)" if is_tr else "Method Comparison Table (Spearman)"),
+            localize_df_lang(comp_df, lang),
+            ti.get("comparison", ""),
+            body_lang,
+        )
+
+    # Table: Monte Carlo
+    mc_df = (result.get("sensitivity") or {}).get("monte_carlo_summary")
+    if isinstance(mc_df, pd.DataFrame) and not mc_df.empty:
+        _doc_add_table_block(
+            doc,
+            _tbl_label("Monte Carlo Duyarlılık Özeti" if is_tr else "Monte Carlo Sensitivity Summary"),
+            localize_df_lang(mc_df, lang),
+            ti.get("monte_carlo", ""),
+            body_lang,
+        )
+
+    # ── 5. Conclusion ─────────────────────────────────────────────────────────
+    _add_heading(heading_map["conclusion"])
+    _add_body(sections[heading_map["conclusion"]])
+
+    # ── 6. References ─────────────────────────────────────────────────────────
+    for note_line in _reference_notice_lines(lang):
         p = doc.add_paragraph()
-        run = p.add_run(heading)
-        _set_docx_run_style(run, body_lang, bold=True)
-        if heading != ref_heading:
-            section_text = str(sections.get(heading, "") or "").strip()
-            if section_text:
-                for block in [b.strip() for b in section_text.split("\n\n") if b.strip()]:
-                    body = doc.add_paragraph()
-                    body.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-                    body_run = body.add_run(block)
-                    _set_docx_run_style(body_run, body_lang)
-            if heading == tables_heading:
-                _dtitle = "Decision Matrix Snapshot" if lang == "EN" else "Karar Matrisi Özeti"
-                dtitle = doc.add_paragraph()
-                _set_docx_run_style(dtitle.add_run(_dtitle), body_lang, bold=True)
-                add_table_to_doc(doc, _docx_preview_df(selected_data, lang), lang_code=body_lang)
-                _wtitle = "Weight Table" if lang == "EN" else "Ağırlık Tablosu"
-                wtitle = doc.add_paragraph()
-                _set_docx_run_style(wtitle.add_run(_wtitle), body_lang, bold=True)
-                add_table_to_doc(doc, localize_df_lang(result["weights"]["table"], lang), lang_code=body_lang)
-                if result["ranking"]["table"] is not None:
-                    _rtitle = "Ranking Table" if lang == "EN" else "Sıralama Tablosu"
-                    rtitle = doc.add_paragraph()
-                    _set_docx_run_style(rtitle.add_run(_rtitle), body_lang, bold=True)
-                    add_table_to_doc(doc, localize_df_lang(result["ranking"]["table"], lang), lang_code=body_lang)
-                detail_info = _preferred_doc_detail_table(result, lang)
-                if detail_info is not None:
-                    detail_title, detail_df = detail_info
-                    dpar = doc.add_paragraph()
-                    _set_docx_run_style(dpar.add_run(detail_title), body_lang, bold=True)
-                    add_table_to_doc(doc, localize_df_lang(detail_df, lang), lang_code=body_lang)
-                comp_df = (result.get("comparison") or {}).get("spearman_matrix")
-                if isinstance(comp_df, pd.DataFrame) and not comp_df.empty and comp_df.shape[0] >= 2:
-                    _ctitle = "Method Comparison Table" if lang == "EN" else "Yöntem Karşılaştırma Tablosu"
-                    ctitle = doc.add_paragraph()
-                    _set_docx_run_style(ctitle.add_run(_ctitle), body_lang, bold=True)
-                    add_table_to_doc(doc, localize_df_lang(comp_df, lang), lang_code=body_lang)
-                mc_df = (result.get("sensitivity") or {}).get("monte_carlo_summary")
-                if isinstance(mc_df, pd.DataFrame) and not mc_df.empty:
-                    _mtitle = "Monte Carlo Summary" if lang == "EN" else "Monte Carlo Özeti"
-                    mtitle = doc.add_paragraph()
-                    _set_docx_run_style(mtitle.add_run(_mtitle), body_lang, bold=True)
-                    add_table_to_doc(doc, localize_df_lang(mc_df, lang), lang_code=body_lang)
-        else:
-            for ref in sections.get(ref_heading, []):
-                ref_p = doc.add_paragraph()
-                ref_p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-                ref_p.paragraph_format.left_indent = Inches(0.5)
-                ref_p.paragraph_format.first_line_indent = Inches(-0.5)
-                ref_run = ref_p.add_run(ref)
-                _set_docx_run_style(ref_run, body_lang)
+        _set_docx_run_style(p.add_run(note_line), body_lang, italic=True)
+    _add_heading(heading_map["references"])
+    for ref in sections.get(heading_map["references"], []):
+        ref_p = doc.add_paragraph()
+        ref_p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        ref_p.paragraph_format.left_indent = Inches(0.5)
+        ref_p.paragraph_format.first_line_indent = Inches(-0.5)
+        _set_docx_run_style(ref_p.add_run(ref), body_lang)
 
+    # ── Signature ─────────────────────────────────────────────────────────────
     doc.add_paragraph("\n")
     sig = doc.add_paragraph()
     sig.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    _set_docx_run_style(sig.add_run('Prof. Dr. Ömer Faruk Rençber'), body_lang, italic=True)
+    _set_docx_run_style(sig.add_run("Prof. Dr. Ömer Faruk Rençber"), body_lang, italic=True)
+
     buffer = io.BytesIO()
     doc.save(buffer)
     return buffer.getvalue()
@@ -3462,8 +3942,8 @@ def _render_export_download_button(
     file_name: str,
     mime: str,
     key: str,
-) -> None:
-    st.download_button(
+) -> bool:
+    return st.download_button(
         label,
         data=bytes(data),
         file_name=file_name,
@@ -5156,13 +5636,22 @@ def _render_report_download_controls_core(lang: str) -> None:
 
     dl1, dl2 = st.columns(2)
     with dl1:
-        _render_export_download_button(
+        _excel_clicked = _render_export_download_button(
             tt("📊 Tüm Sonuçları İndir (Excel)", "📊 Download All Results (Excel)"),
             blob_cache[excel_key],
             excel_filename,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key=f"download_excel_results_{lang}",
         )
+        if _excel_clicked:
+            access.track_event(
+                "report_downloaded",
+                {
+                    "format": "excel",
+                    "lang": lang,
+                    "is_panel": is_panel_download,
+                },
+            )
         st.caption(
             tt(
                 "Tarayıcı indirme akışı kullanılır. Tarayıcınızda konum sorma açıksa yer seçme penceresi açılır.",
@@ -5173,13 +5662,22 @@ def _render_report_download_controls_core(lang: str) -> None:
     with dl2:
         if DOCX_AVAILABLE:
             docx_name = tt("MCDM_Akademik_Rapor.docx", "MCDM_Academic_Report.docx")
-            _render_export_download_button(
+            _docx_clicked = _render_export_download_button(
                 tt("📄 Akademik Raporu İndir — APA Word", "📄 Download Academic Report — APA Word"),
                 doc_bytes,
                 docx_name,
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 key=f"download_docx_results_{lang}",
             )
+            if _docx_clicked:
+                access.track_event(
+                    "report_downloaded",
+                    {
+                        "format": "docx",
+                        "lang": lang,
+                        "is_panel": is_panel_download,
+                    },
+                )
         else:
             st.warning(tt("Word çıktısı için python-docx kurulu olmalıdır.", "python-docx must be installed for Word output."))
 
@@ -6775,26 +7273,267 @@ def gen_mc_commentary(result: Dict[str, Any]) -> str:
     )
     return _compose_structured_commentary(did, why, found, example, action)
 
+
+def _render_email_verification_wall(auth_settings: access.AuthSettings) -> None:
+    """E-posta doğrulanmamış kullanıcıları durduran ekran (ilk giriş grace sona erdikten sonra)."""
+    st.markdown(
+        f"""
+        <div class="tracking-panel tracking-panel-blue" style="margin-top:1rem; padding:1.1rem 1.15rem;">
+            <div class="tracking-title">✉️ {tt("E-posta Dogrulamasi Gerekli", "Email Verification Required")}</div>
+            <div class="tracking-subtitle" style="margin-top:0.4rem;">
+                {tt(
+                    "Hesabınızı doğrulamak için kayıt e-postanıza gelen bağlantıya tıklayın. "
+                    "Doğrulama tamamlandıktan sonra tekrar giriş yapın.",
+                    "Please click the link sent to your registration email to verify your account. "
+                    "After verification is complete, sign in again.",
+                )}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.info(
+        tt(
+            "Doğrulama e-postası gelmedi mi? Spam klasörünüzü kontrol edin veya kimlik sağlayıcınızdan "
+            "tekrar gönderme isteyin.",
+            "Didn't receive the verification email? Check your spam folder or request a resend "
+            "from your identity provider.",
+        )
+    )
+    if st.button(tt("🚪 Cikis Yap ve Tekrar Giris Yap", "🚪 Sign Out and Sign In Again"), key="btn_verify_logout"):
+        access.logout_user()
+        st.rerun()
+
+
+def _render_name_collection_screen(user: access.CurrentUser) -> None:
+    """Kullanıcıdan Ad-Soyad toplar (ilk girişte isim email'e eşleşiyorsa gösterilir)."""
+    st.markdown(
+        f"""
+        <div class="tracking-panel tracking-panel-green" style="margin-top:1rem; padding:1.1rem 1.15rem;">
+            <div class="tracking-title">👋 {tt("Hosgeldiniz!", "Welcome!")}</div>
+            <div class="tracking-subtitle" style="margin-top:0.4rem;">
+                {tt(
+                    "MCDM Toolbox'a hoş geldiniz. Devam etmek için ad ve soyadınızı girin.",
+                    "Welcome to MCDM Toolbox. Please enter your full name to continue.",
+                )}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.form("name_collection_form", border=False):
+        entered_name = st.text_input(
+            tt("Ad Soyad", "Full Name"),
+            placeholder=tt("Örn: Ahmet Yılmaz", "E.g. John Smith"),
+            max_chars=80,
+        )
+        submitted = st.form_submit_button(
+            tt("✅ Devam Et", "✅ Continue"),
+            type="primary",
+            use_container_width=True,
+        )
+        if submitted:
+            clean = entered_name.strip()
+            if len(clean) < 3 or "@" in clean:
+                st.error(tt("Lütfen geçerli bir ad soyad girin (en az 3 karakter).", "Please enter a valid full name (at least 3 characters)."))
+            else:
+                access.update_display_name(user.auth_subject, clean, access.get_analytics_settings())
+                st.session_state["_mcdm_name_collected"] = True
+                st.rerun()
+    if st.button(tt("🚪 Cikis Yap", "🚪 Sign Out"), key="btn_name_logout"):
+        access.logout_user()
+        st.rerun()
+
+
+def _render_auth_gate(auth_settings: access.AuthSettings) -> None:
+    # Hero banner — giriş yapmamış kullanıcılara gösterilir (yıldızlı gece gökyüzü)
+    _badge_html = (
+        '<span style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);'
+        'color:#E2E8F0;border-radius:20px;padding:0.28rem 0.8rem;font-size:0.78rem;font-weight:600;margin:0.15rem;">AHP · FUCOM · ENTROPY · CRITIC · MEREC</span>'
+        '<span style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);'
+        'color:#E2E8F0;border-radius:20px;padding:0.28rem 0.8rem;font-size:0.78rem;font-weight:600;margin:0.15rem;">TOPSIS · VIKOR · PROMETHEE · MARCOS · MABAC</span>'
+        '<span style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);'
+        'color:#E2E8F0;border-radius:20px;padding:0.28rem 0.8rem;font-size:0.78rem;font-weight:600;margin:0.15rem;">SPOTIS · RAWEC · RAFSI · ROV · AROMAN</span>'
+    )
+    _subtitle = tt("Çok Kriterli Karar Destek Sistemi", "Multi-Criteria Decision Support System")
+    _desc = tt(
+        "Akademik düzeyde ağırlıklandırma ve sıralama analizleri gerçekleştirin. "
+        "Verilerinizi yükleyin, yönteminizi seçin ve dakikalar içinde yayına hazır raporlar oluşturun.",
+        "Run academic-grade weighting and ranking analyses. "
+        "Upload your data, choose your method, and generate publication-ready reports in minutes."
+    )
+    _cta = tt("Ücretsiz giriş yapın ve hemen başlayın", "Sign in for free and get started")
+    _vid = tt("Tanıtım Videosu", "Demo Video")
+    st.markdown(
+        f"""<div style="background-color: #020b18; background-image: radial-gradient(1px 1px at 5% 10%, rgba(255,255,255,0.95) 0%, transparent 100%), radial-gradient(1.5px 1.5px at 12% 22%, rgba(255,255,255,0.8) 0%, transparent 100%), radial-gradient(1px 1px at 18% 5%, rgba(255,255,255,0.9) 0%, transparent 100%), radial-gradient(2px 2px at 25% 35%, rgba(255,255,255,0.6) 0%, transparent 100%), radial-gradient(1px 1px at 30% 15%, rgba(200,220,255,0.9) 0%, transparent 100%), radial-gradient(1.5px 1.5px at 38% 48%, rgba(255,255,255,0.7) 0%, transparent 100%), radial-gradient(1px 1px at 43% 8%, rgba(255,255,255,0.85) 0%, transparent 100%), radial-gradient(2px 2px at 50% 28%, rgba(180,200,255,0.8) 0%, transparent 100%), radial-gradient(1px 1px at 55% 60%, rgba(255,255,255,0.7) 0%, transparent 100%), radial-gradient(1.5px 1.5px at 62% 18%, rgba(255,255,255,0.9) 0%, transparent 100%), radial-gradient(1px 1px at 68% 42%, rgba(255,255,255,0.75) 0%, transparent 100%), radial-gradient(2px 2px at 74% 12%, rgba(200,215,255,0.85) 0%, transparent 100%), radial-gradient(1px 1px at 80% 55%, rgba(255,255,255,0.8) 0%, transparent 100%), radial-gradient(1.5px 1.5px at 85% 30%, rgba(255,255,255,0.65) 0%, transparent 100%), radial-gradient(1px 1px at 90% 8%, rgba(255,255,255,0.9) 0%, transparent 100%), radial-gradient(2px 2px at 95% 45%, rgba(180,210,255,0.7) 0%, transparent 100%), radial-gradient(1px 1px at 8% 72%, rgba(255,255,255,0.6) 0%, transparent 100%), radial-gradient(1.5px 1.5px at 15% 85%, rgba(255,255,255,0.75) 0%, transparent 100%), radial-gradient(1px 1px at 22% 65%, rgba(255,255,255,0.85) 0%, transparent 100%), radial-gradient(1px 1px at 35% 78%, rgba(200,220,255,0.7) 0%, transparent 100%), radial-gradient(2px 2px at 48% 88%, rgba(255,255,255,0.6) 0%, transparent 100%), radial-gradient(1px 1px at 58% 75%, rgba(255,255,255,0.8) 0%, transparent 100%), radial-gradient(1.5px 1.5px at 70% 82%, rgba(255,255,255,0.7) 0%, transparent 100%), radial-gradient(1px 1px at 78% 68%, rgba(180,200,255,0.85) 0%, transparent 100%), radial-gradient(1px 1px at 88% 90%, rgba(255,255,255,0.65) 0%, transparent 100%), radial-gradient(1.5px 1.5px at 93% 72%, rgba(255,255,255,0.8) 0%, transparent 100%), radial-gradient(ellipse at 70% 20%, rgba(20,50,100,0.5) 0%, transparent 55%), radial-gradient(ellipse at 15% 60%, rgba(10,30,70,0.4) 0%, transparent 45%), linear-gradient(180deg, #020810 0%, #040e1f 40%, #061228 100%); border-radius: 16px; padding: 2.8rem 2.5rem 2.4rem 2.5rem; margin-bottom: 1.5rem; position: relative; overflow: hidden;">
+<div><div style="font-size:0.78rem;font-weight:500;letter-spacing:0.12em;color:#60A5FA;text-transform:uppercase;margin-bottom:0.25rem;">✦ &nbsp; {_subtitle}</div>
+<div style="font-size:0.92rem;color:#94A3B8;font-style:italic;margin-bottom:0.7rem;letter-spacing:0.02em;">Prof. Dr. Ömer Faruk Rençber</div>
+<h1 style="font-size:2.5rem;font-weight:800;margin:0 0 0.7rem 0;line-height:1.15;"><span style="color:#F97316;text-shadow:0 0 28px rgba(249,115,22,0.45);">MCDM</span><span style="color:#FFFFFF;text-shadow:0 0 30px rgba(96,165,250,0.25);"> Toolbox</span></h1>
+<p style="font-size:1.02rem;color:#CBD5E1;max-width:680px;line-height:1.7;margin:0 0 1.5rem 0;">{_desc}</p>
+<div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:1.8rem;">{_badge_html}</div>
+<div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;">
+<div style="background:#F59E0B;color:#1B1B1B;border-radius:10px;padding:0.65rem 1.3rem;font-size:0.93rem;font-weight:700;">🔐 {_cta}</div>
+<a href="https://youtu.be/jp4oih6_Nec" target="_blank" style="display:inline-block;background:#DC2626;color:#FFFFFF;text-decoration:none;border-radius:10px;padding:0.65rem 1.1rem;font-size:0.9rem;font-weight:600;">🎥 {_vid}</a>
+<a href="https://www.instagram.com/mcdm_dss/" target="_blank" style="display:inline-block;background:#C13584;color:#FFFFFF;text-decoration:none;border-radius:10px;padding:0.65rem 1.1rem;font-size:0.9rem;font-weight:600;">📸 @mcdm_dss</a>
+</div></div></div>""",
+        unsafe_allow_html=True,
+    )
+
+    if not auth_settings.configured:
+        st.error(
+            tt(
+                "Kimlik dogrulama henuz tam yapilandirilmamis. Yayin oncesi .streamlit/secrets.toml ve Auth0 ayarlari tamamlanmali.",
+                "Authentication is not fully configured yet. Complete the .streamlit/secrets.toml and Auth0 setup before enabling sign-in.",
+            )
+        )
+        st.stop()
+    if not auth_settings.enabled:
+        st.error(
+            tt(
+                "Bu Streamlit surumu yerlesik giris altyapisini desteklemiyor. requirements.txt icindeki Streamlit auth surumunu yukselttikten sonra tekrar deploy edin.",
+                "This Streamlit build does not support built-in login. Upgrade the Streamlit auth version in requirements.txt and redeploy.",
+            )
+        )
+        st.stop()
+
+    auth_col1, auth_col2 = st.columns(2)
+    with auth_col1:
+        st.button(
+            tt("🔐 Giris Yap", "🔐 Sign In"),
+            on_click=access.login_user,
+            args=[auth_settings.provider],
+            width="stretch",
+            key="btn_auth_login_gate",
+        )
+    with auth_col2:
+        st.button(
+            tt("✉️ Ucretsiz Kayit Ol", "✉️ Create Free Account"),
+            on_click=access.login_user,
+            args=[auth_settings.signup_provider],
+            width="stretch",
+            key="btn_auth_signup_gate",
+        )
+    st.caption(tt(auth_settings.privacy_notice_tr, auth_settings.privacy_notice_en))
+    st.stop()
+
+
+def _render_user_session_card(auth_settings: access.AuthSettings, current_user: access.CurrentUser) -> None:
+    with st.expander(tt("👤 Üye Bilgileri", "👤 Member Info"), expanded=not current_user.is_logged_in):
+        if not current_user.is_logged_in:
+            st.markdown(
+                f"""
+                <div class="tracking-panel tracking-panel-blue" style="margin-bottom:0.5rem; padding:0.75rem 1rem;">
+                    <div class="tracking-title">{tt("Giris Yapilmadi", "Not Signed In")}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if auth_settings.enabled:
+                if st.button(tt("🔐 Giris Yap", "🔐 Sign In"), width="stretch", key="btn_sidebar_login"):
+                    st.login(auth_settings.provider)
+                if auth_settings.signup_provider and auth_settings.signup_provider != auth_settings.provider:
+                    if st.button(tt("✉️ Kayit Ol", "✉️ Sign Up"), width="stretch", key="btn_sidebar_signup"):
+                        st.login(auth_settings.signup_provider)
+            return
+
+        role_label = tt("Yonetici", "Admin") if access.is_admin_email(current_user.email, auth_settings) else tt("Uye", "Member")
+        st.markdown(
+            f"""
+            <div class="tracking-panel tracking-panel-green tracking-panel-compact">
+                <div class="tracking-title">{tt("Oturum", "Session")}</div>
+                <div class="tracking-grid">
+                    <div class="tracking-card tracking-card-green">
+                        <div class="tracking-label">{tt("Kullanici", "User")}</div>
+                        <div class="tracking-value">{html.escape(current_user.name or current_user.email)}</div>
+                    </div>
+                    <div class="tracking-card tracking-card-slate">
+                        <div class="tracking-label">{tt("E-posta", "Email")}</div>
+                        <div class="tracking-value">{html.escape(current_user.email)}</div>
+                    </div>
+                    <div class="tracking-card tracking-card-blue">
+                        <div class="tracking-label">{tt("Rol", "Role")}</div>
+                        <div class="tracking-value">{role_label}</div>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if st.button(tt("🚪 Cikis Yap", "🚪 Log Out"), width="stretch", key="btn_auth_logout_sidebar"):
+            access.track_event("logout_clicked", {"source": "sidebar"})
+            access.logout_user()
+            st.rerun()
+
+
+def _render_admin_usage_panel(auth_settings: access.AuthSettings, current_user: access.CurrentUser) -> None:
+    if not current_user.is_logged_in or not access.is_admin_email(current_user.email, auth_settings):
+        return
+    with st.expander(tt("📈 Uyelik ve Kullanim Ozeti", "📈 Membership and Usage Summary"), expanded=False):
+        summary = access.get_admin_summary(limit=25)
+        if not summary:
+            st.info(
+                tt(
+                    "Kullanim veritabani baglantisi henuz hazir degil. Secrets ve veritabani ayarlarini kontrol edin.",
+                    "The usage database connection is not ready yet. Check your secrets and database settings.",
+                )
+            )
+            _tracking_error = access.tracking_error()
+            if _tracking_error:
+                st.caption(tt(f"Son hata: {_tracking_error}", f"Latest error: {_tracking_error}"))
+            return
+
+        m1, m2 = st.columns(2)
+        m3, m4 = st.columns(2)
+        with m1:
+            st.metric(tt("Toplam uye", "Total members"), f"{summary['total_users']:,}")
+        with m2:
+            st.metric(tt("Toplam oturum", "Total sessions"), f"{summary['total_sessions']:,}")
+        with m3:
+            st.metric(tt("Tamamlanan analiz", "Completed analyses"), f"{summary['total_analyses']:,}")
+        with m4:
+            st.metric(tt("Son 7 gun aktif uye", "Active users in 7 days"), f"{summary['last_7d_users']:,}")
+
+        recent_df = pd.DataFrame(summary.get("recent_users") or [])
+        if not recent_df.empty:
+            recent_df = recent_df.rename(
+                columns={
+                    "user_email": tt("E-posta", "Email"),
+                    "last_seen_at": tt("Son gorulme", "Last seen"),
+                    "analyses_completed": tt("Analiz", "Analyses"),
+                    "session_count": tt("Oturum", "Sessions"),
+                }
+            )
+            st.markdown(f"**{tt('Son kullanicilar', 'Recent users')}**")
+            render_table(recent_df)
+
+        events_df = pd.DataFrame(summary.get("events_by_type") or [])
+        if not events_df.empty:
+            events_df = events_df.rename(
+                columns={
+                    "event_type": tt("Olay", "Event"),
+                    "total": tt("Toplam", "Total"),
+                }
+            )
+            st.markdown(f"**{tt('Olay dagilimi', 'Event distribution')}**")
+            render_table(events_df)
+
+        _tracking_error = access.tracking_error()
+        if _tracking_error:
+            st.caption(tt(f"Son izleme hatasi: {_tracking_error}", f"Latest tracking error: {_tracking_error}"))
+
+
 # ---------------------------------------------------------
 # GLOBAL BANNER
 # ---------------------------------------------------------
-st.markdown(
-    f"""
-    <div class="global-header">
-        <div class="header-title">MCDM- Profesyonel Karar Destek Sistemi</div>
-        <div class="header-professor">Prof. Dr. Ömer Faruk Rençber</div>
-        <div class="header-meta">
-            <div class="header-dedication">{tt("Çocuklarım M. Eymen ve H. Serra'ya İthafen..", "Dedicated to My Children M. Eymen and H. Serra..")}</div>
-            <div class="header-url"><a href="https://www.ofrencber.com" target="_blank">www.ofrencber.com</a></div>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+_auth_settings = access.get_auth_settings()
+_analytics_settings = access.get_analytics_settings()
+_current_user = access.get_current_user()
 
 # ---------------------------------------------------------
-# SOL PANEL: KONTROL, AMAC VE TEMİZLİK
+# SOL PANEL — Auth durumuna göre içerik
 # ---------------------------------------------------------
+missing_strategy, clip_outliers = "Sil", False  # defaults (logged-out veya data yok)
+
 with st.sidebar:
     _logo_path = APP_DIR / "logo.png"
     _sidebar_logo_b64 = None
@@ -6820,6 +7559,7 @@ with st.sidebar:
             """,
             unsafe_allow_html=True,
         )
+
     _lang_idx = 1 if st.session_state.get("ui_lang") == "EN" else 0
     _lang_pick = st.radio(
         "Language",
@@ -6832,183 +7572,247 @@ with st.sidebar:
     if _new_lang != st.session_state.get("ui_lang"):
         st.session_state["ui_lang"] = _new_lang
         st.rerun()
-    st.checkbox(
-        tt("Detay rehberini göster", "Show guidance details"),
-        key="show_step_guidance",
-        help=tt(
-            "Kapalıyken adım açıklamaları ve özet kartları daha sade görünür.",
-            "When off, step descriptions and summary cards stay more minimal.",
-        ),
-    )
 
-    with st.expander(tt("📘 Uygulama Rehberi", "📘 User Guide"), expanded=False):
-        st.markdown(
-            f"<p style='font-size:0.78rem; line-height:1.55; color:#2C2C2C; margin:0;'>"
-            f"{tt('1️⃣ Sağ paneldeki veri girişi alanından dosya yükleyin, örnek veriyi kullanın veya manuel tabloya geçin.<br>'
-                  '2️⃣ Sağ panelde analiz amacını seçin.<br>'
-                  '3️⃣ Kriterlerin yönünü (fayda/maliyet) doğrulayın.<br>'
-                  '4️⃣ Ağırlıklandırma ve sıralama yöntemlerini belirleyin.<br>'
-                  '5️⃣ &#34;Analiz Zamanı&#34; butonuna basın.<br>'
-                  '6️⃣ Sonuçları sekmeler arasında inceleyin ve raporu indirin.',
-                  '1️⃣ In the right-side data input area, upload a file, use sample data, or switch to manual entry.<br>'
-                  '2️⃣ Select your analysis objective in the right panel.<br>'
-                  '3️⃣ Confirm criterion directions (benefit/cost).<br>'
-                  '4️⃣ Select weighting and ranking methods.<br>'
-                  '5️⃣ Click &#34;Run Analysis&#34;.<br>'
-                  '6️⃣ Explore results across tabs and download the report.')}"
-            f"</p>",
-            unsafe_allow_html=True,
-        )
+    st.markdown("<hr style='margin: 0.5rem 0'>", unsafe_allow_html=True)
 
-    with st.expander(tt("🧭 Metodolojik Yardım", "🧭 Methodological Help"), expanded=False):
-        st.markdown(
-            f"<p style='font-size:0.78rem; line-height:1.55; color:#2C2C2C; margin:0;'>"
-            f"{tt('<b>Objektif Ağırlık Yöntemleri:</b> Kriter önemini verinin kendi yapısından türetir; araştırmacı müdahalesi gerekmez.<br><br>'
-                  '<b>Klasik ÇKKV:</b> Kesin sayısal veriler için tasarlanmış; TOPSIS, VIKOR, EDAS vb. 17 yöntem.<br><br>'
-                  '<b>Fuzzy ÇKKV:</b> Ölçüm belirsizliği varsa tercih edilir; üçgensel bulanık sayılar kullanır.<br><br>'
-                  '<b>Monte Carlo:</b> Ağırlıklar rastgele bozularak sıralamanın ne kadar kararlı olduğu test edilir.',
-                  '<b>Objective Weighting:</b> Derives criterion importance from data structure; no researcher intervention needed.<br><br>'
-                  '<b>Classical MCDM:</b> Designed for crisp numerical data; 17 methods incl. TOPSIS, VIKOR, EDAS.<br><br>'
-                  '<b>Fuzzy MCDM:</b> Preferred when measurement uncertainty exists; uses triangular fuzzy numbers.<br><br>'
-                  '<b>Monte Carlo:</b> Weights are randomly perturbed to test how stable the ranking is.')}"
-            f"</p>",
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f"<div style='margin-top:0.6rem; padding:0.5rem 0.65rem; background:#EAF3FB; border-left:3px solid #5A9CC5; border-radius:4px;'>"
-            f"<p style='font-size:0.75rem; font-weight:700; color:#1F5F9A; margin:0 0 0.3rem 0;'>"
-            f"🎯 {tt('Yöntem Önerisi Nasıl Yapılır?', 'How Are Methods Recommended?')}"
-            f"</p>"
-            f"<p style='font-size:0.74rem; line-height:1.5; color:#2C3E50; margin:0;'>"
-            f"{tt('<b>Yüksek korelasyon</b> → CRITIC veya PCA ağırlıklandırma; uzlaşı için VIKOR önerilir.<br>'
-                  '<b>Yüksek değişkenlik (varyans)</b> → Entropi veya Standart Sapma ağırlıklandırma öne çıkar.<br>'
-                  '<b>Dengeli veri yapısı</b> → TOPSIS, VIKOR, EDAS güvenle uygulanabilir.<br>'
-                  '<b>Az alternatif (&lt;6)</b> → Yöntem seçimi daha kritik; Monte Carlo ihtiyatla yorumlanmalı.<br>'
-                  '<b>Geniş alternatif seti</b> → Mesafe tabanlı yöntemler (TOPSIS, EDAS) özellikle etkin.',
-                  '<b>High correlation</b> → CRITIC or PCA weighting; VIKOR recommended for consensus.<br>'
-                  '<b>High dispersion (variance)</b> → Entropy or Standard Deviation weighting stands out.<br>'
-                  '<b>Balanced data structure</b> → TOPSIS, VIKOR, EDAS can be applied safely.<br>'
-                  '<b>Few alternatives (&lt;6)</b> → Method choice is more critical; interpret Monte Carlo cautiously.<br>'
-                  '<b>Large alternative set</b> → Distance-based methods (TOPSIS, EDAS) are especially effective.')}"
-            f"</p></div>",
-            unsafe_allow_html=True,
-        )
-
-    is_data_loaded = st.session_state.get("raw_data") is not None
-
-    if st.button(tt("🔄 Yeni Analize Başla (Sıfırla)", "🔄 Start New Analysis (Reset)"), width="stretch"):
-        reset_all()
-        st.rerun()
-    st.caption(
-        tt(
-            "Veri yükleme alanı sağ panelde yer alır. Veri geldikten sonra bu bölüm otomatik olarak kapanır.",
-            "The data input area is in the right panel. Once data is loaded, that section collapses automatically.",
-        )
-    )
-
-    # ── Veri Ön İşleme ──
-    if is_data_loaded:
-        st.markdown(f"<div class='sb-section-label'>🧹 {tt('Veri Ön İşleme', 'Data Preprocessing')}</div>", unsafe_allow_html=True)
-        _method_options = [
-            tt("Medyan", "Median"),
-            tt("Ortalama", "Mean"),
-            tt("Interpolasyon", "Interpolation"),
-            tt("Sıfır", "Zero"),
-        ]
-        _saved_missing = str(st.session_state.get("missing_strategy_saved", "Sil") or "Sil")
-        _saved_to_widget = {
-            "Medyan": tt("Medyan", "Median"),
-            "Median": tt("Medyan", "Median"),
-            "Ortalama": tt("Ortalama", "Mean"),
-            "Mean": tt("Ortalama", "Mean"),
-            "Interpolasyon": tt("Interpolasyon", "Interpolation"),
-            "Interpolation": tt("Interpolasyon", "Interpolation"),
-            "Sıfır": tt("Sıfır", "Zero"),
-            "Zero": tt("Sıfır", "Zero"),
-        }
-        _default_method = _saved_to_widget.get(_saved_missing, _method_options[0])
-        if st.session_state.get("impute_method_select") not in _method_options:
-            st.session_state["impute_method_select"] = _default_method
-        if "cb_clip_outliers" not in st.session_state:
-            st.session_state["cb_clip_outliers"] = bool(st.session_state.get("clip_outliers_saved", False))
-
-        impute_checked = st.checkbox(
-            tt("Eksik Veri Tamamla", "Impute Missing Values"),
-            value=st.session_state["impute_mode_open"],
-            key="cb_impute_mode",
-        )
-        if impute_checked != st.session_state["impute_mode_open"]:
-            st.session_state["impute_mode_open"] = impute_checked
-            st.rerun()
-
-        if impute_checked:
-            _impute_method = st.selectbox(
-                tt("Tamamlama yöntemi", "Imputation method"),
-                _method_options,
-                key="impute_method_select",
+    if not _current_user.is_logged_in:
+        # ── Giriş yapılmamış: sadece kullanıcı kartı + yardım ──
+        _render_user_session_card(_auth_settings, _current_user)
+        st.markdown("<hr style='margin: 0.5rem 0'>", unsafe_allow_html=True)
+        with st.expander(tt("📘 Uygulama Rehberi", "📘 User Guide"), expanded=True):
+            st.markdown(
+                f"<p style='font-size:0.78rem; line-height:1.55; color:#2C2C2C; margin:0;'>"
+                f"{tt('1️⃣ Giriş yap.<br>2️⃣ Veri yükle (Excel, CSV, SPSS).<br>3️⃣ Yöntemini seç.<br>4️⃣ Analiz et ve raporu indir.',
+                      '1️⃣ Sign in.<br>2️⃣ Upload data (Excel, CSV, SPSS).<br>3️⃣ Choose your method.<br>4️⃣ Run analysis and download report.')}"
+                f"</p>",
+                unsafe_allow_html=True,
             )
-        else:
-            _impute_method = st.session_state.get("impute_method_select", _default_method)
-
-        _clip_outliers_selected = st.checkbox(
-            tt("Aykırı Değerleri (Outlier) Temizle", "Clean Outliers"),
-            value=bool(st.session_state.get("cb_clip_outliers", st.session_state.get("clip_outliers_saved", False))),
-            key="cb_clip_outliers",
+        with st.expander(tt("🧭 Neden MCDM Toolbox?", "🧭 Why MCDM Toolbox?"), expanded=False):
+            st.markdown(
+                f"<p style='font-size:0.78rem; line-height:1.55; color:#2C2C2C; margin:0;'>"
+                f"{tt('✅ 24+ klasik ve bulanık sıralama yöntemi<br>✅ 9 objektif ağırlık yöntemi<br>✅ Monte Carlo duyarlılık analizi<br>✅ SSCI akademik rapor (Word + Excel)<br>✅ Türkçe ve İngilizce arayüz',
+                      '✅ 24+ classical and fuzzy ranking methods<br>✅ 9 objective weighting methods<br>✅ Monte Carlo sensitivity analysis<br>✅ SSCI academic report (Word + Excel)<br>✅ Turkish and English interface')}"
+                f"</p>",
+                unsafe_allow_html=True,
+            )
+        st.markdown(
+            f"<div class='sidebar-footer'>"
+            "Prof. Dr. Ömer Faruk Rençber"
+            "<a class='sidebar-footer-mail' href='mailto:dr.ofrencber@gaziantep.edu.tr'>dr.ofrencber@gaziantep.edu.tr</a>"
+            f"<div style='margin-top:0.3rem;font-size:0.60rem;font-weight:500;line-height:1.35;'>{_SOFTWARE_CITATION}</div>"
+            "</div>",
+            unsafe_allow_html=True,
         )
-        st.caption(tt("Yalnız sayısal sütunlara uygulanır.", "Applied to numeric columns only."))
-        if st.button(tt("✅ Ön İşlemeyi Uygula", "✅ Apply Preprocessing"), width="stretch", key="btn_apply_preprocessing"):
-            st.session_state["missing_strategy_saved"] = _impute_method if impute_checked else "Sil"
-            st.session_state["clip_outliers_saved"] = bool(_clip_outliers_selected)
-            st.session_state["prep_done"] = False
-            st.session_state["analysis_result"] = None
-            st.session_state["panel_results"] = None
-            st.session_state["report_docx"] = None
-            st.session_state["download_blob_cache"] = {}
-            st.session_state["download_blob_sig"] = None
-            st.session_state["clean_data"] = None
-            st.rerun()
 
-        _active_missing = st.session_state.get("missing_strategy_saved", "Sil")
-        _missing_label = _active_missing if _active_missing not in {"Sil", "Drop"} else tt("Kapalı / Sil", "Off / Drop")
-        st.caption(tt(f"Aktif eksik veri ayarı: {_missing_label}", f"Active missing-data setting: {_missing_label}"))
+    else:
+        # ── Giriş yapılmış: tam sidebar ──
+
+        _render_user_session_card(_auth_settings, _current_user)
+        _render_admin_usage_panel(_auth_settings, _current_user)
+
+        with st.expander(tt("📘 Uygulama Rehberi", "📘 User Guide"), expanded=False):
+            st.markdown(
+                f"<p style='font-size:0.78rem; line-height:1.55; color:#2C2C2C; margin:0;'>"
+                f"{tt('1️⃣ Sağ paneldeki veri girişi alanından dosya yükleyin, örnek veriyi kullanın veya manuel tabloya geçin.<br>'
+                      '2️⃣ Sağ panelde analiz amacını seçin.<br>'
+                      '3️⃣ Kriterlerin yönünü (fayda/maliyet) doğrulayın.<br>'
+                      '4️⃣ Ağırlıklandırma ve sıralama yöntemlerini belirleyin.<br>'
+                      '5️⃣ &#34;Analiz Zamanı&#34; butonuna basın.<br>'
+                      '6️⃣ Sonuçları sekmeler arasında inceleyin ve raporu indirin.',
+                      '1️⃣ In the right-side data input area, upload a file, use sample data, or switch to manual entry.<br>'
+                      '2️⃣ Select your analysis objective in the right panel.<br>'
+                      '3️⃣ Confirm criterion directions (benefit/cost).<br>'
+                      '4️⃣ Select weighting and ranking methods.<br>'
+                      '5️⃣ Click &#34;Run Analysis&#34;.<br>'
+                      '6️⃣ Explore results across tabs and download the report.')}"
+                f"</p>",
+                unsafe_allow_html=True,
+            )
+
+        with st.expander(tt("🧭 Metodolojik Yardım", "🧭 Methodological Help"), expanded=False):
+            st.markdown(
+                f"<p style='font-size:0.78rem; line-height:1.55; color:#2C2C2C; margin:0;'>"
+                f"{tt('<b>Objektif Ağırlık Yöntemleri:</b> Kriter önemini verinin kendi yapısından türetir; araştırmacı müdahalesi gerekmez.<br><br>'
+                      '<b>Klasik ÇKKV:</b> Kesin sayısal veriler için tasarlanmış; TOPSIS, VIKOR, EDAS vb. 17 yöntem.<br><br>'
+                      '<b>Fuzzy ÇKKV:</b> Ölçüm belirsizliği varsa tercih edilir; üçgensel bulanık sayılar kullanır.<br><br>'
+                      '<b>Monte Carlo:</b> Ağırlıklar rastgele bozularak sıralamanın ne kadar kararlı olduğu test edilir.',
+                      '<b>Objective Weighting:</b> Derives criterion importance from data structure; no researcher intervention needed.<br><br>'
+                      '<b>Classical MCDM:</b> Designed for crisp numerical data; 17 methods incl. TOPSIS, VIKOR, EDAS.<br><br>'
+                      '<b>Fuzzy MCDM:</b> Preferred when measurement uncertainty exists; uses triangular fuzzy numbers.<br><br>'
+                      '<b>Monte Carlo:</b> Weights are randomly perturbed to test how stable the ranking is.')}"
+                f"</p>",
+                unsafe_allow_html=True,
+            )
+
+        is_data_loaded = st.session_state.get("raw_data") is not None
+
+        if st.button(tt("🔄 Yeni Analize Başla (Sıfırla)", "🔄 Start New Analysis (Reset)"), width="stretch"):
+            access.track_event(
+                "analysis_reset",
+                {
+                    "had_data": bool(is_data_loaded),
+                    "had_result": st.session_state.get("analysis_result") is not None,
+                },
+            )
+            reset_all()
+            st.rerun()
         st.caption(
             tt(
-                f"Aktif uç değer temizliği: {'Açık' if st.session_state.get('clip_outliers_saved', False) else 'Kapalı'}",
-                f"Active outlier cleaning: {'On' if st.session_state.get('clip_outliers_saved', False) else 'Off'}",
+                "Veri yükleme alanı sağ panelde yer alır. Veri geldikten sonra bu bölüm otomatik olarak kapanır.",
+                "The data input area is in the right panel. Once data is loaded, that section collapses automatically.",
             )
         )
-        missing_strategy = st.session_state.get("missing_strategy_saved", "Sil")
-        clip_outliers = bool(st.session_state.get("clip_outliers_saved", False))
-    else:
-        missing_strategy, clip_outliers = "Sil", False
 
-    # ── Aşama Göstergesi ──
-    st.markdown("<div style='margin-top:0.5rem;'></div>", unsafe_allow_html=True)
-    _step_data_done = is_data_loaded
-    _step_prep_done = bool(st.session_state.get("prep_done"))
-    _step_result_done = st.session_state.get("analysis_result") is not None
-    _step_method_active = _step_data_done and _step_prep_done and not _step_result_done
-    st.markdown(
-        f"""
-        <div class="stepper-wrap">
-            <div class="step-item"><span class="step-dot {'step-done' if _step_data_done else 'step-pending'}"></span> {tt('1. Adım', 'Step 1')} · {tt('Veri girişi', 'Data input')}{' ✅' if _step_data_done else ''}</div>
-            <div class="step-item"><span class="step-dot {'step-done' if _step_prep_done else ('step-active' if _step_data_done else 'step-pending')}"></span> {tt('2. Adım', 'Step 2')} · {tt('Kriter doğrulama', 'Criteria validation')}{' ✅' if _step_prep_done else ''}</div>
-            <div class="step-item"><span class="step-dot {'step-done' if _step_result_done else ('step-active' if _step_method_active else 'step-pending')}"></span> {tt('3. Adım', 'Step 3')} · {tt('Yöntem ve analiz', 'Method and analysis')}{' ✅' if _step_result_done else ''}</div>
-            <div class="step-item"><span class="step-dot {'step-done' if _step_result_done else 'step-pending'}"></span> {tt('4. Adım', 'Step 4')} · {tt('Sonuç ve rapor', 'Results and report')}{' ✅' if _step_result_done else ''}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        if is_data_loaded:
+            with st.expander(f"🧹 {tt('Veri Ön İşleme', 'Data Preprocessing')}", expanded=False):
+                _method_options = [
+                    tt("Medyan", "Median"),
+                    tt("Ortalama", "Mean"),
+                    tt("Interpolasyon", "Interpolation"),
+                    tt("Sıfır", "Zero"),
+                ]
+                _saved_missing = str(st.session_state.get("missing_strategy_saved", "Sil") or "Sil")
+                _saved_to_widget = {
+                    "Medyan": tt("Medyan", "Median"),
+                    "Median": tt("Medyan", "Median"),
+                    "Ortalama": tt("Ortalama", "Mean"),
+                    "Mean": tt("Ortalama", "Mean"),
+                    "Interpolasyon": tt("Interpolasyon", "Interpolation"),
+                    "Interpolation": tt("Interpolasyon", "Interpolation"),
+                    "Sıfır": tt("Sıfır", "Zero"),
+                    "Zero": tt("Sıfır", "Zero"),
+                }
+                _default_method = _saved_to_widget.get(_saved_missing, _method_options[0])
+                if st.session_state.get("impute_method_select") not in _method_options:
+                    st.session_state["impute_method_select"] = _default_method
+                if "cb_clip_outliers" not in st.session_state:
+                    st.session_state["cb_clip_outliers"] = bool(st.session_state.get("clip_outliers_saved", False))
 
-    # ── Sidebar Footer ──
-    st.markdown(
-        f"<div class='sidebar-footer'>"
-        "Prof. Dr. Ömer Faruk Rençber"
-        "<a class='sidebar-footer-mail' href='mailto:dr.ofrencber@gaziantep.edu.tr'>dr.ofrencber@gaziantep.edu.tr</a>"
-        f"<div style='margin-top:0.3rem;font-size:0.60rem;font-weight:500;line-height:1.35;'>{_SOFTWARE_CITATION}</div>"
-        "</div>",
-        unsafe_allow_html=True,
+                impute_checked = st.checkbox(
+                    tt("Eksik Veri Tamamla", "Impute Missing Values"),
+                    value=st.session_state["impute_mode_open"],
+                    key="cb_impute_mode",
+                )
+                if impute_checked != st.session_state["impute_mode_open"]:
+                    st.session_state["impute_mode_open"] = impute_checked
+                    st.rerun()
+
+                if impute_checked:
+                    _impute_method = st.selectbox(
+                        tt("Tamamlama yöntemi", "Imputation method"),
+                        _method_options,
+                        key="impute_method_select",
+                    )
+                else:
+                    _impute_method = st.session_state.get("impute_method_select", _default_method)
+
+                _clip_outliers_selected = st.checkbox(
+                    tt("Aykırı Değerleri (Outlier) Temizle", "Clean Outliers"),
+                    value=bool(st.session_state.get("cb_clip_outliers", st.session_state.get("clip_outliers_saved", False))),
+                    key="cb_clip_outliers",
+                )
+                st.caption(tt("Yalnız sayısal sütunlara uygulanır.", "Applied to numeric columns only."))
+                if st.button(tt("✅ Ön İşlemeyi Uygula", "✅ Apply Preprocessing"), width="stretch", key="btn_apply_preprocessing"):
+                    st.session_state["missing_strategy_saved"] = _impute_method if impute_checked else "Sil"
+                    st.session_state["clip_outliers_saved"] = bool(_clip_outliers_selected)
+                    st.session_state["prep_done"] = False
+                    st.session_state["analysis_result"] = None
+                    st.session_state["panel_results"] = None
+                    st.session_state["report_docx"] = None
+                    st.session_state["download_blob_cache"] = {}
+                    st.session_state["download_blob_sig"] = None
+                    st.session_state["clean_data"] = None
+                    st.rerun()
+
+                _active_missing = st.session_state.get("missing_strategy_saved", "Sil")
+                _missing_label = _active_missing if _active_missing not in {"Sil", "Drop"} else tt("Kapalı / Sil", "Off / Drop")
+                st.caption(tt(f"Aktif eksik veri ayarı: {_missing_label}", f"Active missing-data setting: {_missing_label}"))
+                st.caption(
+                    tt(
+                        f"Aktif uç değer temizliği: {'Açık' if st.session_state.get('clip_outliers_saved', False) else 'Kapalı'}",
+                        f"Active outlier cleaning: {'On' if st.session_state.get('clip_outliers_saved', False) else 'Off'}",
+                    )
+                )
+                missing_strategy = st.session_state.get("missing_strategy_saved", "Sil")
+                clip_outliers = bool(st.session_state.get("clip_outliers_saved", False))
+
+        _step_data_done = is_data_loaded
+        _step_prep_done = bool(st.session_state.get("prep_done"))
+        _step_result_done = st.session_state.get("analysis_result") is not None
+        _step_method_active = _step_data_done and _step_prep_done and not _step_result_done
+        st.markdown("<div style='margin-top:0.5rem;'></div>", unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div class="stepper-wrap">
+                <div class="step-item"><span class="step-dot {'step-done' if _step_data_done else 'step-pending'}"></span> {tt('1. Adım', 'Step 1')} · {tt('Veri girişi', 'Data input')}{' ✅' if _step_data_done else ''}</div>
+                <div class="step-item"><span class="step-dot {'step-done' if _step_prep_done else ('step-active' if _step_data_done else 'step-pending')}"></span> {tt('2. Adım', 'Step 2')} · {tt('Kriter doğrulama', 'Criteria validation')}{' ✅' if _step_prep_done else ''}</div>
+                <div class="step-item"><span class="step-dot {'step-done' if _step_result_done else ('step-active' if _step_method_active else 'step-pending')}"></span> {tt('3. Adım', 'Step 3')} · {tt('Yöntem ve analiz', 'Method and analysis')}{' ✅' if _step_result_done else ''}</div>
+                <div class="step-item"><span class="step-dot {'step-done' if _step_result_done else 'step-pending'}"></span> {tt('4. Adım', 'Step 4')} · {tt('Sonuç ve rapor', 'Results and report')}{' ✅' if _step_result_done else ''}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            f"<div class='sidebar-footer'>"
+            "Prof. Dr. Ömer Faruk Rençber"
+            "<a class='sidebar-footer-mail' href='mailto:dr.ofrencber@gaziantep.edu.tr'>dr.ofrencber@gaziantep.edu.tr</a>"
+            f"<div style='margin-top:0.3rem;font-size:0.60rem;font-weight:500;line-height:1.35;'>{_SOFTWARE_CITATION}</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+# ---------------------------------------------------------
+# AUTH GATE — Giriş zorunluysa login ekranı
+# ---------------------------------------------------------
+if _auth_settings.require_login and not _current_user.is_logged_in:
+    _render_auth_gate(_auth_settings)
+
+if _current_user.is_logged_in:
+    access.bootstrap_user_session(_current_user, _analytics_settings)
+
+# --- Hareketsizlik zaman aşımı (4 saat) ---
+if _current_user.is_logged_in:
+    _now_ts = time.time()
+    _last_activity_ts = st.session_state.get("_mcdm_last_activity_at", _now_ts)
+    if (_now_ts - _last_activity_ts) > SESSION_INACTIVITY_SECONDS:
+        access.track_event("inactivity_logout", {"idle_seconds": int(_now_ts - _last_activity_ts)})
+        access.logout_user()
+        st.rerun()
+    st.session_state["_mcdm_last_activity_at"] = _now_ts
+
+# --- E-posta doğrulama kontrolü ---
+if _current_user.is_logged_in and not _current_user.email_verified:
+    _grace_given = st.session_state.get("_mcdm_email_grace_given", False)
+    if not _grace_given:
+        _grace_granted = access.consume_email_verification_grace(
+            _current_user.auth_subject,
+            _analytics_settings,
+        )
+        if _grace_granted:
+            st.session_state["_mcdm_email_grace_given"] = True
+            st.warning(
+                tt(
+                    "✉️ E-posta adresiniz henüz doğrulanmamış. Lütfen kayıt e-postanızdaki bağlantıya tıklayın. "
+                    "Bu oturumda devam edebilirsiniz; ancak sonraki girişte doğrulama zorunlu olacaktır.",
+                    "✉️ Your email address is not yet verified. Please click the link in your registration email. "
+                    "You may continue this session, but verification will be required on your next sign-in.",
+                )
+            )
+        else:
+            _render_email_verification_wall(_auth_settings)
+            st.stop()
+
+# --- Ad-Soyad toplama (gerekirse) ---
+if _current_user.is_logged_in:
+    _needs_name = (
+        not _current_user.name
+        or _current_user.name.lower() == _current_user.email.lower()
+        or "@" in _current_user.name
     )
+    if _needs_name and not st.session_state.get("_mcdm_name_collected"):
+        _render_name_collection_screen(_current_user)
+        st.stop()
 
 # ---------------------------------------------------------
 # ANA GÖVDE
@@ -7095,1103 +7899,1187 @@ _purpose_default_idx = 1 if _needs_ranking_default else 0
 _step1_done = bool(st.session_state.get("step1_done"))
 _step1_label = f"🎯 {tt('1. Adım: Analizi Amacınız Ne?', 'Step 1: What Is Your Analysis Objective?')}{' ✅' if _step1_done else ''}"
 
-with st.expander(_step1_label, expanded=(raw_data is not None) and (_ui_stage == "step1")):
-    _show_step_caption(
-        "Analiz amacı ve veri yapısını seçin.",
-        "Choose the analysis objective and data structure.",
-        "Tek dönem veya panel seçimi sonraki hesaplama ve çıktı akışını belirler.",
-        "Single-period or panel selection determines the downstream computation and output flow.",
-    )
-    st.markdown(
-        f"<p style='font-size:0.82rem; color:#5C5650; margin:0 0 0.5rem 0;'>"
-        f"{tt('Lütfen bu analizde yapmak istediğiniz işlemi seçin:', 'Please select what you want to accomplish in this analysis:')}"
-        f"</p>",
-        unsafe_allow_html=True,
-    )
-    _purpose_choice = st.radio(
-        tt("Amacınız nedir?", "What is your objective?"),
-        _purpose_options,
-        index=_purpose_default_idx,
-        label_visibility="collapsed",
-        horizontal=True,
-    )
-    _scope_options = [
-        tt("📅 Yıl verisi yok / önemsiz", "📅 No / irrelevant year data"),
-        tt("🗂️ Panel Veri", "🗂️ Panel Data"),
-    ]
-    _scope_default = 1 if st.session_state.get("analysis_scope") == "panel" else 0
-    _scope_choice = st.radio(
-        tt("Veri yapınız nedir?", "What is your data structure?"),
-        _scope_options,
-        index=_scope_default,
-        horizontal=True,
-    )
+_has_results = bool(st.session_state.get("analysis_result"))
+with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis Setup (Steps 1-3)"), expanded=not _has_results):
+    st.markdown(f"#### {_step1_label}")
+    with st.container():
+        _show_step_caption(
+            "Analiz amacı ve veri yapısını seçin.",
+            "Choose the analysis objective and data structure.",
+            "Tek dönem veya panel seçimi sonraki hesaplama ve çıktı akışını belirler.",
+            "Single-period or panel selection determines the downstream computation and output flow.",
+        )
+        st.markdown(
+            f"<p style='font-size:0.82rem; color:#5C5650; margin:0 0 0.5rem 0;'>"
+            f"{tt('Lütfen bu analizde yapmak istediğiniz işlemi seçin:', 'Please select what you want to accomplish in this analysis:')}"
+            f"</p>",
+            unsafe_allow_html=True,
+        )
+        _purpose_choice = st.radio(
+            tt("Amacınız nedir?", "What is your objective?"),
+            _purpose_options,
+            index=_purpose_default_idx,
+            label_visibility="collapsed",
+            horizontal=True,
+        )
+        _scope_options = [
+            tt("📅 Yıl verisi yok / önemsiz", "📅 No / irrelevant year data"),
+            tt("🗂️ Panel Veri", "🗂️ Panel Data"),
+        ]
+        _scope_default = 1 if st.session_state.get("analysis_scope") == "panel" else 0
+        _scope_choice = st.radio(
+            tt("Veri yapınız nedir?", "What is your data structure?"),
+            _scope_options,
+            index=_scope_default,
+            horizontal=True,
+        )
 
-    # ── Panel veri ayarları (sadece panel seçiliyse) ──
-    if _scope_choice == _scope_options[1] and isinstance(raw_data, pd.DataFrame):
-        _yr_candidates = _guess_year_columns(raw_data)
-        _yr_col_opts   = [str(c) for c in raw_data.columns]
-        if _yr_col_opts:
-            _yr_col_default = st.session_state.get("panel_year_column")
-            if _yr_col_default not in _yr_col_opts:
-                _yr_col_default = _yr_candidates[0] if _yr_candidates else _yr_col_opts[0]
-            # Başlık + yıl sütunu etiketi tek HTML satırında
-            st.markdown(
-                f'<div style="background:#EEF5FB; border:1px solid #C0D8EE; border-radius:7px;'
-                f'padding:0.25rem 0.55rem; margin:0.3rem 0 0 0; display:flex; align-items:center; gap:0.5rem;">'
-                f'<span style="font-size:0.67rem; font-weight:700; color:#1F4A73; white-space:nowrap;">'
-                f'🗂️ {tt("Panel Ayarları", "Panel Settings")}</span>'
-                f'<span style="font-size:0.64rem; color:#5A7A9A;">— {tt("Yıl sütunu:", "Year column:")}</span>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-            # Selectbox etiket gizli, hemen altında kompakt
-            st.markdown('<div style="margin-top:-0.4rem;"></div>', unsafe_allow_html=True)
-            _panel_col_inner = st.selectbox(
-                tt("Yıl sütunu", "Year column"),
-                _yr_col_opts,
-                index=_yr_col_opts.index(_yr_col_default),
-                key="panel_year_col_select",
-                label_visibility="collapsed",
-            )
-            st.session_state["panel_year_column"] = _panel_col_inner
-            _entity_opts = [c for c in _yr_col_opts if c != _panel_col_inner]
-            if _entity_opts:
-                _entity_candidates = _guess_entity_columns(raw_data, _panel_col_inner)
-                _entity_default = st.session_state.get("panel_entity_column")
-                if _entity_default not in _entity_opts:
-                    _entity_default = _entity_candidates[0] if _entity_candidates else _entity_opts[0]
-                st.session_state["panel_entity_column"] = _entity_default
-            else:
-                st.session_state["panel_entity_column"] = None
-            _panel_strategy_opts = [
-                tt("📆 Yıl Bazlı Ağırlık", "📆 Year-Specific Weights"),
-                tt("🌐 Global Ağırlık", "🌐 Global Weights"),
-            ]
-            _panel_strategy_default = 1 if st.session_state.get("panel_weight_strategy") == "global" else 0
-            _panel_strategy_choice = st.radio(
-                tt("Ağırlık stratejisi", "Weight strategy"),
-                _panel_strategy_opts,
-                index=_panel_strategy_default,
-                horizontal=True,
-                help=tt(
-                    "❓ Yıl Bazlı: Her yılın kendi dağılımından ağırlık üretir; dönem içi yapıyı yakalar.\n"
-                    "❓ Global: Seçili tüm yılları tek havuzda değerlendirip tek ağırlık vektörü üretir; yıllar arası trend karşılaştırmasında metodolojik tutarlılık sağlar.\n"
-                    "Not: Bu strateji objektif ağırlık modunda etkindir.",
-                    "❓ Year-Specific: Recomputes weights from each year's own distribution; captures within-period structure.\n"
-                    "❓ Global: Builds one weight vector from all selected years pooled together; provides methodological consistency for cross-year trend comparison.\n"
-                    "Note: This strategy is active in objective weighting mode.",
-                ),
-            )
-            st.session_state["panel_weight_strategy"] = "global" if _panel_strategy_choice == _panel_strategy_opts[1] else "yearly"
-            _det_years = _sorted_panel_years(raw_data[_panel_col_inner])
-            if _det_years:
-                _known_years = st.session_state.get("panel_selected_years_all", [])
-                _known_col = st.session_state.get("panel_selected_years_col")
-                _years_changed = set(_known_years) != set(_det_years)
-                _year_col_changed = _known_col != _panel_col_inner
-                _yr_key_prefix = f"panel_yr_cb::{_panel_col_inner}::"
-                if ("panel_selected_years" not in st.session_state) or _years_changed or _year_col_changed:
-                    st.session_state["panel_selected_years"] = []
-                    st.session_state["panel_selected_years_all"] = list(_det_years)
-                    st.session_state["panel_selected_years_col"] = _panel_col_inner
-                    for _yr in _det_years:
-                        st.session_state[f"{_yr_key_prefix}{_yr}"] = False
-
-                _sel_all_col, _clr_all_col = st.columns(2, gap="small")
-                with _sel_all_col:
-                    _select_all_clicked = st.button(
-                        tt("✅ Tümünü Seç", "✅ Select All"),
-                        key="panel_years_select_all",
-                        width="stretch",
-                    )
-                with _clr_all_col:
-                    _clear_all_clicked = st.button(
-                        tt("🧹 Tümünü Temizle", "🧹 Clear All"),
-                        key="panel_years_clear_all",
-                        width="stretch",
-                    )
-
-                if _select_all_clicked:
-                    st.session_state["panel_selected_years"] = list(_det_years)
-                    st.session_state["panel_selected_years_all"] = list(_det_years)
-                    st.session_state["panel_selected_years_col"] = _panel_col_inner
-                    for _yr in _det_years:
-                        st.session_state[f"{_yr_key_prefix}{_yr}"] = True
-                    st.rerun()
-
-                if _clear_all_clicked:
-                    st.session_state["panel_selected_years"] = []
-                    st.session_state["panel_selected_years_all"] = list(_det_years)
-                    st.session_state["panel_selected_years_col"] = _panel_col_inner
-                    for _yr in _det_years:
-                        st.session_state[f"{_yr_key_prefix}{_yr}"] = False
-                    st.rerun()
-
-                _sel_yrs_now = []
+        # ── Panel veri ayarları (sadece panel seçiliyse) ──
+        if _scope_choice == _scope_options[1] and isinstance(raw_data, pd.DataFrame):
+            _yr_candidates = _guess_year_columns(raw_data)
+            _yr_col_opts   = [str(c) for c in raw_data.columns]
+            if _yr_col_opts:
+                _yr_col_default = st.session_state.get("panel_year_column")
+                if _yr_col_default not in _yr_col_opts:
+                    _yr_col_default = _yr_candidates[0] if _yr_candidates else _yr_col_opts[0]
+                # Başlık + yıl sütunu etiketi tek HTML satırında
                 st.markdown(
-                    f'<p style="font-size:0.64rem; color:#4A6070; margin:0.1rem 0 0.05rem 0; line-height:1.2;">'
-                    f'{tt("Dönemler:", "Periods:")}</p>',
+                    f'<div style="background:#EEF5FB; border:1px solid #C0D8EE; border-radius:7px;'
+                    f'padding:0.25rem 0.55rem; margin:0.3rem 0 0 0; display:flex; align-items:center; gap:0.5rem;">'
+                    f'<span style="font-size:0.67rem; font-weight:700; color:#1F4A73; white-space:nowrap;">'
+                    f'🗂️ {tt("Panel Ayarları", "Panel Settings")}</span>'
+                    f'<span style="font-size:0.64rem; color:#5A7A9A;">— {tt("Yıl sütunu:", "Year column:")}</span>'
+                    f'</div>',
                     unsafe_allow_html=True,
                 )
-                _yr_sel_cols = st.columns(min(10, len(_det_years)), gap="small")
-                for _yi, _yr in enumerate(_det_years):
-                    with _yr_sel_cols[_yi % min(10, len(_det_years))]:
-                        _yr_key = f"{_yr_key_prefix}{_yr}"
-                        if _yr_key not in st.session_state:
-                            st.session_state[_yr_key] = _yr in st.session_state.get("panel_selected_years", [])
-                        if st.checkbox(str(_yr), key=_yr_key):
-                            _sel_yrs_now.append(_yr)
-                st.session_state["panel_selected_years"] = _sel_yrs_now
-                st.session_state["panel_selected_years_col"] = _panel_col_inner
-                if not _sel_yrs_now:
-                    st.warning(tt("En az bir dönem seçin.", "Select at least one period."))
-                elif len(_sel_yrs_now) < 2:
+                # Selectbox etiket gizli, hemen altında kompakt
+                st.markdown('<div style="margin-top:-0.4rem;"></div>', unsafe_allow_html=True)
+                _panel_col_inner = st.selectbox(
+                    tt("Yıl sütunu", "Year column"),
+                    _yr_col_opts,
+                    index=_yr_col_opts.index(_yr_col_default),
+                    key="panel_year_col_select",
+                    label_visibility="collapsed",
+                )
+                st.session_state["panel_year_column"] = _panel_col_inner
+                _entity_opts = [c for c in _yr_col_opts if c != _panel_col_inner]
+                if _entity_opts:
+                    _entity_candidates = _guess_entity_columns(raw_data, _panel_col_inner)
+                    _entity_default = st.session_state.get("panel_entity_column")
+                    if _entity_default not in _entity_opts:
+                        _entity_default = _entity_candidates[0] if _entity_candidates else _entity_opts[0]
+                    st.session_state["panel_entity_column"] = _entity_default
+                else:
+                    st.session_state["panel_entity_column"] = None
+                _panel_strategy_opts = [
+                    tt("📆 Yıl Bazlı Ağırlık", "📆 Year-Specific Weights"),
+                    tt("🌐 Global Ağırlık", "🌐 Global Weights"),
+                ]
+                _panel_strategy_default = 1 if st.session_state.get("panel_weight_strategy") == "global" else 0
+                _panel_strategy_choice = st.radio(
+                    tt("Ağırlık stratejisi", "Weight strategy"),
+                    _panel_strategy_opts,
+                    index=_panel_strategy_default,
+                    horizontal=True,
+                    help=tt(
+                        "❓ Yıl Bazlı: Her yılın kendi dağılımından ağırlık üretir; dönem içi yapıyı yakalar.\n"
+                        "❓ Global: Seçili tüm yılları tek havuzda değerlendirip tek ağırlık vektörü üretir; yıllar arası trend karşılaştırmasında metodolojik tutarlılık sağlar.\n"
+                        "Not: Bu strateji objektif ağırlık modunda etkindir.",
+                        "❓ Year-Specific: Recomputes weights from each year's own distribution; captures within-period structure.\n"
+                        "❓ Global: Builds one weight vector from all selected years pooled together; provides methodological consistency for cross-year trend comparison.\n"
+                        "Note: This strategy is active in objective weighting mode.",
+                    ),
+                )
+                st.session_state["panel_weight_strategy"] = "global" if _panel_strategy_choice == _panel_strategy_opts[1] else "yearly"
+                _det_years = _sorted_panel_years(raw_data[_panel_col_inner])
+                if _det_years:
+                    _known_years = st.session_state.get("panel_selected_years_all", [])
+                    _known_col = st.session_state.get("panel_selected_years_col")
+                    _years_changed = set(_known_years) != set(_det_years)
+                    _year_col_changed = _known_col != _panel_col_inner
+                    _yr_key_prefix = f"panel_yr_cb::{_panel_col_inner}::"
+                    if ("panel_selected_years" not in st.session_state) or _years_changed or _year_col_changed:
+                        st.session_state["panel_selected_years"] = []
+                        st.session_state["panel_selected_years_all"] = list(_det_years)
+                        st.session_state["panel_selected_years_col"] = _panel_col_inner
+                        for _yr in _det_years:
+                            st.session_state[f"{_yr_key_prefix}{_yr}"] = False
+
+                    _sel_all_col, _clr_all_col = st.columns(2, gap="small")
+                    with _sel_all_col:
+                        _select_all_clicked = st.button(
+                            tt("✅ Tümünü Seç", "✅ Select All"),
+                            key="panel_years_select_all",
+                            width="stretch",
+                        )
+                    with _clr_all_col:
+                        _clear_all_clicked = st.button(
+                            tt("🧹 Tümünü Temizle", "🧹 Clear All"),
+                            key="panel_years_clear_all",
+                            width="stretch",
+                        )
+
+                    if _select_all_clicked:
+                        st.session_state["panel_selected_years"] = list(_det_years)
+                        st.session_state["panel_selected_years_all"] = list(_det_years)
+                        st.session_state["panel_selected_years_col"] = _panel_col_inner
+                        for _yr in _det_years:
+                            st.session_state[f"{_yr_key_prefix}{_yr}"] = True
+                        st.rerun()
+
+                    if _clear_all_clicked:
+                        st.session_state["panel_selected_years"] = []
+                        st.session_state["panel_selected_years_all"] = list(_det_years)
+                        st.session_state["panel_selected_years_col"] = _panel_col_inner
+                        for _yr in _det_years:
+                            st.session_state[f"{_yr_key_prefix}{_yr}"] = False
+                        st.rerun()
+
+                    _sel_yrs_now = []
                     st.markdown(
-                        f'<p style="font-size:0.63rem; color:#7A5018; margin:0.05rem 0 0 0;">'
-                        f'⚠ {tt("Karşılaştırma için ≥2 dönem önerilir.", "≥2 periods recommended.")}</p>',
+                        f'<p style="font-size:0.64rem; color:#4A6070; margin:0.1rem 0 0.05rem 0; line-height:1.2;">'
+                        f'{tt("Dönemler:", "Periods:")}</p>',
                         unsafe_allow_html=True,
                     )
+                    _yr_sel_cols = st.columns(min(10, len(_det_years)), gap="small")
+                    for _yi, _yr in enumerate(_det_years):
+                        with _yr_sel_cols[_yi % min(10, len(_det_years))]:
+                            _yr_key = f"{_yr_key_prefix}{_yr}"
+                            if _yr_key not in st.session_state:
+                                st.session_state[_yr_key] = _yr in st.session_state.get("panel_selected_years", [])
+                            if st.checkbox(str(_yr), key=_yr_key):
+                                _sel_yrs_now.append(_yr)
+                    st.session_state["panel_selected_years"] = _sel_yrs_now
+                    st.session_state["panel_selected_years_col"] = _panel_col_inner
+                    if not _sel_yrs_now:
+                        st.warning(tt("En az bir dönem seçin.", "Select at least one period."))
+                    elif len(_sel_yrs_now) < 2:
+                        st.markdown(
+                            f'<p style="font-size:0.63rem; color:#7A5018; margin:0.05rem 0 0 0;">'
+                            f'⚠ {tt("Karşılaştırma için ≥2 dönem önerilir.", "≥2 periods recommended.")}</p>',
+                            unsafe_allow_html=True,
+                        )
 
-    _flow_steps = [
-        (tt("Amaç belirleme",        "Define Objective"),        "1",   _step1_done, "#2E7D52", "#D4EFE2"),
-        (tt("Veri ön hazırlık",      "Data Preparation"),        "2",   False,       "#1F5F9A", "#DAEAF7"),
-        (tt("Ağırlık metodu belirle","Set Weighting Method"),    "3.1", False,       "#B5681E", "#FDE8CC"),
-    ]
-    if _purpose_choice == _purpose_options[1]:
-        _flow_steps.insert(3, (tt("Sıralama metodu belirle", "Set Ranking Method"), "3.2", False, "#9A3030", "#FAD9D9"))
-    _flow_steps.append((tt("Analiz yap ve sonuçları yorumla", "Run Analysis & Interpret"), "4", False, "#6B4FA0", "#EAE0F7"))
+        _flow_steps = [
+            (tt("Amaç belirleme",        "Define Objective"),        "1",   _step1_done, "#2E7D52", "#D4EFE2"),
+            (tt("Veri ön hazırlık",      "Data Preparation"),        "2",   False,       "#1F5F9A", "#DAEAF7"),
+            (tt("Ağırlık metodu belirle","Set Weighting Method"),    "3.1", False,       "#B5681E", "#FDE8CC"),
+        ]
+        if _purpose_choice == _purpose_options[1]:
+            _flow_steps.insert(3, (tt("Sıralama metodu belirle", "Set Ranking Method"), "3.2", False, "#9A3030", "#FAD9D9"))
+        _flow_steps.append((tt("Analiz yap ve sonuçları yorumla", "Run Analysis & Interpret"), "4", False, "#6B4FA0", "#EAE0F7"))
 
-    _step_nodes = []
-    for _idx, (_label, _num, _done, _clr, _bg) in enumerate(_flow_steps):
-        _is_last = _idx == len(_flow_steps) - 1
-        if _done:
-            _box_bg  = _clr
-            _num_clr = "rgba(255,255,255,0.80)"
-            _lbl_clr = "#FFFFFF"
-            _bdr_clr = _clr
-            _num_txt = "✓"
-        else:
-            _box_bg  = _bg
-            _num_clr = _clr
-            _lbl_clr = _clr
-            _bdr_clr = _clr + "99"
-            _num_txt = _num
+        _step_nodes = []
+        for _idx, (_label, _num, _done, _clr, _bg) in enumerate(_flow_steps):
+            _is_last = _idx == len(_flow_steps) - 1
+            if _done:
+                _box_bg  = _clr
+                _num_clr = "rgba(255,255,255,0.80)"
+                _lbl_clr = "#FFFFFF"
+                _bdr_clr = _clr
+                _num_txt = "✓"
+            else:
+                _box_bg  = _bg
+                _num_clr = _clr
+                _lbl_clr = _clr
+                _bdr_clr = _clr + "99"
+                _num_txt = _num
 
-        _node_html = (
-            f'<div style="flex:1; min-width:90px; max-width:200px;">'
-            f'<div style="background:{_box_bg}; border:1.5px solid {_bdr_clr}; border-radius:10px;'
-            f'padding:0.35rem 0.55rem 0.4rem 0.55rem; text-align:center;'
-            f'box-shadow:0 2px 8px rgba(0,0,0,0.07);">'
-            f'<div style="font-size:0.60rem; font-weight:800; color:{_num_clr}; letter-spacing:0.4px; line-height:1.2; margin-bottom:2px;">{_num_txt}</div>'
-            f'<div style="font-size:0.67rem; font-weight:600; color:{_lbl_clr}; line-height:1.35;">{_label}</div>'
-            f'</div>'
-            f'</div>'
-        )
-        _step_nodes.append(_node_html)
-
-        if not _is_last:
-            _step_nodes.append(
-                '<div style="width:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center;">'
-                '<div style="width:100%; height:2px; background:linear-gradient(90deg,#B0C8DC,#C8D8E8);"></div>'
-                '</div>'
+            _node_html = (
+                f'<div style="flex:1; min-width:90px; max-width:200px;">'
+                f'<div style="background:{_box_bg}; border:1.5px solid {_bdr_clr}; border-radius:10px;'
+                f'padding:0.35rem 0.55rem 0.4rem 0.55rem; text-align:center;'
+                f'box-shadow:0 2px 8px rgba(0,0,0,0.07);">'
+                f'<div style="font-size:0.60rem; font-weight:800; color:{_num_clr}; letter-spacing:0.4px; line-height:1.2; margin-bottom:2px;">{_num_txt}</div>'
+                f'<div style="font-size:0.67rem; font-weight:600; color:{_lbl_clr}; line-height:1.35;">{_label}</div>'
+                f'</div>'
+                f'</div>'
             )
+            _step_nodes.append(_node_html)
 
-    st.markdown(
-        f'<div style="display:flex; align-items:stretch; gap:0; width:100%;'
-        f'background:linear-gradient(135deg,#F6FAFE,#EEF4FA);'
-        f'border:1px solid #C8D8E8; border-radius:12px;'
-        f'padding:0.6rem 0.75rem; margin:0.5rem 0 0.25rem 0;">'
-        f'{"".join(_step_nodes)}</div>',
-        unsafe_allow_html=True,
+            if not _is_last:
+                _step_nodes.append(
+                    '<div style="width:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center;">'
+                    '<div style="width:100%; height:2px; background:linear-gradient(90deg,#B0C8DC,#C8D8E8);"></div>'
+                    '</div>'
+                )
+
+        st.markdown(
+            f'<div style="display:flex; align-items:stretch; gap:0; width:100%;'
+            f'background:linear-gradient(135deg,#F6FAFE,#EEF4FA);'
+            f'border:1px solid #C8D8E8; border-radius:12px;'
+            f'padding:0.6rem 0.75rem; margin:0.5rem 0 0.25rem 0;">'
+            f'{"".join(_step_nodes)}</div>',
+            unsafe_allow_html=True,
+        )
+    needs_ranking = _purpose_choice == _purpose_options[1]
+    st.session_state["needs_ranking"] = needs_ranking
+    panel_mode = _scope_choice == _scope_options[1]
+    st.session_state["analysis_scope"] = "panel" if panel_mode else "single"
+
+    panel_year_col = None
+    panel_entity_col = None
+    panel_weight_strategy = "yearly"
+    if panel_mode and isinstance(raw_data, pd.DataFrame):
+        panel_weight_strategy = "global" if st.session_state.get("panel_weight_strategy") == "global" else "yearly"
+        st.session_state["panel_weight_strategy"] = panel_weight_strategy
+        _stored_yr_col = st.session_state.get("panel_year_column")
+        _all_cols = [str(c) for c in raw_data.columns]
+        if _stored_yr_col in _all_cols:
+            panel_year_col = _stored_yr_col
+        elif _all_cols:
+            panel_year_col = _guess_year_columns(raw_data)[0] if _guess_year_columns(raw_data) else _all_cols[0]
+            st.session_state["panel_year_column"] = panel_year_col
+        _entity_opts = [c for c in _all_cols if c != panel_year_col]
+        _stored_entity_col = st.session_state.get("panel_entity_column")
+        if _stored_entity_col in _entity_opts:
+            panel_entity_col = _stored_entity_col
+        elif _entity_opts:
+            _guessed_entities = _guess_entity_columns(raw_data, panel_year_col)
+            panel_entity_col = _guessed_entities[0] if _guessed_entities else _entity_opts[0]
+            st.session_state["panel_entity_column"] = panel_entity_col
+
+    _step1_scope_summary = tt("Panel veri", "Panel data") if panel_mode else tt("Tek dönem", "Single-period")
+    _step1_objective_summary = (
+        tt("Ağırlık + sıralama", "Weights + ranking")
+        if needs_ranking
+        else tt("Yalnızca ağırlık", "Weights only")
     )
-needs_ranking = _purpose_choice == _purpose_options[1]
-st.session_state["needs_ranking"] = needs_ranking
-panel_mode = _scope_choice == _scope_options[1]
-st.session_state["analysis_scope"] = "panel" if panel_mode else "single"
-
-panel_year_col = None
-panel_entity_col = None
-panel_weight_strategy = "yearly"
-if panel_mode and isinstance(raw_data, pd.DataFrame):
-    panel_weight_strategy = "global" if st.session_state.get("panel_weight_strategy") == "global" else "yearly"
-    st.session_state["panel_weight_strategy"] = panel_weight_strategy
-    _stored_yr_col = st.session_state.get("panel_year_column")
-    _all_cols = [str(c) for c in raw_data.columns]
-    if _stored_yr_col in _all_cols:
-        panel_year_col = _stored_yr_col
-    elif _all_cols:
-        panel_year_col = _guess_year_columns(raw_data)[0] if _guess_year_columns(raw_data) else _all_cols[0]
-        st.session_state["panel_year_column"] = panel_year_col
-    _entity_opts = [c for c in _all_cols if c != panel_year_col]
-    _stored_entity_col = st.session_state.get("panel_entity_column")
-    if _stored_entity_col in _entity_opts:
-        panel_entity_col = _stored_entity_col
-    elif _entity_opts:
-        _guessed_entities = _guess_entity_columns(raw_data, panel_year_col)
-        panel_entity_col = _guessed_entities[0] if _guessed_entities else _entity_opts[0]
-        st.session_state["panel_entity_column"] = panel_entity_col
-
-_step1_scope_summary = tt("Panel veri", "Panel data") if panel_mode else tt("Tek dönem", "Single-period")
-_step1_objective_summary = (
-    tt("Ağırlık + sıralama", "Weights + ranking")
-    if needs_ranking
-    else tt("Yalnızca ağırlık", "Weights only")
-)
-_step1_period_summary = (
-    _preview_list_text(st.session_state.get("panel_selected_years", []), 4)
-    if panel_mode
-    else tt("Panel kullanılmıyor", "Panel not used")
-)
-_step1_strategy_summary = (
-    tt("Yıl bazlı", "Year-specific")
-    if panel_mode and panel_weight_strategy == "yearly"
-    else (tt("Global", "Global") if panel_mode else tt("Gerekli değil", "Not required"))
-)
-_step1_output_summary = (
-    tt("Ağırlık tablosu + alternatif sıralaması", "Weight table + alternative ranking")
-    if needs_ranking
-    else tt("Ağırlık tablosu", "Weight table only")
-)
-_render_tracking_panel(
-    tt("Çalışma Yönü Özeti", "Study Direction Summary"),
-    tt(
-        "Bu seçimler yöntem ve rapor akışını belirler.",
-        "These choices determine the method and reporting flow.",
-    ),
-    [
-        (tt("Analiz amacı", "Objective"), _step1_objective_summary, "blue"),
-        (tt("Veri yapısı", "Data structure"), _step1_scope_summary, "blue"),
-        (tt("Panel dönemleri", "Panel periods"), _step1_period_summary, "amber" if panel_mode else "slate"),
-        (tt("Ağırlık stratejisi", "Weight strategy"), _step1_strategy_summary, "amber" if panel_mode else "slate"),
-        (tt("Beklenen çıktı", "Expected output"), _step1_output_summary, "green"),
-    ],
-    note=(
+    _step1_period_summary = (
+        _preview_list_text(st.session_state.get("panel_selected_years", []), 4)
+        if panel_mode
+        else tt("Panel kullanılmıyor", "Panel not used")
+    )
+    _step1_strategy_summary = (
+        tt("Yıl bazlı", "Year-specific")
+        if panel_mode and panel_weight_strategy == "yearly"
+        else (tt("Global", "Global") if panel_mode else tt("Gerekli değil", "Not required"))
+    )
+    _step1_output_summary = (
+        tt("Ağırlık tablosu + alternatif sıralaması", "Weight table + alternative ranking")
+        if needs_ranking
+        else tt("Ağırlık tablosu", "Weight table only")
+    )
+    _render_tracking_panel(
+        tt("Çalışma Yönü Özeti", "Study Direction Summary"),
         tt(
-            "Sıradaki adım: seçimi sabitleyin.",
-            "Next step: lock this setup.",
-        )
-        if not st.session_state.get("step1_done")
-        else tt(
-            "Sıradaki adım: kriterleri doğrulayın.",
-            "Next step: validate the criteria.",
-        )
-    ),
-    tone="blue" if not st.session_state.get("step1_done") else "green",
-    expanded=_ui_stage == "step1",
-    icon="🎯",
-)
-if st.session_state.get("step1_done") and not st.session_state.get("prep_done"):
-    _show_step_hint_once(
-        "stage_prep",
-        "Amaç seçimi tamamlandı. Şimdi kriterleri ve yönlerini doğrulayın.",
-        "Objective selection is complete. Now validate the criteria and their directions.",
-        icon="🧭",
+            "Bu seçimler yöntem ve rapor akışını belirler.",
+            "These choices determine the method and reporting flow.",
+        ),
+        [
+            (tt("Analiz amacı", "Objective"), _step1_objective_summary, "blue"),
+            (tt("Veri yapısı", "Data structure"), _step1_scope_summary, "blue"),
+            (tt("Panel dönemleri", "Panel periods"), _step1_period_summary, "amber" if panel_mode else "slate"),
+            (tt("Ağırlık stratejisi", "Weight strategy"), _step1_strategy_summary, "amber" if panel_mode else "slate"),
+            (tt("Beklenen çıktı", "Expected output"), _step1_output_summary, "green"),
+        ],
+        note=(
+            tt(
+                "Sıradaki adım: seçimi sabitleyin.",
+                "Next step: lock this setup.",
+            )
+            if not st.session_state.get("step1_done")
+            else tt(
+                "Sıradaki adım: kriterleri doğrulayın.",
+                "Next step: validate the criteria.",
+            )
+        ),
+        tone="blue" if not st.session_state.get("step1_done") else "green",
+        expanded=_ui_stage == "step1",
+        icon="🎯",
     )
+    if st.session_state.get("step1_done") and not st.session_state.get("prep_done"):
+        _show_step_hint_once(
+            "stage_prep",
+            "Amaç seçimi tamamlandı. Şimdi kriterleri ve yönlerini doğrulayın.",
+            "Objective selection is complete. Now validate the criteria and their directions.",
+            icon="🧭",
+        )
 
-if raw_data is not None and not st.session_state.get("step1_done"):
-    st.caption(tt("Hazırsanız devam edin.", "Continue when ready."))
-    if st.button(
-        tt("✨ Veri hazırlığına geç", "✨ Continue to data preparation"),
-        width="stretch",
-        key="step1_continue_btn",
-    ):
-        st.session_state["step1_done"] = True
-        st.rerun()
-    st.stop()
+    if raw_data is not None and not st.session_state.get("step1_done"):
+        st.caption(tt("Hazırsanız devam edin.", "Continue when ready."))
+        if st.button(
+            tt("✨ Veri hazırlığına geç", "✨ Continue to data preparation"),
+            width="stretch",
+            key="step1_continue_btn",
+        ):
+            st.session_state["step1_done"] = True
+            st.rerun()
+        st.stop()
 
-# ── Veri Hazırlığı ──
-working = raw_data.copy()
-working = clean_dataframe(working, missing_strategy, clip_outliers)
-if panel_mode and panel_year_col and panel_year_col in raw_data.columns:
-    working[panel_year_col] = raw_data[panel_year_col]
-st.session_state["alt_names"] = {}
-if (not panel_mode) and isinstance(raw_data, pd.DataFrame):
-    _entity_candidates = _guess_entity_columns(raw_data)
-    if _entity_candidates:
-        _single_entity_col = _entity_candidates[0]
-        working.index = _make_unique_labels(raw_data[_single_entity_col].tolist(), fallback_prefix="A")
+    # ── Veri Hazırlığı ──
+    working = raw_data.copy()
+    working = clean_dataframe(working, missing_strategy, clip_outliers)
+    if panel_mode and panel_year_col and panel_year_col in raw_data.columns:
+        working[panel_year_col] = raw_data[panel_year_col]
+    st.session_state["alt_names"] = {}
+    if (not panel_mode) and isinstance(raw_data, pd.DataFrame):
+        _entity_candidates = _guess_entity_columns(raw_data)
+        if _entity_candidates:
+            _single_entity_col = _entity_candidates[0]
+            working.index = _make_unique_labels(raw_data[_single_entity_col].tolist(), fallback_prefix="A")
+        else:
+            working.index = [f"A{idx+1}" for idx in range(len(working))]
     else:
         working.index = [f"A{idx+1}" for idx in range(len(working))]
-else:
-    working.index = [f"A{idx+1}" for idx in range(len(working))]
-numeric_cols = working.select_dtypes(include=[np.number]).columns.tolist()
-if panel_mode and panel_year_col in numeric_cols:
-    numeric_cols = [c for c in numeric_cols if c != panel_year_col]
+    numeric_cols = working.select_dtypes(include=[np.number]).columns.tolist()
+    if panel_mode and panel_year_col in numeric_cols:
+        numeric_cols = [c for c in numeric_cols if c != panel_year_col]
 
-if len(numeric_cols) < 2:
-    st.error(tt("Hata: Analiz için en az iki sayısal sütun (kriter) gereklidir.", "Error: At least two numeric criterion columns are required for analysis."))
-    st.stop()
+    if len(numeric_cols) < 2:
+        st.error(tt("Hata: Analiz için en az iki sayısal sütun (kriter) gereklidir.", "Error: At least two numeric criterion columns are required for analysis."))
+        st.stop()
 
-_existing_crits = set(st.session_state.get("crit_dir", {}).keys())
-if _existing_crits != set(numeric_cols):
-    st.session_state["crit_dir"]     = {c: True for c in numeric_cols}  # varsayılan: tümü Fayda
-    st.session_state["crit_include"] = {c: True for c in numeric_cols}
+    _existing_crits = set(st.session_state.get("crit_dir", {}).keys())
+    if _existing_crits != set(numeric_cols):
+        st.session_state["crit_dir"]     = {c: True for c in numeric_cols}  # varsayılan: tümü Fayda
+        st.session_state["crit_include"] = {c: True for c in numeric_cols}
 
 
-# ── TEK BİRLEŞİK HAZIRLIK PANELİ ──
-# Diagnostics hesabı (render öncesi)
-_sel_temp = [c for c in numeric_cols if st.session_state["crit_include"].get(c, True)]
-_has_diag = len(_sel_temp) >= 2
-if _has_diag:
-    _diag = me.generate_data_diagnostics(working, _sel_temp, {c: ("max" if st.session_state["crit_dir"].get(c, True) else "min") for c in _sel_temp})
-    _score, _label = _diag_score_and_label(_diag)
-    _badge_cls = "diag-badge-good" if _score >= 80 else ("diag-badge-mid" if _score >= 60 else "diag-badge-bad")
-    _rec_items = _diag.get("recommendations", [])[:3]
-    _sugg_weight = method_display_name(_diag.get("suggested_weight") or "Entropy")
-    _sugg_rank_methods = _diag.get("suggested_ranking_methods") or ["TOPSIS", "VIKOR", "EDAS"]
-    _sugg_rank = ", ".join(_sugg_rank_methods[:3])
-    _weight_reason = _diag.get("weight_rationale_en") if st.session_state.get("ui_lang") == "EN" else _diag.get("weight_rationale_tr")
-    _rank_reason = _diag.get("ranking_rationale_en") if st.session_state.get("ui_lang") == "EN" else _diag.get("ranking_rationale_tr")
-    st.session_state["_sugg_rank"] = _sugg_rank
-    st.session_state["_sugg_rank_methods"] = _sugg_rank_methods[:3]
-    while len(_rec_items) < 3:
-        _rec_items.append({"icon": "•",
-            "text": tt("Ek kritik bulgu yok.", "No additional critical finding."),
-            "action": tt("Mevcut akışla devam edebilirsiniz.", "You may proceed with the current workflow.")})
-else:
-    _sugg_weight = method_display_name("Entropy")
-    _sugg_rank_methods = ["TOPSIS", "VIKOR", "EDAS"]
-    _sugg_rank = ", ".join(_sugg_rank_methods)
-    _weight_reason = tt("Varsayılan olarak Entropy başlangıç önerisi kullanılıyor.", "Entropy is used as the default initial suggestion.")
-    _rank_reason = tt("Varsayılan olarak TOPSIS, VIKOR ve EDAS başlangıç önerileri kullanılıyor.", "TOPSIS, VIKOR, and EDAS are used as the default initial suggestions.")
-
-_prep_label = f"🔍 {tt('2. Adım: Ön inceleme - Veri Ön Hazırlığı', 'Step 2: Preliminary Review - Data Preparation')}{' ✅' if st.session_state.get('prep_done') else ''}"
-with st.expander(_prep_label, expanded=_ui_stage == "step2"):
-    _show_step_caption(
-        "Kriterleri ve ön temizliği netleştirin.",
-        "Clarify the criteria and preprocessing choices.",
-        "Yanlış yönlü veya analize girmeyecek kriter bırakmamaya dikkat edin.",
-        "Avoid leaving wrongly directed or excluded criteria in the analysis set.",
-    )
-
-    # ── 1) Ön İnceleme Sonuçları ──
+    # ── TEK BİRLEŞİK HAZIRLIK PANELİ ──
+    # Diagnostics hesabı (render öncesi)
+    _sel_temp = [c for c in numeric_cols if st.session_state["crit_include"].get(c, True)]
+    _has_diag = len(_sel_temp) >= 2
     if _has_diag:
-        with st.expander(
-            f"🧭 {tt('Ön İnceleme Sonuçları', 'Preliminary Review Results')}",
-            expanded=False,
-        ):
-            st.markdown(
-                f"""<div class="assistant-grid">
-                    <div class="assistant-card2">
-                        <div class="assistant-title2">📊 {tt("Veri Profili", "Data Profile")}</div>
-                        <div class="assistant-body2">
-                            {_diag.get('n_alt', 0)} {tt("alternatif", "alternatives")} · {_diag.get('n_crit', 0)} {tt("kriter", "criteria")}<br>
-                            {tt("Ort. Varyasyon Katsayısı", "Avg. Coeff. of Variation")}: <strong>{_diag.get('mean_cv', 0.0):.2f}</strong> &nbsp;·&nbsp;
-                            {tt("Maks. |ρ|", "Max |ρ|")}: <strong>{_diag.get('max_corr', 0.0):.2f}</strong>
-                        </div>
-                    </div>
-                    <div class="assistant-card2">
-                        <div class="assistant-title2">⚖️ {tt("Ağırlık Önerisi", "Weighting Suggestion")}</div>
-                        <div class="assistant-body2">
-                            {tt("Önerilen:", "Suggested:")} <strong>{_sugg_weight}</strong><br>
-                            <span style="font-size:0.76rem; color:#556070;">{_weight_reason}</span>
-                        </div>
-                    </div>
-                    <div class="assistant-card2">
-                        <div class="assistant-title2">🏆 {tt("Sıralama Önerisi", "Ranking Suggestion")}</div>
-                        <div class="assistant-body2">
-                            {tt("Önerilen:", "Suggested:")} <strong>{_sugg_rank}</strong><br>
-                            <span style="font-size:0.76rem; color:#556070;">{_rank_reason}</span>
-                        </div>
-                    </div>
-                </div>""",
-                unsafe_allow_html=True,
-            )
-            with st.expander(f"📋 {tt('Detaylı Bulgular ve Öneriler', 'Detailed Findings & Recommendations')}", expanded=False):
-                for idx, rec in enumerate(_rec_items, start=1):
-                    _r_text, _r_action = diag_rec_text(rec)
-                    st.markdown(
-                        f"""<div class="assistant-card2" style="margin-bottom:0.4rem;">
-                            <div class="assistant-title2">{rec.get("icon","•")} {tt("Bulgu","Finding")} {idx}</div>
-                            <div class="assistant-body2">{_r_text}<br>
-                            <strong>{tt("Öneri:","Recommendation:")}</strong> {_r_action}</div>
-                        </div>""",
-                        unsafe_allow_html=True,
-                    )
+        _diag = me.generate_data_diagnostics(working, _sel_temp, {c: ("max" if st.session_state["crit_dir"].get(c, True) else "min") for c in _sel_temp})
+        _score, _label = _diag_score_and_label(_diag)
+        _badge_cls = "diag-badge-good" if _score >= 80 else ("diag-badge-mid" if _score >= 60 else "diag-badge-bad")
+        _rec_items = _diag.get("recommendations", [])[:3]
+        _sugg_weight = method_display_name(_diag.get("suggested_weight") or "Entropy")
+        _sugg_rank_methods = _diag.get("suggested_ranking_methods") or ["TOPSIS", "VIKOR", "EDAS"]
+        _sugg_rank = ", ".join(_sugg_rank_methods[:3])
+        _weight_reason = _diag.get("weight_rationale_en") if st.session_state.get("ui_lang") == "EN" else _diag.get("weight_rationale_tr")
+        _rank_reason = _diag.get("ranking_rationale_en") if st.session_state.get("ui_lang") == "EN" else _diag.get("ranking_rationale_tr")
+        st.session_state["_sugg_rank"] = _sugg_rank
+        st.session_state["_sugg_rank_methods"] = _sugg_rank_methods[:3]
+        while len(_rec_items) < 3:
+            _rec_items.append({"icon": "•",
+                "text": tt("Ek kritik bulgu yok.", "No additional critical finding."),
+                "action": tt("Mevcut akışla devam edebilirsiniz.", "You may proceed with the current workflow.")})
+    else:
+        _sugg_weight = method_display_name("Entropy")
+        _sugg_rank_methods = ["TOPSIS", "VIKOR", "EDAS"]
+        _sugg_rank = ", ".join(_sugg_rank_methods)
+        _weight_reason = tt("Varsayılan olarak Entropy başlangıç önerisi kullanılıyor.", "Entropy is used as the default initial suggestion.")
+        _rank_reason = tt("Varsayılan olarak TOPSIS, VIKOR ve EDAS başlangıç önerileri kullanılıyor.", "TOPSIS, VIKOR, and EDAS are used as the default initial suggestions.")
+
+    _prep_label = f"🔍 {tt('2. Adım: Ön inceleme - Veri Ön Hazırlığı', 'Step 2: Preliminary Review - Data Preparation')}{' ✅' if st.session_state.get('prep_done') else ''}"
+    st.markdown(f"#### {_prep_label}")
+    with st.container():
+        _show_step_caption(
+            "Kriterleri ve ön temizliği netleştirin.",
+            "Clarify the criteria and preprocessing choices.",
+            "Yanlış yönlü veya analize girmeyecek kriter bırakmamaya dikkat edin.",
+            "Avoid leaving wrongly directed or excluded criteria in the analysis set.",
+        )
+
+        # ── 1) Ön İnceleme Sonuçları ──
+        if _has_diag:
+            with st.expander(
+                f"🧭 {tt('Ön İnceleme Sonuçları', 'Preliminary Review Results')}",
+                expanded=False,
+            ):
                 st.markdown(
-                    f"""<div class="assistant-box" style="background:#F0F6FF; margin-top:0.5rem;">
-                        <div class="assistant-title2">💡 {tt("Önerilen Yöntem Felsefesi","Recommended Method Philosophy")}</div>
-                        <div class="assistant-body2">
-                            <strong>{tt("Ağırlık:","Weighting:")}</strong> {_sugg_weight} &nbsp;·&nbsp;
-                            <strong>{tt("Sıralama:","Ranking:")}</strong> {_sugg_rank}
+                    f"""<div class="assistant-grid">
+                        <div class="assistant-card2">
+                            <div class="assistant-title2">📊 {tt("Veri Profili", "Data Profile")}</div>
+                            <div class="assistant-body2">
+                                {_diag.get('n_alt', 0)} {tt("alternatif", "alternatives")} · {_diag.get('n_crit', 0)} {tt("kriter", "criteria")}<br>
+                                {tt("Ort. Varyasyon Katsayısı", "Avg. Coeff. of Variation")}: <strong>{_diag.get('mean_cv', 0.0):.2f}</strong> &nbsp;·&nbsp;
+                                {tt("Maks. |ρ|", "Max |ρ|")}: <strong>{_diag.get('max_corr', 0.0):.2f}</strong>
+                            </div>
+                        </div>
+                        <div class="assistant-card2">
+                            <div class="assistant-title2">⚖️ {tt("Ağırlık Önerisi", "Weighting Suggestion")}</div>
+                            <div class="assistant-body2">
+                                {tt("Önerilen:", "Suggested:")} <strong>{_sugg_weight}</strong><br>
+                                <span style="font-size:0.76rem; color:#556070;">{_weight_reason}</span>
+                            </div>
+                        </div>
+                        <div class="assistant-card2">
+                            <div class="assistant-title2">🏆 {tt("Sıralama Önerisi", "Ranking Suggestion")}</div>
+                            <div class="assistant-body2">
+                                {tt("Önerilen:", "Suggested:")} <strong>{_sugg_rank}</strong><br>
+                                <span style="font-size:0.76rem; color:#556070;">{_rank_reason}</span>
+                            </div>
                         </div>
                     </div>""",
                     unsafe_allow_html=True,
                 )
+                with st.expander(f"📋 {tt('Detaylı Bulgular ve Öneriler', 'Detailed Findings & Recommendations')}", expanded=False):
+                    for idx, rec in enumerate(_rec_items, start=1):
+                        _r_text, _r_action = diag_rec_text(rec)
+                        st.markdown(
+                            f"""<div class="assistant-card2" style="margin-bottom:0.4rem;">
+                                <div class="assistant-title2">{rec.get("icon","•")} {tt("Bulgu","Finding")} {idx}</div>
+                                <div class="assistant-body2">{_r_text}<br>
+                                <strong>{tt("Öneri:","Recommendation:")}</strong> {_r_action}</div>
+                            </div>""",
+                            unsafe_allow_html=True,
+                        )
+                    st.markdown(
+                        f"""<div class="assistant-box" style="background:#F0F6FF; margin-top:0.5rem;">
+                            <div class="assistant-title2">💡 {tt("Önerilen Yöntem Felsefesi","Recommended Method Philosophy")}</div>
+                            <div class="assistant-body2">
+                                <strong>{tt("Ağırlık:","Weighting:")}</strong> {_sugg_weight} &nbsp;·&nbsp;
+                                <strong>{tt("Sıralama:","Ranking:")}</strong> {_sugg_rank}
+                            </div>
+                        </div>""",
+                        unsafe_allow_html=True,
+                    )
 
-    # ── 2) Veri Ön İzleme ──
-    with st.expander(f"📋 {tt('Veri Ön İzleme', 'Data Preview')} — {tt('ilk 3 satır', 'first 3 rows')}", expanded=False):
-        render_table(working.head(3))
+        # ── 2) Veri Ön İzleme ──
+        with st.expander(f"📋 {tt('Veri Ön İzleme', 'Data Preview')} — {tt('ilk 3 satır', 'first 3 rows')}", expanded=False):
+            render_table(working.head(3))
 
-    # ── 3) Kriter Yapılandırması ──
-    with st.expander(f"⚙️ {tt('Kriter Yapılandırması', 'Criteria Configuration')}", expanded=True):
-        st.markdown("""<style>
-        .ct-wrap {
-            border:1px solid #D0D8E4;
-            border-radius:8px;
-            overflow:hidden;
-            margin-top:0.15rem;
-        }
-        .ct-head {
-            display:grid;
-            grid-template-columns:34px minmax(0, 1fr) 92px 92px;
-            align-items:center;
-            background:#EEF3F8;
-            padding:0.22rem 0.55rem;
-            font-size:0.66rem;
-            font-weight:700;
-            color:#4A6070;
-            text-transform:uppercase;
-            letter-spacing:0.4px;
-            border-bottom:1px solid #C8D4E0;
-        }
-        .ct-head > span:nth-child(1),
-        .ct-head > span:nth-child(3),
-        .ct-head > span:nth-child(4) {
-            text-align:center;
-        }
-        .ct-wrap .stHorizontalBlock {
-            border-bottom:1px solid #E8EEF4 !important;
-            margin:0 !important;
-            padding:0.08rem 0.45rem !important;
-            align-items:center !important;
-            min-height:2.05rem !important;
-        }
-        .ct-wrap .stHorizontalBlock:last-of-type { border-bottom:none !important; }
-        .ct-wrap .stHorizontalBlock:nth-of-type(odd) { background:#FFFFFF; }
-        .ct-wrap .stHorizontalBlock:nth-of-type(even) { background:#F7FAFE; }
-        .ct-wrap [data-testid="column"] { padding:0 0.10rem !important; }
-        .ct-wrap .element-container { margin:0 !important; padding:0 !important; }
-        .ct-wrap .stCheckbox {
-            margin:0 !important;
-            min-height:1.35rem !important;
-            display:flex !important;
-            align-items:center !important;
-            justify-content:center !important;
-        }
-        .ct-wrap .stCheckbox > label {
-            padding:0 !important;
-            margin:0 !important;
-            min-height:auto !important;
-        }
-        .ct-wrap .stCheckbox p { font-size:0 !important; }
-        .ct-crit-name {
-            font-size:0.77rem;
-            font-weight:600;
-            color:#1C2A38;
-            line-height:1.25;
-            white-space:nowrap;
-            overflow:hidden;
-            text-overflow:ellipsis;
-            padding-top:0.06rem;
-        }
-        .ct-wrap .stButton,
-        [class*="st-key-dir_benefit_"],
-        [class*="st-key-dir_cost_"] {
-            display:flex !important;
-            align-items:center !important;
-        }
-        .ct-wrap .stButton > button,
-        [class*="st-key-dir_benefit_"] button,
-        [class*="st-key-dir_cost_"] button {
-            width:100% !important;
-            min-height:1.58rem !important;
-            padding:0.10rem 0.22rem !important;
-            font-size:0.67rem !important;
-            font-weight:600 !important;
-            border-radius:6px !important;
-            border:1px solid #CCD6E2 !important;
-            background:#F3F6F9 !important;
-            color:#566678 !important;
-            box-shadow:none !important;
-            letter-spacing:0 !important;
-        }
-        .ct-wrap .stButton > button:hover,
-        [class*="st-key-dir_benefit_"] button:hover,
-        [class*="st-key-dir_cost_"] button:hover {
-            background:#EAF0F5 !important;
-            border-color:#B7C6D6 !important;
-            color:#2F4358 !important;
-        }
-        .ct-wrap .stButton > button[kind="primary"],
-        [class*="st-key-dir_benefit_"] button[kind="primary"],
-        [class*="st-key-dir_cost_"] button[kind="primary"] {
-            background:#C62828 !important;
-            color:#FFFFFF !important;
-            -webkit-text-fill-color:#FFFFFF !important;
-            border-color:#C62828 !important;
-            box-shadow:0 4px 10px rgba(198, 40, 40, 0.18) !important;
-        }
-        .ct-wrap .stButton > button[kind="primary"] *,
-        [class*="st-key-dir_benefit_"] button[kind="primary"] *,
-        [class*="st-key-dir_cost_"] button[kind="primary"] * {
-            color:#FFFFFF !important;
-            fill:#FFFFFF !important;
-            -webkit-text-fill-color:#FFFFFF !important;
-        }
-        .ct-wrap .stButton > button[kind="primary"]:hover,
-        [class*="st-key-dir_benefit_"] button[kind="primary"]:hover,
-        [class*="st-key-dir_cost_"] button[kind="primary"]:hover {
-            background:#B71C1C !important;
-            color:#FFFFFF !important;
-            -webkit-text-fill-color:#FFFFFF !important;
-            border-color:#B71C1C !important;
-        }
-        .ct-wrap .stButton > button[kind="primary"]:hover *,
-        [class*="st-key-dir_benefit_"] button[kind="primary"]:hover *,
-        [class*="st-key-dir_cost_"] button[kind="primary"]:hover * {
-            color:#FFFFFF !important;
-            fill:#FFFFFF !important;
-            -webkit-text-fill-color:#FFFFFF !important;
-        }
-        </style>""", unsafe_allow_html=True)
+        # ── 3) Kriter Yapılandırması ──
+        with st.expander(f"⚙️ {tt('Kriter Yapılandırması', 'Criteria Configuration')}", expanded=st.session_state.get("analysis_result") is None):
+            st.markdown("""<style>
+            .ct-wrap {
+                border:1px solid #D0D8E4;
+                border-radius:8px;
+                overflow:hidden;
+                margin-top:0.15rem;
+            }
+            .ct-head {
+                display:grid;
+                grid-template-columns:34px minmax(0, 1fr) 92px 92px;
+                align-items:center;
+                background:#EEF3F8;
+                padding:0.22rem 0.55rem;
+                font-size:0.66rem;
+                font-weight:700;
+                color:#4A6070;
+                text-transform:uppercase;
+                letter-spacing:0.4px;
+                border-bottom:1px solid #C8D4E0;
+            }
+            .ct-head > span:nth-child(1),
+            .ct-head > span:nth-child(3),
+            .ct-head > span:nth-child(4) {
+                text-align:center;
+            }
+            .ct-wrap .stHorizontalBlock {
+                border-bottom:1px solid #E8EEF4 !important;
+                margin:0 !important;
+                padding:0.08rem 0.45rem !important;
+                align-items:center !important;
+                min-height:2.05rem !important;
+            }
+            .ct-wrap .stHorizontalBlock:last-of-type { border-bottom:none !important; }
+            .ct-wrap .stHorizontalBlock:nth-of-type(odd) { background:#FFFFFF; }
+            .ct-wrap .stHorizontalBlock:nth-of-type(even) { background:#F7FAFE; }
+            .ct-wrap [data-testid="column"] { padding:0 0.10rem !important; }
+            .ct-wrap .element-container { margin:0 !important; padding:0 !important; }
+            .ct-wrap .stCheckbox {
+                margin:0 !important;
+                min-height:1.35rem !important;
+                display:flex !important;
+                align-items:center !important;
+                justify-content:center !important;
+            }
+            .ct-wrap .stCheckbox > label {
+                padding:0 !important;
+                margin:0 !important;
+                min-height:auto !important;
+            }
+            .ct-wrap .stCheckbox p { font-size:0 !important; }
+            .ct-crit-name {
+                font-size:0.77rem;
+                font-weight:600;
+                color:#1C2A38;
+                line-height:1.25;
+                white-space:nowrap;
+                overflow:hidden;
+                text-overflow:ellipsis;
+                padding-top:0.06rem;
+            }
+            .ct-wrap .stButton,
+            [class*="st-key-dir_benefit_"],
+            [class*="st-key-dir_cost_"] {
+                display:flex !important;
+                align-items:center !important;
+            }
+            .ct-wrap .stButton > button,
+            [class*="st-key-dir_benefit_"] button,
+            [class*="st-key-dir_cost_"] button {
+                width:100% !important;
+                min-height:1.58rem !important;
+                padding:0.10rem 0.22rem !important;
+                font-size:0.67rem !important;
+                font-weight:600 !important;
+                border-radius:6px !important;
+                border:1px solid #CCD6E2 !important;
+                background:#F3F6F9 !important;
+                color:#566678 !important;
+                box-shadow:none !important;
+                letter-spacing:0 !important;
+            }
+            .ct-wrap .stButton > button:hover,
+            [class*="st-key-dir_benefit_"] button:hover,
+            [class*="st-key-dir_cost_"] button:hover {
+                background:#EAF0F5 !important;
+                border-color:#B7C6D6 !important;
+                color:#2F4358 !important;
+            }
+            .ct-wrap .stButton > button[kind="primary"],
+            [class*="st-key-dir_benefit_"] button[kind="primary"],
+            [class*="st-key-dir_cost_"] button[kind="primary"] {
+                background:#C62828 !important;
+                color:#FFFFFF !important;
+                -webkit-text-fill-color:#FFFFFF !important;
+                border-color:#C62828 !important;
+                box-shadow:0 4px 10px rgba(198, 40, 40, 0.18) !important;
+            }
+            .ct-wrap .stButton > button[kind="primary"] *,
+            [class*="st-key-dir_benefit_"] button[kind="primary"] *,
+            [class*="st-key-dir_cost_"] button[kind="primary"] * {
+                color:#FFFFFF !important;
+                fill:#FFFFFF !important;
+                -webkit-text-fill-color:#FFFFFF !important;
+            }
+            .ct-wrap .stButton > button[kind="primary"]:hover,
+            [class*="st-key-dir_benefit_"] button[kind="primary"]:hover,
+            [class*="st-key-dir_cost_"] button[kind="primary"]:hover {
+                background:#B71C1C !important;
+                color:#FFFFFF !important;
+                -webkit-text-fill-color:#FFFFFF !important;
+                border-color:#B71C1C !important;
+            }
+            .ct-wrap .stButton > button[kind="primary"]:hover *,
+            [class*="st-key-dir_benefit_"] button[kind="primary"]:hover *,
+            [class*="st-key-dir_cost_"] button[kind="primary"]:hover * {
+                color:#FFFFFF !important;
+                fill:#FFFFFF !important;
+                -webkit-text-fill-color:#FFFFFF !important;
+            }
+            </style>""", unsafe_allow_html=True)
 
-        _dir_benefit = tt("Fayda", "Benefit")
-        _dir_cost = tt("Maliyet", "Cost")
-        _direction_notice = st.session_state.pop("direction_notice", None)
-        if _direction_notice:
-            try:
-                st.toast(_direction_notice, icon="✅")
-            except Exception:
-                st.info(_direction_notice)
+            _dir_benefit = tt("Fayda", "Benefit")
+            _dir_cost = tt("Maliyet", "Cost")
+            _direction_notice = st.session_state.pop("direction_notice", None)
+            if _direction_notice:
+                try:
+                    st.toast(_direction_notice, icon="✅")
+                except Exception:
+                    st.info(_direction_notice)
 
-        # Tablo başlığı (HTML div)
-        st.markdown(
-            f'<div class="ct-wrap"><div class="ct-head">'
-            f'<span>✓</span>'
-            f'<span>{tt("Kriter", "Criterion")}</span>'
-            f'<span>{tt("Fayda", "Benefit")}</span>'
-            f'<span>{tt("Maliyet", "Cost")}</span>'
-            f'</div></div>',
-            unsafe_allow_html=True,
-        )
-        # Veri satırları
-        st.markdown('<div class="ct-wrap">', unsafe_allow_html=True)
-        for _c in numeric_cols:
-            _rc = st.columns([0.42, 4.5, 1.15, 1.15], gap="small")
-            with _rc[0]:
-                st.session_state["crit_include"][_c] = st.checkbox(
-                    f"{tt('Kriteri dahil et', 'Include criterion')}: {_c}",
-                    value=st.session_state["crit_include"].get(_c, True),
-                    key=f"inc_{_c}",
-                    label_visibility="collapsed",
-                )
-            with _rc[1]:
-                st.markdown(f'<div class="ct-crit-name">{_safe_html_text(_c)}</div>', unsafe_allow_html=True)
-            _is_benefit = st.session_state["crit_dir"].get(_c, True)
-            with _rc[2]:
-                if st.button(
-                    _dir_benefit,
-                    key=f"dir_benefit_{_c}",
-                    width="stretch",
-                    type="primary" if _is_benefit else "secondary",
-                ):
-                    st.session_state["crit_dir"][_c] = True
-                    st.session_state["direction_notice"] = f"{tt('Seçilen', 'Selected')}: {_c} - {_dir_benefit}"
-                    st.rerun()
-            with _rc[3]:
-                if st.button(
-                    _dir_cost,
-                    key=f"dir_cost_{_c}",
-                    width="stretch",
-                    type="primary" if not _is_benefit else "secondary",
-                ):
-                    st.session_state["crit_dir"][_c] = False
-                    st.session_state["direction_notice"] = f"{tt('Seçilen', 'Selected')}: {_c} - {_dir_cost}"
-                    st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+            # Tablo başlığı (HTML div)
+            st.markdown(
+                f'<div class="ct-wrap"><div class="ct-head">'
+                f'<span>✓</span>'
+                f'<span>{tt("Kriter", "Criterion")}</span>'
+                f'<span>{tt("Fayda", "Benefit")}</span>'
+                f'<span>{tt("Maliyet", "Cost")}</span>'
+                f'</div></div>',
+                unsafe_allow_html=True,
+            )
+            # Veri satırları
+            st.markdown('<div class="ct-wrap">', unsafe_allow_html=True)
+            for _c in numeric_cols:
+                _rc = st.columns([0.42, 4.5, 1.15, 1.15], gap="small")
+                with _rc[0]:
+                    st.session_state["crit_include"][_c] = st.checkbox(
+                        f"{tt('Kriteri dahil et', 'Include criterion')}: {_c}",
+                        value=st.session_state["crit_include"].get(_c, True),
+                        key=f"inc_{_c}",
+                        label_visibility="collapsed",
+                    )
+                with _rc[1]:
+                    st.markdown(f'<div class="ct-crit-name">{_safe_html_text(_c)}</div>', unsafe_allow_html=True)
+                _is_benefit = st.session_state["crit_dir"].get(_c, True)
+                with _rc[2]:
+                    if st.button(
+                        _dir_benefit,
+                        key=f"dir_benefit_{_c}",
+                        width="stretch",
+                        type="primary" if _is_benefit else "secondary",
+                    ):
+                        st.session_state["crit_dir"][_c] = True
+                        st.session_state["direction_notice"] = f"{tt('Seçilen', 'Selected')}: {_c} - {_dir_benefit}"
+                        st.rerun()
+                with _rc[3]:
+                    if st.button(
+                        _dir_cost,
+                        key=f"dir_cost_{_c}",
+                        width="stretch",
+                        type="primary" if not _is_benefit else "secondary",
+                    ):
+                        st.session_state["crit_dir"][_c] = False
+                        st.session_state["direction_notice"] = f"{tt('Seçilen', 'Selected')}: {_c} - {_dir_cost}"
+                        st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        if not st.session_state.get("prep_done"):
+            st.divider()
 
     if not st.session_state.get("prep_done"):
-        st.divider()
+        st.caption(tt("Hazırsanız yöntem seçimine geçin.", "Proceed to method selection when ready."))
+        if st.button(
+            tt("✅ Veri Ön İşleme Bitti (Yöntem Seçimine Geç)", "✅ Preprocessing Complete (Proceed to Method Selection)"),
+            width="stretch",
+            key="btn_prep_complete_main",
+        ):
+            st.session_state.prep_done = True
+            st.rerun()
 
-if not st.session_state.get("prep_done"):
-    st.caption(tt("Hazırsanız yöntem seçimine geçin.", "Proceed to method selection when ready."))
-    if st.button(
-        tt("✅ Veri Ön İşleme Bitti (Yöntem Seçimine Geç)", "✅ Preprocessing Complete (Proceed to Method Selection)"),
-        width="stretch",
-        key="btn_prep_complete_main",
-    ):
-        st.session_state.prep_done = True
-        st.rerun()
-
-criteria = [c for c in numeric_cols if st.session_state["crit_include"].get(c, True)]
-criteria_types = {c: ("max" if st.session_state["crit_dir"].get(c, True) else "min") for c in criteria}
-_benefit_count = sum(1 for c in criteria if criteria_types.get(c) == "max")
-_cost_count = sum(1 for c in criteria if criteria_types.get(c) == "min")
-_missing_label_summary = missing_strategy if missing_strategy not in {"Sil", "Drop"} else tt("Kapalı / Sil", "Off / Drop")
-_prep_scope_summary = (
-    f"{len(st.session_state.get('panel_selected_years', []))} {tt('dönem', 'periods')} · {_preview_list_text(st.session_state.get('panel_selected_years', []), 4)}"
-    if panel_mode
-    else tt("Tek veri dilimi", "Single data slice")
-)
-_render_tracking_panel(
-    tt("Hazırlık Özeti", "Preparation Summary"),
-    tt(
-        "Analize girecek kriter ve temizlik yapısı.",
-        "Criteria and cleaning setup for the analysis.",
-    ),
-    [
-        (tt("Dahil kriterler", "Included criteria"), f"{len(criteria)} · {_preview_list_text(criteria, 4)}", "green"),
-        (tt("Yön dağılımı", "Direction split"), f"{_benefit_count} {tt('fayda', 'benefit')} · {_cost_count} {tt('maliyet', 'cost')}", "blue"),
-        (tt("Hariç kriterler", "Excluded criteria"), str(max(0, len(numeric_cols) - len(criteria))), "amber" if len(criteria) < len(numeric_cols) else "slate"),
-        (
-            tt("Temizlik ayarı", "Cleaning setup"),
-            f"{tt('Eksik', 'Missing')}: {_missing_label_summary} · {tt('Aykırı', 'Outlier')}: {tt('Açık', 'On') if clip_outliers else tt('Kapalı', 'Off')}",
-            "amber",
-        ),
-        (tt("Analiz kapsamı", "Analysis scope"), _prep_scope_summary, "blue"),
-    ],
-    note=(
+    criteria = [c for c in numeric_cols if st.session_state["crit_include"].get(c, True)]
+    criteria_types = {c: ("max" if st.session_state["crit_dir"].get(c, True) else "min") for c in criteria}
+    _benefit_count = sum(1 for c in criteria if criteria_types.get(c) == "max")
+    _cost_count = sum(1 for c in criteria if criteria_types.get(c) == "min")
+    _missing_label_summary = missing_strategy if missing_strategy not in {"Sil", "Drop"} else tt("Kapalı / Sil", "Off / Drop")
+    _prep_scope_summary = (
+        f"{len(st.session_state.get('panel_selected_years', []))} {tt('dönem', 'periods')} · {_preview_list_text(st.session_state.get('panel_selected_years', []), 4)}"
+        if panel_mode
+        else tt("Tek veri dilimi", "Single data slice")
+    )
+    _render_tracking_panel(
+        tt("Hazırlık Özeti", "Preparation Summary"),
         tt(
-            "En az 2 kriter bırakın; hazırsanız yöntem seçimine geçin.",
-            "Keep at least 2 criteria; continue to method selection when ready.",
-        )
-        if len(criteria) >= 2
-        else tt(
-            "Devam için en az 2 kriter seçin.",
-            "Select at least 2 criteria to continue.",
-        )
-    ),
-    tone="amber" if not st.session_state.get("prep_done") else "green",
-    expanded=_ui_stage == "step2",
-    icon="🔍",
-)
-
-if len(criteria) < 2:
-    st.error(tt("En az 2 kriter seçmelisiniz.", "You must select at least 2 criteria."))
-    st.stop()
-
-if not st.session_state.prep_done:
-    st.stop()
-else:
-    if st.button(tt("🔄 Kriter Ayarlarına Geri Dön", "🔄 Back to Criteria Settings"), width="stretch"):
-        st.session_state.prep_done = False
-        st.session_state["analysis_result"] = None
-        st.rerun()
-
-# ---------------------------------------------------------
-# YÖNTEM SEÇİMİ (ALT PANEL)
-# ---------------------------------------------------------
-st.divider()
-_step3_title = tt("⚙️ 3. Adım: Yöntem Seçimi ve Karşılaştırma", "⚙️ Step 3: Method Selection and Comparison")
-with st.expander(_step3_title, expanded=_ui_stage == "step3"):
-    _show_step_caption(
-        "Yöntem kurulumunu tamamlayın.",
-        "Complete the method setup.",
-        "Bu seçimler sonuçların yorum ve rapor akışını belirler.",
-        "These selections determine the interpretation and reporting flow.",
+            "Analize girecek kriter ve temizlik yapısı.",
+            "Criteria and cleaning setup for the analysis.",
+        ),
+        [
+            (tt("Dahil kriterler", "Included criteria"), f"{len(criteria)} · {_preview_list_text(criteria, 4)}", "green"),
+            (tt("Yön dağılımı", "Direction split"), f"{_benefit_count} {tt('fayda', 'benefit')} · {_cost_count} {tt('maliyet', 'cost')}", "blue"),
+            (tt("Hariç kriterler", "Excluded criteria"), str(max(0, len(numeric_cols) - len(criteria))), "amber" if len(criteria) < len(numeric_cols) else "slate"),
+            (
+                tt("Temizlik ayarı", "Cleaning setup"),
+                f"{tt('Eksik', 'Missing')}: {_missing_label_summary} · {tt('Aykırı', 'Outlier')}: {tt('Açık', 'On') if clip_outliers else tt('Kapalı', 'Off')}",
+                "amber",
+            ),
+            (tt("Analiz kapsamı", "Analysis scope"), _prep_scope_summary, "blue"),
+        ],
+        note=(
+            tt(
+                "En az 2 kriter bırakın; hazırsanız yöntem seçimine geçin.",
+                "Keep at least 2 criteria; continue to method selection when ready.",
+            )
+            if len(criteria) >= 2
+            else tt(
+                "Devam için en az 2 kriter seçin.",
+                "Select at least 2 criteria to continue.",
+            )
+        ),
+        tone="amber" if not st.session_state.get("prep_done") else "green",
+        expanded=_ui_stage == "step2",
+        icon="🔍",
     )
 
-    weight_mode = ""
-    weight_method: str | None = None
-    weight_mode_key = "objective"
-    manual_weights: Dict[str, float] | None = None
-    manual_weights_valid = True
-    _weight_missing_prev = not bool(st.session_state.get("weight_method_pref"))
-    _weight_expander_title = tt("🧩 3.1. Adım: Ağırlıklandırma Modu ve Yöntemi", "🧩 Step 3.1: Weighting Mode and Method")
-    if _weight_missing_prev:
-        _weight_expander_title += f" ❗ {tt('Lütfen seçiminizi yapın.', 'Please make your selection.')}"
-    with st.expander(_weight_expander_title, expanded=_ui_stage == "step3"):
+    if len(criteria) < 2:
+        st.error(tt("En az 2 kriter seçmelisiniz.", "You must select at least 2 criteria."))
+        st.stop()
+
+    if not st.session_state.prep_done:
+        st.stop()
+    else:
+        if st.button(tt("🔄 Kriter Ayarlarına Geri Dön", "🔄 Back to Criteria Settings"), width="stretch"):
+            st.session_state.prep_done = False
+            st.session_state["analysis_result"] = None
+            st.rerun()
+
+    # ---------------------------------------------------------
+    # YÖNTEM SEÇİMİ (ALT PANEL)
+    # ---------------------------------------------------------
+    st.divider()
+    _step3_title = tt("⚙️ 3. Adım: Yöntem Seçimi ve Karşılaştırma", "⚙️ Step 3: Method Selection and Comparison")
+    st.markdown(f"#### {_step3_title}")
+    with st.container():
         _show_step_caption(
-            "Ağırlık mantığını seçin.",
-            "Choose the weighting logic.",
-            "Objektif, eşit ve manuel yaklaşım farklı yorum çerçeveleri üretir.",
-            "Objective, equal, and manual approaches create different interpretation frames.",
+            "Yöntem kurulumunu tamamlayın.",
+            "Complete the method setup.",
+            "Bu seçimler sonuçların yorum ve rapor akışını belirler.",
+            "These selections determine the interpretation and reporting flow.",
         )
 
-        methods_internal = me.OBJECTIVE_WEIGHT_METHODS
-        _weight_groups = weight_method_groups()
+        weight_mode = ""
+        weight_method: str | None = None
+        weight_mode_key = "objective"
+        manual_weights: Dict[str, float] | None = None
+        manual_weights_valid = True
+        _step3_tabs = st.tabs([
+            tt("🎯 1. Ağırlık Belirleme", "🎯 1. Weight Determination"),
+            tt("📊 2. Sıralama Yöntemi", "📊 2. Ranking Method"),
+            tt("🛡️ 3. Dayanıklılık Testi", "🛡️ 3. Robustness Test")
+        ])
 
-        weight_mode = st.radio(
-            f"**{tt('Ağırlıklandırma Modu', 'Weighting Mode')}**",
-            [tt("🎯 Objektif Ağırlık", "🎯 Objective Weights"), tt("⚖️ Eşit Ağırlık", "⚖️ Equal Weights"), tt("✍️ Manuel Ağırlık", "✍️ Manual Weights")],
-            horizontal=True,
-            help=tt(
-                "Bu seçim, ağırlıkların veriden mi, eşit dağılımdan mı yoksa sizin önceliklerinizden mi üretileceğini belirler.\nKullandığınız ağırlık mantığı, bulguların yorum çerçevesini doğrudan değiştirir.",
-                "This choice determines whether weights come from data, equal distribution, or your own priorities.\nThe weighting logic directly changes the interpretation frame of the findings.",
-            ),
-        )
-
-        if "Objektif" in weight_mode or "Objective" in weight_mode:
-            weight_mode_key = "objective"
-            st.caption(tt("Tüm yöntemler aşağıda kümelenmiş halde gösterilir. Tek seçim yapılır.", "All methods are grouped below. A single selection is used."))
-            # Checkbox durumlarını ilk açılışta ayarla
-            for _m in methods_internal:
-                if f"weight_cb_{_m}" not in st.session_state:
-                    st.session_state[f"weight_cb_{_m}"] = False
-            for group_label, group_methods in _weight_groups:
-                _filtered_methods = [m for m in group_methods if m in methods_internal]
-                if not _filtered_methods:
-                    continue
-                st.markdown(f"**{group_label}**")
-                method_cols = st.columns(3)
-                for i, method_name in enumerate(_filtered_methods):
-                    with method_cols[i % len(method_cols)]:
-                        _label = method_display_name(method_name)
-                        _cb_key = f"weight_cb_{method_name}"
-                        _w_help = tt(
-                            f"{_method_help_text(method_name)}\nBu yöntemi seçerek devam edebilirsiniz.",
-                            f"{_method_help_text(method_name)}\nYou can proceed by selecting this method.",
-                        )
-                        st.checkbox(
-                            _label, key=_cb_key, help=_w_help,
-                            on_change=_wm_single_select_cb, args=(method_name, methods_internal),
-                        )
-            # Seçili yöntemi güncelle
-            _all_weight_checked = [m for m in methods_internal if st.session_state.get(f"weight_cb_{m}", False)]
-            if _all_weight_checked:
-                weight_method = _all_weight_checked[0]
-                st.session_state["weight_method_pref"] = weight_method
-                # Seçili yöntem felsefesi kutusu
-                _wh = _method_help_text(weight_method).split("\n", 1)
-                _wh_simple   = _wh[0].strip()
-                _wh_academic = _wh[1].strip() if len(_wh) > 1 else ""
-                _academic_html = (
-                    f'<div style="font-size:0.70rem; color:#4A6070; line-height:1.5; margin-top:0.15rem;">{_wh_academic}</div>'
-                    if _wh_academic else ""
-                )
-                st.markdown(
-                    f'<div style="background:#EAF3FB; border-left:3px solid #5A9CC5; border-radius:0 8px 8px 0; '
-                    f'padding:0.45rem 0.75rem; margin-top:0.5rem;">'
-                    f'<div style="font-size:0.72rem; font-weight:700; color:#1F4A73; margin-bottom:0.18rem;">'
-                    f'💡 {method_display_name(weight_method)}</div>'
-                    f'<div style="font-size:0.71rem; color:#2A3E54; line-height:1.55;">{_wh_simple}</div>'
-                    f'{_academic_html}'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.session_state["weight_method_pref"] = None
-                st.markdown(
-                    f"<p style='color:#B91C1C;font-size:0.78rem;font-weight:700;margin:0.45rem 0 0 0;'>❗ {tt('Lütfen seçiminizi yapın.', 'Please make your selection.')}</p>",
-                    unsafe_allow_html=True,
-                )
-        elif "Eşit" in weight_mode or "Equal" in weight_mode:
-            weight_method = "Eşit Ağırlık"
-            weight_mode_key = "equal"
-            st.session_state["weight_method_pref"] = weight_method
-            st.caption(tt("Tüm kriterlere eşit önem atanır.", "All criteria are assigned equal importance."))
-            _weight_help_lines = _method_help_text(weight_method).split("\n", 1)
-            st.caption(_weight_help_lines[0])
-            if len(_weight_help_lines) > 1:
-                st.caption(_weight_help_lines[1])
-        else:
-            weight_method = "Manuel Ağırlık"
-            weight_mode_key = "manual"
-            st.session_state["weight_method_pref"] = weight_method
-            _weight_help_lines = _method_help_text(weight_method).split("\n", 1)
-            st.caption(_weight_help_lines[0])
-            if len(_weight_help_lines) > 1:
-                st.caption(_weight_help_lines[1])
-
-            _mcols = st.columns(min(3, max(1, len(criteria))))
-            manual_raw_text: Dict[str, str] = {}
-            for i, c in enumerate(criteria):
-                with _mcols[i % len(_mcols)]:
-                    manual_raw_text[c] = st.text_input(
-                        c,
-                        value=str(st.session_state.get(f"manual_w_{c}", "")),
-                        placeholder=tt("örn. 7.5", "e.g. 7.5"),
-                        key=f"manual_w_{c}",
-                    ).strip()
-
-            st.caption(
-                tt(
-                    "Seçili kriterler için ham önem puanı girin. Değerlerin toplamının 1 olması gerekmez; sistem analiz anında oranları otomatik normalize eder. Bu alan, AHP veya benzeri bir yaklaşımla dışarıda belirlediğiniz göreli önemleri esnek biçimde girmeniz için tasarlanmıştır.",
-                    "Enter raw importance values for the selected criteria. Their total does not need to be 1; the system automatically normalizes the ratios during analysis. This area is designed for flexibly entering relative priorities produced externally through AHP or a similar approach.",
-                )
-            )
-
-            missing_manual: List[str] = []
-            invalid_manual: List[str] = []
-            parsed_manual: Dict[str, float] = {}
-            for c, raw_val in manual_raw_text.items():
-                if not raw_val:
-                    missing_manual.append(c)
-                    continue
-                try:
-                    val = float(raw_val.replace(",", "."))
-                    if not np.isfinite(val) or val <= 0:
-                        raise ValueError
-                    parsed_manual[c] = val
-                except Exception:
-                    invalid_manual.append(c)
-
-            if missing_manual:
-                st.info(
-                    tt(
-                        "Analize geçmeden önce tüm seçili kriterler için değer girin.",
-                        "Enter values for all selected criteria before running the analysis.",
-                    )
-                )
-                manual_weights_valid = False
-            if invalid_manual:
-                st.warning(
-                    tt(
-                        f"Geçerli pozitif sayı beklenen kriterler: {', '.join(invalid_manual)}.",
-                        f"Valid positive numbers are required for: {', '.join(invalid_manual)}.",
-                    )
-                )
-                manual_weights_valid = False
-
-            if parsed_manual:
-                _manual_total = float(sum(parsed_manual.values()))
-                manual_weights = {c: parsed_manual[c] for c in criteria if c in parsed_manual}
-                _manual_preview = pd.DataFrame(
-                    {
-                        "Kriter": criteria,
-                        tt("Girilen Değer", "Entered Value"): [parsed_manual.get(c, np.nan) for c in criteria],
-                        tt("Normalize Ağırlık", "Normalized Weight"): [
-                            (parsed_manual[c] / _manual_total) if c in parsed_manual and _manual_total > 0 else np.nan
-                            for c in criteria
-                        ],
-                    }
-                )
-                render_table(_manual_preview)
-            else:
-                manual_weights = None
-                manual_weights_valid = False
-
-    ranking_methods_selected = []
-    primary_rank_method: str | None = None
-    vikor_v = float(st.session_state.get("vikor_v", 0.5))
-    waspas_lambda = float(st.session_state.get("waspas_lambda", 0.5))
-    codas_tau = float(st.session_state.get("codas_tau", 0.02))
-    cocoso_lambda = float(st.session_state.get("cocoso_lambda", 0.5))
-    gra_rho = float(st.session_state.get("gra_rho", 0.5))
-    promethee_pref_func = st.session_state.get("promethee_pref_func", "linear")
-    promethee_q = float(st.session_state.get("promethee_q", 0.05))
-    promethee_p = float(st.session_state.get("promethee_p", 0.30))
-    promethee_s = float(st.session_state.get("promethee_s", 0.20))
-    fuzzy_spread = float(st.session_state.get("fuzzy_spread", 0.10))
-    sensitivity_iterations = int(st.session_state.get("sensitivity_iterations", 400))
-    sensitivity_iterations = max(0, min(MAX_SENSITIVITY_ITERATIONS, sensitivity_iterations))
-    sensitivity_sigma = float(st.session_state.get("sensitivity_sigma", 0.12))
-    run_heavy_robustness = bool(st.session_state.get("run_heavy_robustness", False))
-
-    if needs_ranking:
-        _ranking_missing_prev = not bool(st.session_state.get("ranking_prefs"))
-        _rank_expander_title = tt("🧩 3.2. Adım: Sıralama Yöntemleri", "🧩 Step 3.2: Ranking Methods")
-        if _ranking_missing_prev:
-            _rank_expander_title += f" ❗ {tt('Lütfen seçiminizi yapın.', 'Please make your selection.')}"
-        with st.expander(_rank_expander_title, expanded=_ui_stage == "step3"):
+        with _step3_tabs[0]:
             _show_step_caption(
-                "Sıralama yöntemlerini seçin.",
-                "Choose the ranking methods.",
-                "Birden fazla yöntem seçerseniz yöntem uyumu da karşılaştırılır.",
-                "If you choose multiple methods, method agreement is also compared.",
+                "Ağırlık mantığını seçin.",
+                "Choose the weighting logic.",
+                "Değerleri veriden bağlayarak veya uzman görüşüyle sisteme dahil edebilirsiniz.",
+                "Integrate values through data or expert opinion."
             )
-            _layer_options = [
-                tt("Temel Yöntemler (Klasik Mantık)", "Core Methods (Classical Logic)"),
-                tt("İleri Düzey Yöntemler (Fuzzy)", "Advanced Methods (Fuzzy)"),
+
+            methods_internal = me.OBJECTIVE_WEIGHT_METHODS
+            _weight_groups = weight_method_groups()
+
+            options = [
+                tt("🎯 Objektif Ağırlık", "🎯 Objective Weights"), 
+                tt("🧠 Subjektif Ağırlık", "🧠 Subjective Weights"), 
+                tt("⚖️ Eşit Ağırlık", "⚖️ Equal Weights"), 
+                tt("✍️ Manuel Ağırlık", "✍️ Manual Weights")
             ]
-            layer_choice = st.radio(
-                f"**{tt('Analiz Katmanı', 'Analysis Layer')}**",
-                _layer_options,
-                horizontal=True,
-                help=tt("Klasik katman kesin sayısal değerlerle, Fuzzy katman ise belirsizlik toleransı (spread) ile çalışır.", "Classical uses crisp numeric values; fuzzy uses uncertainty tolerance (spread)."),
-            )
-            if layer_choice == _layer_options[0]:
-                all_ranks = me.CLASSICAL_MCDM_METHODS
-                _layer_key = "classical"
-            else:
-                all_ranks = me.FUZZY_MCDM_METHODS
-                _layer_key = "fuzzy"
 
-            _sugg_rank_raw = st.session_state.get("_sugg_rank", "TOPSIS, VIKOR, EDAS")
-            _sugg_rank_list = st.session_state.get("_sugg_rank_methods") or ["TOPSIS", "VIKOR", "EDAS"]
-            _fallback_recommendations = (
-                ["TOPSIS", "VIKOR", "EDAS"]
-                if _layer_key == "classical"
-                else ["Fuzzy TOPSIS", "Fuzzy VIKOR", "Fuzzy EDAS"]
-            )
-
-            def _resolve_rank_method_name(candidate: str) -> str | None:
-                cand = candidate.strip()
-                if not cand:
-                    return None
-                cand_upper = cand.upper().replace("FUZZY ", "").strip()
-                for method_name in all_ranks:
-                    method_upper = method_name.upper().replace("FUZZY ", "").strip()
-                    if method_upper == cand_upper:
-                        return method_name
-                return None
-
-            recommended_rank_methods: List[str] = []
-            for candidate in [*_sugg_rank_list, *_sugg_rank_raw.replace("/", ",").split(","), *_fallback_recommendations]:
-                resolved_method = _resolve_rank_method_name(candidate)
-                if resolved_method and resolved_method not in recommended_rank_methods:
-                    recommended_rank_methods.append(resolved_method)
-                if len(recommended_rank_methods) >= 3:
-                    break
-            quick_pick_methods = recommended_rank_methods[:3]
-
-            st.caption(
-                tt(
-                    f"Bu katmanda toplam {len(all_ranks)} yöntem kullanılabilir.",
-                    f"A total of {len(all_ranks)} methods are available in this layer.",
-                )
-            )
-            _mcol1, _mcol2 = st.columns(2)
-            with _mcol1:
-                if st.button(tt("✅ Önerilen Yöntemleri Çalıştır", "✅ Run Recommended Methods"), width="stretch", key=f"btn_select_recommended_{_layer_key}"):
-                    st.session_state["ranking_prefs"] = list(quick_pick_methods)
-                    for rank_method in all_ranks:
-                        st.session_state[f"rank_cb_{rank_method}"] = rank_method in quick_pick_methods
-                    st.rerun()
-            with _mcol2:
-                if st.button(tt("🗑️ Temizle", "🗑️ Clear"), width="stretch", key=f"btn_clear_all_{_layer_key}"):
-                    st.session_state["ranking_prefs"] = []
-                    for rank_method in all_ranks:
-                        st.session_state[f"rank_cb_{rank_method}"] = False
-                    st.rerun()
-            st.caption(
-                tt(
-                    f"Önerilen başlangıç yöntemleri: {', '.join(recommended_rank_methods[:3])}.",
-                    f"Recommended starter methods: {', '.join(recommended_rank_methods[:3])}.",
-                )
-            )
-            st.caption(
-                tt(
-                    f"Neden bu öneri? {_rank_reason}",
-                    f"Why this recommendation? {_rank_reason}",
-                )
+            st.markdown(
+                """
+                <style>
+                div[data-testid="stPills"] {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 12px;
+                    padding-bottom: 0.5rem;
+                }
+                div[data-testid="stPills"] button {
+                    background-color: #1e293b !important;
+                    border: 1px solid #334155 !important;
+                    color: #94a3b8 !important;
+                    border-radius: 8px !important;
+                    padding: 0.5rem 1.5rem !important;
+                    font-size: 1.05rem !important;
+                    transition: all 0.3s ease !important;
+                }
+                div[data-testid="stPills"] button[aria-pressed="true"], div[data-testid="stPills"] button[data-selected="true"] {
+                    background: linear-gradient(135deg, #10B981 0%, #059669 100%) !important;
+                    color: white !important;
+                    border-color: #10B981 !important;
+                    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4) !important;
+                    font-weight: 600 !important;
+                }
+                div[data-testid="stPills"] button:hover {
+                    transform: translateY(-2px) !important;
+                    border-color: #059669 !important;
+                    color: white !important;
+                }
+                </style>
+                """, unsafe_allow_html=True
             )
 
-            _pref_ranks = st.session_state.get("ranking_prefs") or []
-            _has_pref_in_layer = any(m in all_ranks for m in _pref_ranks)
-            for group_label, group_methods in ranking_method_groups(_layer_key):
-                _filtered_methods = [m for m in group_methods if m in all_ranks]
-                if not _filtered_methods:
-                    continue
-                st.markdown(f"**{group_label}**")
-                rank_cols = st.columns(3)
-                for i, rank_method in enumerate(_filtered_methods):
-                    with rank_cols[i % len(rank_cols)]:
-                        if _pref_ranks and _has_pref_in_layer:
-                            default_val = rank_method in _pref_ranks
-                        else:
-                            default_val = False
-                        _rank_widget_key = f"rank_cb_{rank_method}"
-                        _rank_help = tt(
-                            f"{_method_help_text(rank_method)}\nBu yöntemi seçerseniz karşılaştırma çıktılarında da birlikte değerlendirilir.",
-                            f"{_method_help_text(rank_method)}\nIf you select this method, it will also be evaluated in the comparison outputs.",
-                        )
-                        if _rank_widget_key in st.session_state:
-                            _rank_checked = st.checkbox(rank_method, key=_rank_widget_key, help=_rank_help)
-                        else:
-                            _rank_checked = st.checkbox(rank_method, value=default_val, key=_rank_widget_key, help=_rank_help)
-                        if _rank_checked:
-                            ranking_methods_selected.append(rank_method)
-            st.session_state["ranking_prefs"] = ranking_methods_selected
+            weight_mode = st.pills(
+                f"**{tt('Ağırlıklandırma Modülü', 'Weighting Module')}**",
+                options,
+                selection_mode="single",
+                default=options[0],
+                help=tt(
+                    "Bu seçim, ağırlıkların veriden mi, uzman görüşünden mi, eşit dağılımdan mı yoksa manuel olarak mı üretileceğini belirler.",
+                    "This choice determines the source of weights: data, expert evaluation, equal distribution, or manual input."
+                ),
+            )
+            if not weight_mode:
+                weight_mode = options[0]
 
-            if not ranking_methods_selected:
-                st.markdown(
-                    f"<p style='color:#B91C1C;font-size:0.78rem;font-weight:700;margin:0.45rem 0 0 0;'>❗ {tt('Lütfen seçiminizi yapın.', 'Please make your selection.')}</p>",
-                    unsafe_allow_html=True,
-                )
-                st.warning(tt("Lütfen en az bir sıralama yöntemi seçiniz.", "Please select at least one ranking method."))
-            else:
-                _sugg_primary = next(
-                    (m for m in ranking_methods_selected
-                     if any(m == _resolve_rank_method_name(part) for part in [*_sugg_rank_list, *_sugg_rank_raw.replace("/", ",").split(",")])),
-                    ranking_methods_selected[0] if ranking_methods_selected else None,
-                )
-                primary_rank_method = _sugg_primary or (ranking_methods_selected[0] if ranking_methods_selected else None)
-
-                uses_vikor = ("VIKOR" in ranking_methods_selected) or ("Fuzzy VIKOR" in ranking_methods_selected)
-                uses_waspas = ("WASPAS" in ranking_methods_selected) or ("Fuzzy WASPAS" in ranking_methods_selected)
-                uses_codas = ("CODAS" in ranking_methods_selected) or ("Fuzzy CODAS" in ranking_methods_selected)
-                uses_cocoso = ("CoCoSo" in ranking_methods_selected) or ("Fuzzy CoCoSo" in ranking_methods_selected)
-                uses_gra = ("GRA" in ranking_methods_selected) or ("Fuzzy GRA" in ranking_methods_selected)
-                uses_promethee = ("PROMETHEE" in ranking_methods_selected) or ("Fuzzy PROMETHEE" in ranking_methods_selected)
-                uses_fuzzy = any(m.startswith("Fuzzy") for m in ranking_methods_selected)
-                rec = recommend_parameter_defaults(ranking_methods_selected, len(working), len(criteria), uses_fuzzy)
-
-                with st.expander(tt("🧩 3.3. Adım: Parametreler", "🧩 Step 3.3: Parameters"), expanded=False):
-                    _show_step_caption(
-                        "Yalnız gerekli yöntem parametreleri burada yer alır.",
-                        "Only required method parameters appear here.",
-                        "Monte Carlo ve sağlamlık ayarları bir sonraki ayrı adımda yer alır.",
-                        "Monte Carlo and robustness settings are placed in the next dedicated step.",
-                    )
-                    param_mode = st.radio(
-                        tt("Parametre Modu", "Parameter Mode"),
-                        [tt("🎯 Önerilen Varsayılan", "🎯 Recommended Default"), tt("✍️ Manuel Değiştir", "✍️ Manual Override")],
-                        horizontal=True,
-                        key="param_mode_choice",
-                    )
-                    if not any([uses_vikor, uses_waspas, uses_codas, uses_cocoso, uses_gra, uses_promethee, uses_fuzzy]):
-                        st.caption(tt("Seçili sıralama yöntemleri ek parametre gerektirmiyor.", "Selected ranking methods do not require extra parameters."))
-                    if ("Önerilen" in param_mode) or ("Recommended" in param_mode):
-                        vikor_v = float(rec["vikor_v"])
-                        waspas_lambda = float(rec["waspas_lambda"])
-                        codas_tau = float(rec["codas_tau"])
-                        cocoso_lambda = float(rec["cocoso_lambda"])
-                        gra_rho = float(rec["gra_rho"])
-                        promethee_pref_func = str(rec.get("promethee_pref_func", "linear"))
-                        promethee_q = float(rec.get("promethee_q", 0.05))
-                        promethee_p = float(rec.get("promethee_p", 0.30))
-                        promethee_s = float(rec.get("promethee_s", 0.20))
-                        fuzzy_spread = float(rec["fuzzy_spread"])
-                        sensitivity_iterations = int(max(100, min(MAX_SENSITIVITY_ITERATIONS, int(rec["sensitivity_iterations"]))))
-                        sensitivity_sigma = float(rec["sensitivity_sigma"])
-                        st.caption(tt("Önerilen değerler otomatik uygulanır. İsterseniz Manuel Değiştir moduna geçebilirsiniz.", "Recommended values are applied automatically. Switch to Manual Override if needed."))
-                        rec_rows = []
-                        if uses_vikor:
-                            rec_rows.append({tt("Parametre", "Parameter"): "VIKOR v", tt("Değer", "Value"): vikor_v})
-                        if uses_waspas:
-                            rec_rows.append({tt("Parametre", "Parameter"): "WASPAS λ", tt("Değer", "Value"): waspas_lambda})
-                        if uses_codas:
-                            rec_rows.append({tt("Parametre", "Parameter"): "CODAS τ", tt("Değer", "Value"): codas_tau})
-                        if uses_cocoso:
-                            rec_rows.append({tt("Parametre", "Parameter"): "CoCoSo λ", tt("Değer", "Value"): cocoso_lambda})
-                        if uses_gra:
-                            rec_rows.append({tt("Parametre", "Parameter"): "GRA ρ", tt("Değer", "Value"): gra_rho})
-                        if uses_promethee:
-                            rec_rows.extend([
-                                {tt("Parametre", "Parameter"): "PROMETHEE pref_func", tt("Değer", "Value"): promethee_pref_func},
-                                {tt("Parametre", "Parameter"): "PROMETHEE q", tt("Değer", "Value"): promethee_q},
-                                {tt("Parametre", "Parameter"): "PROMETHEE p", tt("Değer", "Value"): promethee_p},
-                                {tt("Parametre", "Parameter"): "PROMETHEE s", tt("Değer", "Value"): promethee_s},
-                            ])
-                        if uses_fuzzy:
-                            rec_rows.append({tt("Parametre", "Parameter"): "Fuzzy spread", tt("Değer", "Value"): fuzzy_spread})
-                        rec_df = pd.DataFrame(rec_rows)
-                        render_table(rec_df)
-                    else:
-                        if uses_fuzzy:
-                            fuzzy_spread = st.slider(tt("Fuzzy — spread (belirsizlik bandı)", "Fuzzy — spread (uncertainty band)"), 0.01, 0.50, float(fuzzy_spread), 0.01)
-                        if uses_vikor:
-                            vikor_v = st.slider(tt("VIKOR — v (uzlaşı katsayısı)", "VIKOR — v (compromise factor)"), 0.0, 1.0, float(vikor_v), 0.01)
-                        if uses_waspas:
-                            waspas_lambda = st.slider(tt("WASPAS — λ (hibrit katsayı)", "WASPAS — λ (hybrid coefficient)"), 0.0, 1.0, float(waspas_lambda), 0.01)
-                        if uses_codas:
-                            codas_tau = st.slider(tt("CODAS — τ (eşik değeri)", "CODAS — τ (threshold)"), 0.0, 0.20, float(codas_tau), 0.005)
-                        if uses_cocoso:
-                            cocoso_lambda = st.slider(tt("CoCoSo — λ (birleşim katsayısı)", "CoCoSo — λ (aggregation coefficient)"), 0.0, 1.0, float(cocoso_lambda), 0.01)
-                        if uses_gra:
-                            gra_rho = st.slider(tt("GRA — ρ (ayırt edici katsayı)", "GRA — ρ (distinguishing coefficient)"), 0.10, 0.90, float(gra_rho), 0.01)
-                        if uses_promethee:
-                            promethee_pref_func = st.selectbox(
-                                tt("PROMETHEE tercih fonksiyonu", "PROMETHEE preference function"),
-                                ["linear", "usual", "u_shape", "v_shape", "level", "gaussian"],
-                                index=["linear", "usual", "u_shape", "v_shape", "level", "gaussian"].index(str(promethee_pref_func) if str(promethee_pref_func) in ["linear", "usual", "u_shape", "v_shape", "level", "gaussian"] else "linear"),
+            if "Objektif" in weight_mode or "Objective" in weight_mode:
+                weight_mode_key = "objective"
+                st.caption(tt("Tüm yöntemler aşağıda kümelenmiş halde gösterilir. Tek seçim yapılır.", "All methods are grouped below. A single selection is used."))
+                # Checkbox durumlarını ilk açılışta ayarla
+                for _m in methods_internal:
+                    if f"weight_cb_{_m}" not in st.session_state:
+                        st.session_state[f"weight_cb_{_m}"] = False
+                for group_label, group_methods in _weight_groups:
+                    _filtered_methods = [m for m in group_methods if m in methods_internal]
+                    if not _filtered_methods:
+                        continue
+                    st.markdown(f"**{group_label}**")
+                    method_cols = st.columns(3)
+                    for i, method_name in enumerate(_filtered_methods):
+                        with method_cols[i % len(method_cols)]:
+                            _label = method_display_name(method_name)
+                            _cb_key = f"weight_cb_{method_name}"
+                            _w_help = tt(
+                                f"{_method_help_text(method_name)}\nBu yöntemi seçerek devam edebilirsiniz.",
+                                f"{_method_help_text(method_name)}\nYou can proceed by selecting this method.",
                             )
-                            if promethee_pref_func in {"u_shape", "level", "linear"}:
-                                promethee_q = st.slider("PROMETHEE q", 0.0, 1.0, float(promethee_q), 0.01)
-                            if promethee_pref_func in {"v_shape", "level", "linear"}:
-                                promethee_p = st.slider("PROMETHEE p", 0.0, 1.0, float(promethee_p), 0.01)
-                            if promethee_pref_func == "gaussian":
-                                promethee_s = st.slider("PROMETHEE s", 0.01, 1.0, float(promethee_s), 0.01)
+                            st.checkbox(
+                                _label, key=_cb_key, help=_w_help,
+                                on_change=_wm_single_select_cb, args=(method_name, methods_internal),
+                            )
+                # Seçili yöntemi güncelle
+                _all_weight_checked = [m for m in methods_internal if st.session_state.get(f"weight_cb_{m}", False)]
+                if _all_weight_checked:
+                    weight_method = _all_weight_checked[0]
+                    st.session_state["weight_method_pref"] = weight_method
+                    # Seçili yöntem felsefesi kutusu
+                    _wh = _method_help_text(weight_method).split("\n", 1)
+                    _wh_simple   = _wh[0].strip()
+                    _wh_academic = _wh[1].strip() if len(_wh) > 1 else ""
+                    _academic_html = (
+                        f'<div style="font-size:0.70rem; color:#4A6070; line-height:1.5; margin-top:0.15rem;">{_wh_academic}</div>'
+                        if _wh_academic else ""
+                    )
+                    st.markdown(
+                        f'<div style="background:#EAF3FB; border-left:3px solid #5A9CC5; border-radius:0 8px 8px 0; '
+                        f'padding:0.45rem 0.75rem; margin-top:0.5rem;">'
+                        f'<div style="font-size:0.72rem; font-weight:700; color:#1F4A73; margin-bottom:0.18rem;">'
+                        f'💡 {method_display_name(weight_method)}</div>'
+                        f'<div style="font-size:0.71rem; color:#2A3E54; line-height:1.55;">{_wh_simple}</div>'
+                        f'{_academic_html}'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.session_state["weight_method_pref"] = None
+                    st.markdown(
+                        f"<p style='color:#B91C1C;font-size:0.78rem;font-weight:700;margin:0.45rem 0 0 0;'>❗ {tt('Lütfen seçiminizi yapın.', 'Please make your selection.')}</p>",
+                        unsafe_allow_html=True,
+                    )
+            elif "Eşit" in weight_mode or "Equal" in weight_mode:
+                weight_method = "Eşit Ağırlık"
+                weight_mode_key = "equal"
+                st.session_state["weight_method_pref"] = weight_method
+                st.caption(tt("Tüm kriterlere eşit önem atanır.", "All criteria are assigned equal importance."))
+                _weight_help_lines = _method_help_text(weight_method).split("\n", 1)
+                st.caption(_weight_help_lines[0])
+                if len(_weight_help_lines) > 1:
+                    st.caption(_weight_help_lines[1])
+            elif "Subjektif" in weight_mode or "Subjective" in weight_mode:
+                weight_method = "Subjektif (Uzman) Ağırlık"
+                weight_mode_key = "manual"
+                st.session_state["weight_method_pref"] = weight_method
+                import ui_subjective
+                ui_subjective.render_subjective_component(criteria)
 
-                with st.expander(tt("🧩 3.4. Adım: Sağlamlık Testleri", "🧩 Step 3.4: Robustness Tests"), expanded=_ui_stage == "step3"):
+                _sub_weights = st.session_state.get("subjective_manual_weights")
+                if _sub_weights:
+                    manual_weights = _sub_weights
+                    manual_weights_valid = True
+
+                    _manual_preview = pd.DataFrame(
+                        {
+                            "Kriter": criteria,
+                            tt("Türetilen Ağırlık", "Derived Weight"): [_sub_weights.get(c, np.nan) for c in criteria],
+                        }
+                    )
+                    render_table(_manual_preview)
+                else:
+                    manual_weights = None
+                    manual_weights_valid = False
+            else:
+                weight_method = "Manuel Ağırlık"
+                weight_mode_key = "manual"
+                st.session_state["weight_method_pref"] = weight_method
+                _weight_help_lines = _method_help_text(weight_method).split("\n", 1)
+                st.caption(_weight_help_lines[0])
+                if len(_weight_help_lines) > 1:
+                    st.caption(_weight_help_lines[1])
+
+                _mcols = st.columns(min(3, max(1, len(criteria))))
+                manual_raw_text: Dict[str, str] = {}
+                for i, c in enumerate(criteria):
+                    with _mcols[i % len(_mcols)]:
+                        manual_raw_text[c] = st.text_input(
+                            c,
+                            value=str(st.session_state.get(f"manual_w_{c}", "")),
+                            placeholder=tt("örn. 7.5", "e.g. 7.5"),
+                            key=f"manual_w_{c}",
+                        ).strip()
+
+                st.caption(
+                    tt(
+                        "Seçili kriterler için ham önem puanı girin. Değerlerin toplamının 1 olması gerekmez; sistem analiz anında oranları otomatik normalize eder. Bu alan, AHP veya benzeri bir yaklaşımla dışarıda belirlediğiniz göreli önemleri esnek biçimde girmeniz için tasarlanmıştır.",
+                        "Enter raw importance values for the selected criteria. Their total does not need to be 1; the system automatically normalizes the ratios during analysis. This area is designed for flexibly entering relative priorities produced externally through AHP or a similar approach.",
+                    )
+                )
+
+                missing_manual: List[str] = []
+                invalid_manual: List[str] = []
+                parsed_manual: Dict[str, float] = {}
+                for c, raw_val in manual_raw_text.items():
+                    if not raw_val:
+                        missing_manual.append(c)
+                        continue
+                    try:
+                        val = float(raw_val.replace(",", "."))
+                        if not np.isfinite(val) or val <= 0:
+                            raise ValueError
+                        parsed_manual[c] = val
+                    except Exception:
+                        invalid_manual.append(c)
+
+                if missing_manual:
+                    st.info(
+                        tt(
+                            "Analize geçmeden önce tüm seçili kriterler için değer girin.",
+                            "Enter values for all selected criteria before running the analysis.",
+                        )
+                    )
+                    manual_weights_valid = False
+                if invalid_manual:
+                    st.warning(
+                        tt(
+                            f"Geçerli pozitif sayı beklenen kriterler: {', '.join(invalid_manual)}.",
+                            f"Valid positive numbers are required for: {', '.join(invalid_manual)}.",
+                        )
+                    )
+                    manual_weights_valid = False
+
+                if parsed_manual:
+                    _manual_total = float(sum(parsed_manual.values()))
+                    manual_weights = {c: parsed_manual[c] for c in criteria if c in parsed_manual}
+                    _manual_preview = pd.DataFrame(
+                        {
+                            "Kriter": criteria,
+                            tt("Girilen Değer", "Entered Value"): [parsed_manual.get(c, np.nan) for c in criteria],
+                            tt("Normalize Ağırlık", "Normalized Weight"): [
+                                (parsed_manual[c] / _manual_total) if c in parsed_manual and _manual_total > 0 else np.nan
+                                for c in criteria
+                            ],
+                        }
+                    )
+                    render_table(_manual_preview)
+                else:
+                    manual_weights = None
+                    manual_weights_valid = False
+
+        ranking_methods_selected = []
+        primary_rank_method: str | None = None
+        vikor_v = float(st.session_state.get("vikor_v", 0.5))
+        waspas_lambda = float(st.session_state.get("waspas_lambda", 0.5))
+        codas_tau = float(st.session_state.get("codas_tau", 0.02))
+        cocoso_lambda = float(st.session_state.get("cocoso_lambda", 0.5))
+        gra_rho = float(st.session_state.get("gra_rho", 0.5))
+        promethee_pref_func = st.session_state.get("promethee_pref_func", "linear")
+        promethee_q = float(st.session_state.get("promethee_q", 0.05))
+        promethee_p = float(st.session_state.get("promethee_p", 0.30))
+        promethee_s = float(st.session_state.get("promethee_s", 0.20))
+        fuzzy_spread = float(st.session_state.get("fuzzy_spread", 0.10))
+        sensitivity_iterations = int(st.session_state.get("sensitivity_iterations", 400))
+        sensitivity_iterations = max(0, min(MAX_SENSITIVITY_ITERATIONS, sensitivity_iterations))
+        sensitivity_sigma = float(st.session_state.get("sensitivity_sigma", 0.12))
+        run_heavy_robustness = bool(st.session_state.get("run_heavy_robustness", False))
+
+        with _step3_tabs[1]:
+            _is_manual_mode_local = (weight_mode_key == "manual")
+            _weight_step_done_local = bool(weight_method) and (manual_weights_valid if _is_manual_mode_local else True)
+            
+            if not _weight_step_done_local:
+                st.warning(tt("⚠️ Sıralama yöntemini seçebilmek için lütfen önce **'1. Ağırlık Belirleme'** sekmesinden onaylı bir ağırlık yöntemi seçin/girin.", "⚠️ To select a ranking method, please first complete the '1. Weight Determination' step with valid inputs."))
+            elif needs_ranking:
+
+                _show_step_caption(
+                    "Sıralama yöntemlerini seçin.",
+                    "Choose the ranking methods.",
+                    "Birden fazla yöntem seçerseniz yöntem uyumu da karşılaştırılır.",
+                    "If you choose multiple methods, method agreement is also compared.",
+                )
+                _layer_options = [
+                    tt("Temel Yöntemler (Klasik Mantık)", "Core Methods (Classical Logic)"),
+                    tt("İleri Düzey Yöntemler (Fuzzy)", "Advanced Methods (Fuzzy)"),
+                ]
+                layer_choice = st.radio(
+                    f"**{tt('Analiz Katmanı', 'Analysis Layer')}**",
+                    _layer_options,
+                    horizontal=True,
+                    help=tt("Klasik katman kesin sayısal değerlerle, Fuzzy katman ise belirsizlik toleransı (spread) ile çalışır.", "Classical uses crisp numeric values; fuzzy uses uncertainty tolerance (spread)."),
+                )
+                if layer_choice == _layer_options[0]:
+                    all_ranks = me.CLASSICAL_MCDM_METHODS
+                    _layer_key = "classical"
+                else:
+                    all_ranks = me.FUZZY_MCDM_METHODS
+                    _layer_key = "fuzzy"
+
+                _sugg_rank_raw = st.session_state.get("_sugg_rank", "TOPSIS, VIKOR, EDAS")
+                _sugg_rank_list = st.session_state.get("_sugg_rank_methods") or ["TOPSIS", "VIKOR", "EDAS"]
+                _fallback_recommendations = (
+                    ["TOPSIS", "VIKOR", "EDAS"]
+                    if _layer_key == "classical"
+                    else ["Fuzzy TOPSIS", "Fuzzy VIKOR", "Fuzzy EDAS"]
+                )
+
+                def _resolve_rank_method_name(candidate: str) -> str | None:
+                    cand = candidate.strip()
+                    if not cand:
+                        return None
+                    cand_upper = cand.upper().replace("FUZZY ", "").strip()
+                    for method_name in all_ranks:
+                        method_upper = method_name.upper().replace("FUZZY ", "").strip()
+                        if method_upper == cand_upper:
+                            return method_name
+                    return None
+
+                recommended_rank_methods: List[str] = []
+                for candidate in [*_sugg_rank_list, *_sugg_rank_raw.replace("/", ",").split(","), *_fallback_recommendations]:
+                    resolved_method = _resolve_rank_method_name(candidate)
+                    if resolved_method and resolved_method not in recommended_rank_methods:
+                        recommended_rank_methods.append(resolved_method)
+                    if len(recommended_rank_methods) >= 3:
+                        break
+                quick_pick_methods = recommended_rank_methods[:3]
+
+                st.caption(
+                    tt(
+                        f"Bu katmanda toplam {len(all_ranks)} yöntem kullanılabilir.",
+                        f"A total of {len(all_ranks)} methods are available in this layer.",
+                    )
+                )
+                _mcol1, _mcol2 = st.columns(2)
+                with _mcol1:
+                    if st.button(tt("✅ Önerilen Yöntemleri Çalıştır", "✅ Run Recommended Methods"), width="stretch", key=f"btn_select_recommended_{_layer_key}"):
+                        st.session_state["ranking_prefs"] = list(quick_pick_methods)
+                        for rank_method in all_ranks:
+                            st.session_state[f"rank_cb_{rank_method}"] = rank_method in quick_pick_methods
+                        st.rerun()
+                with _mcol2:
+                    if st.button(tt("🗑️ Temizle", "🗑️ Clear"), width="stretch", key=f"btn_clear_all_{_layer_key}"):
+                        st.session_state["ranking_prefs"] = []
+                        for rank_method in all_ranks:
+                            st.session_state[f"rank_cb_{rank_method}"] = False
+                        st.rerun()
+                st.caption(
+                    tt(
+                        f"Önerilen başlangıç yöntemleri: {', '.join(recommended_rank_methods[:3])}.",
+                        f"Recommended starter methods: {', '.join(recommended_rank_methods[:3])}.",
+                    )
+                )
+                st.caption(
+                    tt(
+                        f"Neden bu öneri? {_rank_reason}",
+                        f"Why this recommendation? {_rank_reason}",
+                    )
+                )
+
+                _pref_ranks = st.session_state.get("ranking_prefs") or []
+                _has_pref_in_layer = any(m in all_ranks for m in _pref_ranks)
+                for group_label, group_methods in ranking_method_groups(_layer_key):
+                    _filtered_methods = [m for m in group_methods if m in all_ranks]
+                    if not _filtered_methods:
+                        continue
+                    st.markdown(f"**{group_label}**")
+                    rank_cols = st.columns(3)
+                    for i, rank_method in enumerate(_filtered_methods):
+                        with rank_cols[i % len(rank_cols)]:
+                            if _pref_ranks and _has_pref_in_layer:
+                                default_val = rank_method in _pref_ranks
+                            else:
+                                default_val = False
+                            _rank_widget_key = f"rank_cb_{rank_method}"
+                            _rank_help = tt(
+                                f"{_method_help_text(rank_method)}\nBu yöntemi seçerseniz karşılaştırma çıktılarında da birlikte değerlendirilir.",
+                                f"{_method_help_text(rank_method)}\nIf you select this method, it will also be evaluated in the comparison outputs.",
+                            )
+                            if _rank_widget_key in st.session_state:
+                                _rank_checked = st.checkbox(rank_method, key=_rank_widget_key, help=_rank_help)
+                            else:
+                                _rank_checked = st.checkbox(rank_method, value=default_val, key=_rank_widget_key, help=_rank_help)
+                            if _rank_checked:
+                                ranking_methods_selected.append(rank_method)
+                st.session_state["ranking_prefs"] = ranking_methods_selected
+
+                if not ranking_methods_selected:
+                    st.markdown(
+                        f"<p style='color:#B91C1C;font-size:0.78rem;font-weight:700;margin:0.45rem 0 0 0;'>❗ {tt('Lütfen seçiminizi yapın.', 'Please make your selection.')}</p>",
+                        unsafe_allow_html=True,
+                    )
+                    st.warning(tt("Lütfen en az bir sıralama yöntemi seçiniz.", "Please select at least one ranking method."))
+                else:
+                    _sugg_primary = next(
+                        (m for m in ranking_methods_selected
+                         if any(m == _resolve_rank_method_name(part) for part in [*_sugg_rank_list, *_sugg_rank_raw.replace("/", ",").split(",")])),
+                        ranking_methods_selected[0] if ranking_methods_selected else None,
+                    )
+                    primary_rank_method = _sugg_primary or (ranking_methods_selected[0] if ranking_methods_selected else None)
+
+                    uses_vikor = ("VIKOR" in ranking_methods_selected) or ("Fuzzy VIKOR" in ranking_methods_selected)
+                    uses_waspas = ("WASPAS" in ranking_methods_selected) or ("Fuzzy WASPAS" in ranking_methods_selected)
+                    uses_codas = ("CODAS" in ranking_methods_selected) or ("Fuzzy CODAS" in ranking_methods_selected)
+                    uses_cocoso = ("CoCoSo" in ranking_methods_selected) or ("Fuzzy CoCoSo" in ranking_methods_selected)
+                    uses_gra = ("GRA" in ranking_methods_selected) or ("Fuzzy GRA" in ranking_methods_selected)
+                    uses_promethee = ("PROMETHEE" in ranking_methods_selected) or ("Fuzzy PROMETHEE" in ranking_methods_selected)
+                    uses_fuzzy = any(m.startswith("Fuzzy") for m in ranking_methods_selected)
+                    rec = recommend_parameter_defaults(ranking_methods_selected, len(working), len(criteria), uses_fuzzy)
+
+                    with st.expander(f"⚙️ {tt('Sıralama Parametreleri', 'Ranking Parameters')}", expanded=False):
+                        _show_step_caption(
+                            "Yalnız gerekli yöntem parametreleri burada yer alır.",
+                            "Only required method parameters appear here.",
+                            "Monte Carlo ve sağlamlık ayarları bir sonraki ayrı adımda yer alır.",
+                            "Monte Carlo and robustness settings are placed in the next dedicated step.",
+                        )
+                        param_mode = st.radio(
+                            tt("Parametre Modu", "Parameter Mode"),
+                            [tt("🎯 Önerilen Varsayılan", "🎯 Recommended Default"), tt("✍️ Manuel Değiştir", "✍️ Manual Override")],
+                            horizontal=True,
+                            key="param_mode_choice",
+                        )
+                        if not any([uses_vikor, uses_waspas, uses_codas, uses_cocoso, uses_gra, uses_promethee, uses_fuzzy]):
+                            st.caption(tt("Seçili sıralama yöntemleri ek parametre gerektirmiyor.", "Selected ranking methods do not require extra parameters."))
+                        if ("Önerilen" in param_mode) or ("Recommended" in param_mode):
+                            vikor_v = float(rec["vikor_v"])
+                            waspas_lambda = float(rec["waspas_lambda"])
+                            codas_tau = float(rec["codas_tau"])
+                            cocoso_lambda = float(rec["cocoso_lambda"])
+                            gra_rho = float(rec["gra_rho"])
+                            promethee_pref_func = str(rec.get("promethee_pref_func", "linear"))
+                            promethee_q = float(rec.get("promethee_q", 0.05))
+                            promethee_p = float(rec.get("promethee_p", 0.30))
+                            promethee_s = float(rec.get("promethee_s", 0.20))
+                            fuzzy_spread = float(rec["fuzzy_spread"])
+                            sensitivity_iterations = int(max(100, min(MAX_SENSITIVITY_ITERATIONS, int(rec["sensitivity_iterations"]))))
+                            sensitivity_sigma = float(rec["sensitivity_sigma"])
+                            st.caption(tt("Önerilen değerler otomatik uygulanır. İsterseniz Manuel Değiştir moduna geçebilirsiniz.", "Recommended values are applied automatically. Switch to Manual Override if needed."))
+                            rec_rows = []
+                            if uses_vikor:
+                                rec_rows.append({tt("Parametre", "Parameter"): "VIKOR v", tt("Değer", "Value"): vikor_v})
+                            if uses_waspas:
+                                rec_rows.append({tt("Parametre", "Parameter"): "WASPAS λ", tt("Değer", "Value"): waspas_lambda})
+                            if uses_codas:
+                                rec_rows.append({tt("Parametre", "Parameter"): "CODAS τ", tt("Değer", "Value"): codas_tau})
+                            if uses_cocoso:
+                                rec_rows.append({tt("Parametre", "Parameter"): "CoCoSo λ", tt("Değer", "Value"): cocoso_lambda})
+                            if uses_gra:
+                                rec_rows.append({tt("Parametre", "Parameter"): "GRA ρ", tt("Değer", "Value"): gra_rho})
+                            if uses_promethee:
+                                rec_rows.extend([
+                                    {tt("Parametre", "Parameter"): "PROMETHEE pref_func", tt("Değer", "Value"): promethee_pref_func},
+                                    {tt("Parametre", "Parameter"): "PROMETHEE q", tt("Değer", "Value"): promethee_q},
+                                    {tt("Parametre", "Parameter"): "PROMETHEE p", tt("Değer", "Value"): promethee_p},
+                                    {tt("Parametre", "Parameter"): "PROMETHEE s", tt("Değer", "Value"): promethee_s},
+                                ])
+                            if uses_fuzzy:
+                                rec_rows.append({tt("Parametre", "Parameter"): "Fuzzy spread", tt("Değer", "Value"): fuzzy_spread})
+                            rec_df = pd.DataFrame(rec_rows)
+                            render_table(rec_df)
+                        else:
+                            if uses_fuzzy:
+                                fuzzy_spread = st.slider(tt("Fuzzy — spread (belirsizlik bandı)", "Fuzzy — spread (uncertainty band)"), 0.01, 0.50, float(fuzzy_spread), 0.01)
+                            if uses_vikor:
+                                vikor_v = st.slider(tt("VIKOR — v (uzlaşı katsayısı)", "VIKOR — v (compromise factor)"), 0.0, 1.0, float(vikor_v), 0.01)
+                            if uses_waspas:
+                                waspas_lambda = st.slider(tt("WASPAS — λ (hibrit katsayı)", "WASPAS — λ (hybrid coefficient)"), 0.0, 1.0, float(waspas_lambda), 0.01)
+                            if uses_codas:
+                                codas_tau = st.slider(tt("CODAS — τ (eşik değeri)", "CODAS — τ (threshold)"), 0.0, 0.20, float(codas_tau), 0.005)
+                            if uses_cocoso:
+                                cocoso_lambda = st.slider(tt("CoCoSo — λ (birleşim katsayısı)", "CoCoSo — λ (aggregation coefficient)"), 0.0, 1.0, float(cocoso_lambda), 0.01)
+                            if uses_gra:
+                                gra_rho = st.slider(tt("GRA — ρ (ayırt edici katsayı)", "GRA — ρ (distinguishing coefficient)"), 0.10, 0.90, float(gra_rho), 0.01)
+                            if uses_promethee:
+                                promethee_pref_func = st.selectbox(
+                                    tt("PROMETHEE tercih fonksiyonu", "PROMETHEE preference function"),
+                                    ["linear", "usual", "u_shape", "v_shape", "level", "gaussian"],
+                                    index=["linear", "usual", "u_shape", "v_shape", "level", "gaussian"].index(str(promethee_pref_func) if str(promethee_pref_func) in ["linear", "usual", "u_shape", "v_shape", "level", "gaussian"] else "linear"),
+                                )
+                                if promethee_pref_func in {"u_shape", "level", "linear"}:
+                                    promethee_q = st.slider("PROMETHEE q", 0.0, 1.0, float(promethee_q), 0.01)
+                                if promethee_pref_func in {"v_shape", "level", "linear"}:
+                                    promethee_p = st.slider("PROMETHEE p", 0.0, 1.0, float(promethee_p), 0.01)
+                                if promethee_pref_func == "gaussian":
+                                    promethee_s = st.slider("PROMETHEE s", 0.01, 1.0, float(promethee_s), 0.01)
+
+        with _step3_tabs[2]:
+            _is_manual_mode_local = (weight_mode_key == "manual")
+            _weight_step_done_local = bool(weight_method) and (manual_weights_valid if _is_manual_mode_local else True)
+            _ranking_step_done_local = bool(ranking_methods_selected) if needs_ranking else False
+            
+            if not _weight_step_done_local or (needs_ranking and not _ranking_step_done_local):
+                st.warning(tt("⚠️ Dayanıklılık (Robustness) testlerini yapılandırabilmek için lütfen önce Ağırlık ve/veya Sıralama adımlarını tamamlayın.", "⚠️ To configure robustness testing, please first complete the Weighting and/or Ranking steps."))
+            elif needs_ranking:
+                # Removed nested step 3.4 expander, putting it inside TAB 3
+                with st.container():
                     _show_step_caption(
                         "Sağlamlık testini burada ayarlayın.",
                         "Configure robustness testing here.",
-                        "Monte Carlo ve geniş test ayarları bu adımda toplanır.",
-                        "Monte Carlo and extended robustness settings are grouped in this step.",
+                        "Monte Carlo ve analiz sonuç toleransı burada değerlendirilir.",
+                        "Monte Carlo and result tolerance are tested here.",
                     )
                     run_heavy_robustness = st.checkbox(
                         tt(
@@ -8237,18 +9125,8 @@ with st.expander(_step3_title, expanded=_ui_stage == "step3"):
                             )
                         )
 
-            st.session_state["vikor_v"] = float(vikor_v)
-            st.session_state["waspas_lambda"] = float(waspas_lambda)
-            st.session_state["codas_tau"] = float(codas_tau)
-            st.session_state["cocoso_lambda"] = float(cocoso_lambda)
-            st.session_state["gra_rho"] = float(gra_rho)
-            st.session_state["promethee_pref_func"] = str(promethee_pref_func)
-            st.session_state["promethee_q"] = float(promethee_q)
-            st.session_state["promethee_p"] = float(promethee_p)
-            st.session_state["promethee_s"] = float(promethee_s)
-            st.session_state["fuzzy_spread"] = float(fuzzy_spread)
-            st.session_state["sensitivity_iterations"] = int(sensitivity_iterations)
-            st.session_state["sensitivity_sigma"] = float(sensitivity_sigma)
+                    st.session_state["sensitivity_iterations"] = int(sensitivity_iterations)
+                    st.session_state["sensitivity_sigma"] = float(sensitivity_sigma)
 
 _is_manual_mode = ("Manuel" in weight_mode) or ("Manual" in weight_mode)
 _weight_step_done = bool(weight_method) and (manual_weights_valid if _is_manual_mode else True)
@@ -8339,6 +9217,16 @@ if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), width="stretch", ke
                 )
             )
             st.stop()
+    _analysis_event_payload = {
+        "scope": "panel" if panel_mode else "single",
+        "rows": int(working.shape[0]),
+        "columns": int(working.shape[1]),
+        "criteria_count": int(len(criteria)),
+        "weight_method": str(weight_method),
+        "ranking_methods": list(ranking_methods_selected),
+        "panel_year_count": int(len(st.session_state.get("panel_selected_years", []))),
+    }
+    access.track_event("analysis_started", _analysis_event_payload)
     with st.spinner(tt("Laboratuvar çalışıyor, veriler işleniyor...", "Running analysis... processing data...")):
         st.session_state.docx_buffer = None
         main_rank = primary_rank_method if primary_rank_method else (ranking_methods_selected[0] if ranking_methods_selected else None)
@@ -8548,6 +9436,13 @@ if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), width="stretch", ke
                 st.session_state["panel_view_choice"] = None
                 st.session_state["panel_run_warnings"] = []
         except Exception as exc:
+            access.track_event(
+                "analysis_failed",
+                {
+                    **_analysis_event_payload,
+                    "error_code": _safe_error_code(exc),
+                },
+            )
             st.error(tt("Analiz işlemi tamamlanamadı. Parametreleri kontrol edip tekrar deneyin.", "The analysis could not be completed. Please review parameters and try again."))
             st.caption(tt(f"Hata kodu: {_safe_error_code(exc)}", f"Error code: {_safe_error_code(exc)}"))
             st.stop()
@@ -8566,6 +9461,15 @@ if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), width="stretch", ke
         st.session_state["report_docx"] = None
         st.session_state["download_blob_cache"] = {}
         st.session_state["download_blob_sig"] = None
+        access.track_event(
+            "analysis_completed",
+            {
+                **_analysis_event_payload,
+                "duration_seconds": round(float(result["analysis_time"]), 4),
+                "effective_scope": "panel" if st.session_state.get("panel_results") else "single",
+                "panel_result_count": int(len(st.session_state.get("panel_results") or {})),
+            },
+        )
         st.rerun()
 
 # ---------------------------------------------------------
@@ -8814,7 +9718,7 @@ else:
 with tabs[_tab_stats]:
     _stat_comment = gen_stat_commentary(result)
     render_tab_assistant(_stat_comment, key="stat")
-    with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=False):
+    with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=True):
         st.markdown(f"##### 📊 {tt('Betimleyici İstatistikler', 'Descriptive Statistics')}")
         _stats_disp = localize_df(result["stats"]).copy()
         _num_cols = _stats_disp.select_dtypes(include=[np.number]).columns
@@ -8823,7 +9727,7 @@ with tabs[_tab_stats]:
         with st.expander(f"💬 {tt('Tablo Yorumu', 'Table Commentary')}", expanded=False):
             st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_stat_comment)}</div>', unsafe_allow_html=True)
 
-    with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=False):
+    with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=True):
         s1, s2 = st.columns([1, 1])
         with s1:
             st.plotly_chart(fig_box_plots(result["selected_data"], criteria), width="stretch")
@@ -8850,7 +9754,7 @@ with tabs[_tab_weights]:
     weight_col = col_key(weight_df, "Ağırlık", "Weight")
     top3_weights = weight_df.sort_values(weight_col, ascending=False).head(3).reset_index(drop=True)
 
-    with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=False):
+    with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=True):
         w1, w2 = st.columns(2)
         with w1:
             st.markdown(f"##### 🥇 {tt('İlk 3 Önemli Kriter', 'Top 3 Important Criteria')}")
@@ -8869,7 +9773,7 @@ with tabs[_tab_weights]:
         with st.expander(f"💬 {tt('Tablo Yorumu', 'Table Commentary')}", expanded=False):
             st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_weight_comment)}</div>', unsafe_allow_html=True)
 
-    with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=False):
+    with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=True):
         fig_col1, fig_col2 = st.columns(2)
         with fig_col1:
             st.plotly_chart(fig_weight_bar(weight_df), width="stretch")
@@ -9058,7 +9962,7 @@ if needs_ranking:
                         st.markdown(f"##### 📊 {tt('Alternatiflerin Yıllara Göre Skorları', 'Alternative Scores by Year')}")
                         render_table(localize_df(_panel_score_df.head(500)))
 
-            with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=False):
+            with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=True):
                 comp = result.get("comparison", {}) or {}
                 _method_tables = dict(comp.get("method_tables") or {})
                 _primary_method_name = str(result.get("ranking", {}).get("method") or "").strip()
@@ -9121,7 +10025,7 @@ if needs_ranking:
                 with st.expander(f"💬 {tt('Tablo Yorumu', 'Table Commentary')}", expanded=False):
                     st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_rank_comment)}</div>', unsafe_allow_html=True)
 
-            with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=False):
+            with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=True):
                 fig_r1, fig_r2 = st.columns(2)
                 with fig_r1:
                     st.plotly_chart(fig_rank_bar(_rt_disp), width="stretch")
@@ -9152,7 +10056,7 @@ if needs_ranking:
         render_tab_assistant(_comp_comment, key="comp")
         comp = result.get("comparison", {})
         if comp and "rank_table" in comp:
-            with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=False):
+            with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=True):
                 c1, c2 = st.columns(2)
                 with c1:
                     st.markdown(f"##### 🔁 {tt('Yöntem Sıralama Karşılaştırması', 'Method Ranking Comparison')}")
@@ -9176,7 +10080,7 @@ if needs_ranking:
                 with st.expander(f"💬 {tt('Tablo Yorumu', 'Table Commentary')}", expanded=False):
                     st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_comp_comment)}</div>', unsafe_allow_html=True)
 
-            with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=False):
+            with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=True):
                 if isinstance(comp.get("spearman_matrix"), pd.DataFrame):
                     spdf = comp["spearman_matrix"]
                     _method_col = col_key(spdf, "Yöntem", "Method")
@@ -9222,7 +10126,7 @@ if needs_ranking:
 
                 _mc_comment = gen_mc_commentary(result)
 
-                with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=False):
+                with st.expander(f"📋 {tt('Tablolar', 'Tables')}", expanded=True):
                     st.markdown(f"##### 🎲 {tt('Simülasyon Özet Tablosu', 'Simulation Summary Table')}")
                     _mc_table_disp = localize_df(_mc_disp)
                     _fp_col = col_key(_mc_table_disp, "BirincilikOranı", "FirstPlaceRate")
@@ -9236,7 +10140,7 @@ if needs_ranking:
                     with st.expander(f"💬 {tt('Tablo Yorumu', 'Table Commentary')}", expanded=False):
                         st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_mc_comment)}</div>', unsafe_allow_html=True)
 
-                with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=False):
+                with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=True):
                     mg1, mg2 = st.columns(2)
                     with mg1:
                         st.plotly_chart(fig_mc_rank_bar(_mc_disp), width="stretch")

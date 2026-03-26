@@ -20,6 +20,7 @@ OBJECTIVE_WEIGHT_METHODS = [
     "MEREC",
     "LOPCOW",
     "PCA",
+    "CILOS",
     "IDOCRIW",
     "Fuzzy IDOCRIW",
 ]
@@ -37,11 +38,18 @@ CLASSICAL_MCDM_METHODS = [
     "MAUT",
     "WASPAS",
     "MOORA",
+    "MULTIMOORA",
     "MABAC",
     "MARCOS",
     "CoCoSo",
     "PROMETHEE",
     "GRA",
+    "SPOTIS",
+    "RAWEC",
+    "RAFSI",
+    "ROV",
+    "AROMAN",
+    "DNMA",
 ]
 
 FUZZY_MCDM_METHODS = [
@@ -57,11 +65,18 @@ FUZZY_MCDM_METHODS = [
     "Fuzzy COPRAS",
     "Fuzzy OCRA",
     "Fuzzy MOORA",
+    "Fuzzy MULTIMOORA",
     "Fuzzy MABAC",
     "Fuzzy MARCOS",
     "Fuzzy CoCoSo",
     "Fuzzy GRA",
     "Fuzzy PROMETHEE",
+    "Fuzzy SPOTIS",
+    "Fuzzy RAWEC",
+    "Fuzzy RAFSI",
+    "Fuzzy ROV",
+    "Fuzzy AROMAN",
+    "Fuzzy DNMA",
 ]
 
 METHOD_PHILOSOPHY: Dict[str, Dict[str, str]] = {
@@ -96,6 +111,66 @@ METHOD_PHILOSOPHY: Dict[str, Dict[str, str]] = {
     "Fuzzy IDOCRIW": {
         "simple": "Fuzzy IDOCRIW, IDOCRIW mantığını belirsizlik altında üç senaryolu bulanık bir çerçevede uygular.",
         "academic": "Fuzzy IDOCRIW, IDOCRIW bileşenlerini bulanıklaştırılmış alt-orta-üst performans senaryoları üzerinde birleştirerek belirsizlik duyarlı objektif ağırlık üretir.",
+    },
+    "CILOS": {
+        "simple": "CILOS, her kriter çıkarıldığında en iyi alternatifin diğer kriterler üzerinde yarattığı kayıp etkisini ölçerek kriterleri ağırlıklandırır.",
+        "academic": "CILOS (Criterion Impact LOSs), göreli etki kayıpları matrisini ve doğrusal denklem sistemini kullanarak kriterlerin birbirini ne ölçüde etkilediğini ağırlığa dönüştürür.",
+    },
+    "SPOTIS": {
+        "simple": "SPOTIS, her alternatifi sabit bir ideal noktadan uzaklığına göre sıralar — alternatif listesi değişse bile ideal nokta sabit kalır ve sıralama tersine çevrilmez.",
+        "academic": "SPOTIS (Stable Preference Ordering Towards Ideal Solution), sabit ideal referans noktasına ağırlıklı normalleştirilmiş uzaklıkları kullanarak rank reversal problemine yapısal düzeyde direnen bir sıralama yöntemidir.",
+    },
+    "MULTIMOORA": {
+        "simple": "MULTIMOORA, üç farklı MOORA yaklaşımını (oran sistemi, referans noktası, çarpımsal form) Borda sayımıyla birleştirerek tek bir yönteme göre çok daha sağlam bir sıralama üretir.",
+        "academic": "MULTIMOORA, oran sistemi, referans nokta ve tam çarpımsal formdan elde edilen sıraları bütünleşik Borda dominans teorisiyle toplulaştıran çok katmanlı, sağlamlık odaklı bir MCDM yöntemidir.",
+    },
+    "RAWEC": {
+        "simple": "RAWEC, her kriter içindeki alternatif sırasını o kriterin ağırlığıyla ağırlıklandırarak nihai sıralamayı üretir; önemli kriterlerde üst sırada olmak belirleyici avantaj sağlar.",
+        "academic": "RAWEC (Ranking of Alternatives by Weight of Each Criterion), ağırlıklı normalleştirilmiş karar matrisinde kriter bazlı sıra değerlerini ağırlıklı harmonik toplulaştırmayla birleştiren sıra-ağırlık bileşimli bir sıralama yöntemidir.",
+    },
+    "RAFSI": {
+        "simple": "RAFSI, kriter değerlerini sabit bir referans aralığa [1–9] dönüştürür; yeni alternatif eklenmesi mevcut alternatiflerin skorunu değiştirmez ve sıralama kararlıdır.",
+        "academic": "RAFSI (Ranking of Alternatives through Functional mapping of criterion Sub-Intervals), kriter değerlerini ideal ve anti-ideal sınırlı sabit bir referans aralığa doğrusal eşlemeyle taşıyarak rank reversal problemini yapısal olarak önleyen bir sıralama yöntemidir.",
+    },
+    "ROV": {
+        "simple": "ROV, kriter değerlerini gözlenen aralığa göre tam normalize edip ağırlıklı toplamını hesaplar; normalleştirmenin veri aralığına tam oturması yöntemin ayırt ediciliğini artırır.",
+        "academic": "ROV (Range of Value), min-max normalleştirilmiş performans değerlerini ağırlıklı toplamsal modelde birleştirerek fayda aralığını tam kullanan objektif bir sıralama yöntemidir.",
+    },
+    "AROMAN": {
+        "simple": "AROMAN, iki farklı normalleştirme yaklaşımını geometrik ortalamayla harmanlayıp tek bir ağırlıklı skor üretir; tek normalleştirmeye göre daha az sapma gösterir.",
+        "academic": "AROMAN (Alternative Ranking Order Method Accounting for Two-step Normalization), sum ve min-max normalleştirme adımlarının geometrik bileşimini ağırlıklı toplamla değerlendirerek normalleştirme kaynaklı sapmayı azaltır.",
+    },
+    "DNMA": {
+        "simple": "DNMA, iki ayrı normalleştirme stratejisini eşit ağırlıkla ortalayarak tek bir kararlı skor üretir; hiçbir normalleştirme yaklaşımına tam güvenilmediği durumlarda idealdir.",
+        "academic": "DNMA (Double Normalization-based Multiple Aggregation), min-max ve sum normalleştirmelerinden elde edilen ağırlıklı skorları eşit ağırlıklı doğrusal toplulaştırmayla birleştirerek normalleştirme duyarlılığını azaltır.",
+    },
+    "Fuzzy SPOTIS": {
+        "simple": "Fuzzy SPOTIS, belirsizlik altında sabit ideal noktaya uzaklıkları üçgensel bulanık sayılarla değerlendirerek rank reversal direncini korur.",
+        "academic": "Fuzzy SPOTIS, SPOTIS'in sabit ideal nokta mimarisini üçgensel bulanıklaştırılmış alt-orta-üst senaryolar üzerinde uygulayarak belirsizlikte yapısal sıralama kararlılığı sağlar.",
+    },
+    "Fuzzy MULTIMOORA": {
+        "simple": "Fuzzy MULTIMOORA, üç MOORA bileşenini belirsizlik altında bulanık sayılarla değerlendirip Borda sayımıyla birleştirerek belirsizlik-sağlamlık dengesini kurar.",
+        "academic": "Fuzzy MULTIMOORA, MULTIMOORA'nın oran sistemi, referans nokta ve çarpımsal form bileşenlerini üçgensel bulanık kriter senaryoları altında hesaplayarak belirsizlik duyarlı çok bileşenli sıralama sunar.",
+    },
+    "Fuzzy RAWEC": {
+        "simple": "Fuzzy RAWEC, kriter bazlı sıra toplulaştırmasını belirsizlik altında üçgensel bulanık değerlerle gerçekleştirir.",
+        "academic": "Fuzzy RAWEC, RAWEC'in ağırlıklı harmonik sıra toplulaştırmasını üçgensel bulanıklaştırılmış karar matrisinin ortalanmış senaryoları üzerinde uygular.",
+    },
+    "Fuzzy RAFSI": {
+        "simple": "Fuzzy RAFSI, referans aralık eşlemesini bulanık belirsizlik senaryoları altında uygulayarak rank reversal direncini sürdürür.",
+        "academic": "Fuzzy RAFSI, RAFSI'nin sabit referans aralığı dönüşümünü üçgensel bulanık kriter değerlerine genişleterek belirsizlikte sıralama kararlılığını korur.",
+    },
+    "Fuzzy ROV": {
+        "simple": "Fuzzy ROV, aralık normalleştirmesini belirsizlik altında üçgensel bulanık değerlerle birleştirir.",
+        "academic": "Fuzzy ROV, ROV'un min-max normalleştirme yapısını üçgensel bulanık performans senaryoları üzerinde uygulayarak belirsizliğe duyarlı ağırlıklı fayda sıralaması üretir.",
+    },
+    "Fuzzy AROMAN": {
+        "simple": "Fuzzy AROMAN, çift normalleştirme stratejisini bulanık belirsizlik altında geometrik bileşimle uygular.",
+        "academic": "Fuzzy AROMAN, AROMAN'ın iki adımlı normalleştirme mantığını üçgensel bulanık kriter değerleri üzerinde yürüterek belirsizlikte normalleştirme kaynaklı sapmaları sınırlar.",
+    },
+    "Fuzzy DNMA": {
+        "simple": "Fuzzy DNMA, çift normalleştirme yaklaşımını bulanık belirsizlik altında eşit ağırlıkla harmanlayarak skor üretir.",
+        "academic": "Fuzzy DNMA, DNMA'nın min-max ve sum normalleştirme bileşenlerini üçgensel bulanık değer senaryoları üzerinde eşit ağırlıklı toplulaştırmayla bütünleştirir.",
     },
     "TOPSIS": {
         "simple": "TOPSIS, en iyi hayali seçeneğe yakın ve en kötü hayali seçeneğe uzak olan alternatifi daha iyi sayar.",
@@ -279,6 +354,21 @@ REFERENCE_LIBRARY: Dict[str, str] = {
     "Fuzzy CoCoSo": "Yazdani, M., Chatterjee, P., Pamucar, D., & Chakraborty, S. (2020). Development of an integrated decision making model for location selection under fuzzy environment based on CoCoSo method. Computers & Industrial Engineering, 142, 106356.",
     "Fuzzy GRA": "Kuo, Y., Yang, T., & Huang, G.-W. (2008). The use of grey relational analysis in solving multiple attribute decision-making problems. Computers & Industrial Engineering, 55(1), 80–93.",
     "Fuzzy PROMETHEE": "Goumas, M., & Lygerou, V. (2000). An extension of the PROMETHEE method for decision making in fuzzy environment. European Journal of Operational Research, 123(3), 606–613.",
+    "CILOS": "Zavadskas, E. K., & Podvezko, V. (2016). Integrated determination of objective criteria weights in MCDM. International Journal of Information Technology & Decision Making, 15(2), 267–283. https://doi.org/10.1142/S0219622016500036",
+    "SPOTIS": "Dezert, J., Tchamova, A., Han, D., & Tacnet, J.-M. (2020). The SPOTIS rank reversal free method for multi-criteria decision-making support. In 2020 IEEE 23rd International Conference on Information Fusion (FUSION) (pp. 1–8). https://doi.org/10.23919/FUSION45008.2020.9190347",
+    "MULTIMOORA": "Brauers, W. K. M., & Zavadskas, E. K. (2010). Project management by MULTIMOORA as an instrument for transition economies. Technological and Economic Development of Economy, 16(1), 5–24. https://doi.org/10.3846/tede.2010.01",
+    "RAWEC": "Sotoudeh-Anvari, A. (2023). A novel multi-attribute decision-making method based on the weight of each criterion (RAWEC). Journal of Soft Computing and Decision Analytics, 1(1), 192–207. https://doi.org/10.31181/jscda11202314",
+    "RAFSI": "Žižović, M., Pamučar, D., Albijanić, M., Chatterjee, P., & Pribićević, I. (2020). Eliminating Rank Reversal Problem Using a New Multi-Attribute Model—The RAFSI Method. Mathematics, 8(6), 1015. https://doi.org/10.3390/math8061015",
+    "ROV": "Yakowitz, D. S., Lane, L. J., & Szidarovszky, F. (1993). Multi-attribute decision making: Dominance with respect to an importance order of the attributes. Applied Mathematics and Computation, 54(2–3), 167–181. https://doi.org/10.1016/0096-3003(93)90057-L",
+    "AROMAN": "Dimitrijević, B., Trpković, A., Atanasković, M., & Grbović, A. (2022). Application of AROMAN Method for Determination of Stability Level for Slope Failures. Civil Engineering Journal, 8(8), 1447–1462. https://doi.org/10.28991/CEJ-2022-08-08-012",
+    "DNMA": "Liu, P., & Zhu, B. (2021). A novel psychophysical decision-making model with heterogeneous information and its application in the evaluation of unmanned aerial vehicle selection. Expert Systems with Applications, 166, 114091. https://doi.org/10.1016/j.eswa.2020.114091",
+    "Fuzzy SPOTIS": "Shekhovtsov, A., & Sałabun, W. (2021). A comparative case study of the VIKOR and TOPSIS ranking methods in a novel approach for solving the fuzzy MCDM problem. Applied Soft Computing, 111, 107637. https://doi.org/10.1016/j.asoc.2021.107637",
+    "Fuzzy MULTIMOORA": "Brauers, W. K. M., & Zavadskas, E. K. (2012). Robustness of MULTIMOORA: A method for multi-objective optimization. Informatica, 23(1), 1–25.",
+    "Fuzzy RAWEC": "Sotoudeh-Anvari, A. (2023). A novel multi-attribute decision-making method based on the weight of each criterion (RAWEC). Journal of Soft Computing and Decision Analytics, 1(1), 192–207.",
+    "Fuzzy RAFSI": "Žižović, M., Pamučar, D., Albijanić, M., Chatterjee, P., & Pribićević, I. (2020). Eliminating Rank Reversal Problem Using a New Multi-Attribute Model—The RAFSI Method. Mathematics, 8(6), 1015. https://doi.org/10.3390/math8061015",
+    "Fuzzy ROV": "Yakowitz, D. S., Lane, L. J., & Szidarovszky, F. (1993). Multi-attribute decision making: Dominance with respect to an importance order of the attributes. Applied Mathematics and Computation, 54(2–3), 167–181.",
+    "Fuzzy AROMAN": "Dimitrijević, B., Trpković, A., Atanasković, M., & Grbović, A. (2022). Application of AROMAN Method for Determination of Stability Level for Slope Failures. Civil Engineering Journal, 8(8), 1447–1462.",
+    "Fuzzy DNMA": "Liu, P., & Zhu, B. (2021). A novel psychophysical decision-making model with heterogeneous information. Expert Systems with Applications, 166, 114091.",
 }
 
 MANDATORY_MCDM_REFERENCE = (
@@ -428,7 +518,7 @@ def _is_lower_better_method(method: Optional[str]) -> bool:
     if not method:
         return False
     base = method.replace("Fuzzy ", "")
-    return base == "VIKOR"
+    return base in {"VIKOR", "SPOTIS", "MULTIMOORA"}
 
 
 def _benefit_cost_summary(criteria_types: Dict[str, str]) -> Dict[str, List[str]]:
@@ -642,7 +732,7 @@ def _cilos_benefit_matrix(data: pd.DataFrame, criteria_types: Dict[str, str]) ->
 def _weights_cilos(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tuple[Dict[str, float], Dict[str, Any]]:
     benefit = _cilos_benefit_matrix(data, criteria_types)
     cols = list(benefit.columns)
-    best_rows = {c: str(benefit[c].idxmax()) for c in cols}
+    best_rows = {c: benefit[c].idxmax() for c in cols}
     a_matrix = pd.DataFrame(
         [benefit.loc[best_rows[c], cols].to_numpy(dtype=float) for c in cols],
         index=cols,
@@ -771,6 +861,7 @@ def compute_objective_weights(
         "MEREC": _weights_merec,
         "LOPCOW": _weights_lopcow,
         "PCA": _weights_pca,
+        "CILOS": _weights_cilos,
         "IDOCRIW": _weights_idocriw,
         "Fuzzy IDOCRIW": lambda d, ct: _weights_fuzzy_idocriw(d, ct, spread=fuzzy_spread),
     }
@@ -1654,6 +1745,247 @@ def _rank_fuzzy_promethee(
     )
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# YENİ SIRALAMA YÖNTEMLERİ: SPOTIS, MULTIMOORA, RAWEC, RAFSI, ROV, AROMAN, DNMA
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _rank_spotis(
+    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float]
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """SPOTIS — Stable Preference Ordering Towards Ideal Solution (Dezert et al., 2020).
+    Sabit ideal noktaya ağırlıklı normalleştirilmiş uzaklık; düşük = iyi.
+    """
+    x = data.to_numpy(dtype=float)
+    wvec = np.asarray([weights[c] for c in data.columns], dtype=float)
+    n = x.shape[1]
+    ideal = np.zeros(n, dtype=float)
+    spans = np.ones(n, dtype=float)
+    for j, c in enumerate(data.columns):
+        col = x[:, j]
+        xmin, xmax = float(col.min()), float(col.max())
+        ideal[j] = xmax if criteria_types.get(c, "max") == "max" else xmin
+        span = xmax - xmin
+        spans[j] = span if span > EPS else 1.0
+    dist = np.abs(x - ideal) / spans
+    score = dist @ wvec
+    det = {
+        "ideal_point": pd.DataFrame({"Kriter": data.columns, "İdeal": ideal, "Span": spans}),
+        "distance_matrix": pd.DataFrame(dist, index=data.index, columns=data.columns),
+        "spotis_table": pd.DataFrame({"Alternatif": data.index.astype(str), "Uzaklık": score}),
+    }
+    return score, det
+
+
+def _rank_multimoora(
+    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float]
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """MULTIMOORA — Multi-Objective Optimisation by Ratio Analysis + Full Multiplicative Form
+    (Brauers & Zavadskas, 2010). RS + RP + FMF → Borda toplamı; düşük = iyi.
+    """
+    pos, _ = _shift_positive(data)
+    x = pos.to_numpy(dtype=float)
+    wvec = np.asarray([weights[c] for c in pos.columns], dtype=float)
+    # Vektör normalleştirme
+    norms = np.sqrt((x ** 2).sum(axis=0)) + EPS
+    xn = x / norms
+    # 1. Oran Sistemi (RS)
+    rs = np.zeros(len(pos), dtype=float)
+    for j, c in enumerate(pos.columns):
+        rs += wvec[j] * xn[:, j] if criteria_types.get(c, "max") == "max" else -wvec[j] * xn[:, j]
+    rs_rank = pd.Series(rs).rank(ascending=False, method="min").astype(int).to_numpy()
+    # 2. Referans Nokta (RP)
+    ref = np.array([
+        xn[:, j].max() if criteria_types.get(c, "max") == "max" else xn[:, j].min()
+        for j, c in enumerate(pos.columns)
+    ], dtype=float)
+    rp_score = np.max(wvec * np.abs(xn - ref), axis=1)
+    rp_rank = pd.Series(rp_score).rank(ascending=True, method="min").astype(int).to_numpy()
+    # 3. Tam Çarpımsal Form (FMF)
+    benefit_prod = np.ones(len(pos), dtype=float)
+    cost_prod = np.ones(len(pos), dtype=float)
+    for j, c in enumerate(pos.columns):
+        if criteria_types.get(c, "max") == "max":
+            benefit_prod *= (xn[:, j] + EPS) ** wvec[j]
+        else:
+            cost_prod *= (xn[:, j] + EPS) ** wvec[j]
+    fmf_score = benefit_prod / (cost_prod + EPS)
+    fmf_rank = pd.Series(fmf_score).rank(ascending=False, method="min").astype(int).to_numpy()
+    # Borda toplamı (düşük = iyi)
+    borda = (rs_rank + rp_rank + fmf_rank).astype(float)
+    det = {
+        "normalized_matrix": pd.DataFrame(xn, index=pos.index, columns=pos.columns),
+        "multimoora_table": pd.DataFrame({
+            "Alternatif": pos.index.astype(str),
+            "RS_Skor": rs, "RS_Sıra": rs_rank,
+            "RP_Skor": rp_score, "RP_Sıra": rp_rank,
+            "FMF_Skor": fmf_score, "FMF_Sıra": fmf_rank,
+            "Borda": borda.astype(int),
+        }),
+    }
+    return borda, det
+
+
+def _rank_rawec(
+    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float]
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """RAWEC — Ranking of Alternatives by Weight of Each Criterion (Sotoudeh-Anvari, 2023).
+    Kriter bazlı sıraların ağırlıklı harmonik toplulaştırması; yüksek = iyi.
+    """
+    norm = _normalize_sum(data, criteria_types)
+    wvec = np.asarray([weights[c] for c in data.columns], dtype=float)
+    wmat = norm.to_numpy(dtype=float) * wvec
+    # Her kriter için alternatif sıralaması (1 = en iyi / en yüksek ağırlıklı değer)
+    ranks = pd.DataFrame(wmat, index=data.index, columns=data.columns).rank(
+        ascending=False, method="min"
+    ).to_numpy(dtype=float)
+    score = (wvec / ranks).sum(axis=1)
+    det = {
+        "normalized_matrix": norm,
+        "weighted_matrix": pd.DataFrame(wmat, index=data.index, columns=data.columns),
+        "rank_matrix": pd.DataFrame(ranks.astype(int), index=data.index, columns=data.columns),
+        "rawec_table": pd.DataFrame({"Alternatif": data.index.astype(str), "Skor": score}),
+    }
+    return score, det
+
+
+def _rank_rafsi(
+    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float],
+    r1: float = 1.0, r2: float = 9.0,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """RAFSI — Ranking of Alternatives through Functional mapping of criterion Sub-Intervals
+    into a Single Interval (Žižović et al., 2020). Sabit [r1, r2] aralığına eşleme; yüksek = iyi.
+    """
+    x = data.to_numpy(dtype=float)
+    wvec = np.asarray([weights[c] for c in data.columns], dtype=float)
+    span_ref = r2 - r1
+    h = np.zeros_like(x)
+    for j, c in enumerate(data.columns):
+        col = x[:, j]
+        xmin, xmax = float(col.min()), float(col.max())
+        denom = xmax - xmin
+        if denom <= EPS:
+            h[:, j] = (r1 + r2) / 2.0
+            continue
+        if criteria_types.get(c, "max") == "max":
+            h[:, j] = r1 + span_ref * (col - xmin) / denom
+        else:
+            h[:, j] = r1 + span_ref * (xmax - col) / denom
+    score = h @ wvec
+    det = {
+        "reference_interval": {"r1": r1, "r2": r2},
+        "mapped_matrix": pd.DataFrame(h, index=data.index, columns=data.columns),
+        "rafsi_table": pd.DataFrame({"Alternatif": data.index.astype(str), "Skor": score}),
+    }
+    return score, det
+
+
+def _rank_rov(
+    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float]
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """ROV — Range of Value (Yakowitz et al., 1993).
+    Min-max normalleştirme + ağırlıklı toplam; yüksek = iyi.
+    """
+    norm = _normalize_minmax(data, criteria_types)
+    wvec = np.asarray([weights[c] for c in data.columns], dtype=float)
+    score = norm.to_numpy(dtype=float) @ wvec
+    det = {
+        "normalized_matrix": norm,
+        "rov_table": pd.DataFrame({"Alternatif": data.index.astype(str), "Skor": score}),
+    }
+    return score, det
+
+
+def _rank_aroman(
+    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float]
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """AROMAN — Alternative Ranking Order Method Accounting for Two-step Normalization
+    (Dimitrijević et al., 2022). Sum + min-max normalleştirmenin geometrik bileşimi; yüksek = iyi.
+    """
+    pos, _ = _shift_positive(data)
+    r1 = _normalize_sum(pos, criteria_types).to_numpy(dtype=float)
+    r2 = _normalize_minmax(pos, criteria_types).to_numpy(dtype=float)
+    # Geometrik birleştirme
+    h = np.sqrt(np.clip(r1 * r2, 0.0, None) + EPS) - np.sqrt(EPS)
+    wvec = np.asarray([weights[c] for c in pos.columns], dtype=float)
+    score = h @ wvec
+    det = {
+        "sum_normalized": pd.DataFrame(r1, index=pos.index, columns=pos.columns),
+        "minmax_normalized": pd.DataFrame(r2, index=pos.index, columns=pos.columns),
+        "combined_matrix": pd.DataFrame(h, index=pos.index, columns=pos.columns),
+        "aroman_table": pd.DataFrame({"Alternatif": pos.index.astype(str), "Skor": score}),
+    }
+    return score, det
+
+
+def _rank_dnma(
+    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float],
+    alpha: float = 0.5,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """DNMA — Double Normalization-based Multiple Aggregation (Liu & Zhu, 2021).
+    Min-max ve sum normalleştirme skorlarının ağırlıklı ortalaması; yüksek = iyi.
+    """
+    r1 = _normalize_minmax(data, criteria_types).to_numpy(dtype=float)
+    r2 = _normalize_sum(data, criteria_types).to_numpy(dtype=float)
+    wvec = np.asarray([weights[c] for c in data.columns], dtype=float)
+    s1 = r1 @ wvec
+    s2 = r2 @ wvec
+    score = alpha * s1 + (1.0 - alpha) * s2
+    det = {
+        "minmax_normalized": pd.DataFrame(r1, index=data.index, columns=data.columns),
+        "sum_normalized": pd.DataFrame(r2, index=data.index, columns=data.columns),
+        "dnma_table": pd.DataFrame({
+            "Alternatif": data.index.astype(str),
+            "S_MinMax": s1, "S_Sum": s2, "Skor": score,
+        }),
+        "parameters": {"alpha": alpha},
+    }
+    return score, det
+
+
+# Bulanık sarmalayıcılar (üçgensel BDS senaryoları üzerinden)
+
+def _rank_fuzzy_spotis(
+    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_spotis)
+
+
+def _rank_fuzzy_multimoora(
+    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_multimoora)
+
+
+def _rank_fuzzy_rawec(
+    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_rawec)
+
+
+def _rank_fuzzy_rafsi(
+    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_rafsi)
+
+
+def _rank_fuzzy_rov(
+    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_rov)
+
+
+def _rank_fuzzy_aroman(
+    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_aroman)
+
+
+def _rank_fuzzy_dnma(
+    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_dnma)
+
+
 def rank_alternatives(
     data: pd.DataFrame,
     criteria: Sequence[str],
@@ -1714,6 +2046,22 @@ def rank_alternatives(
             df, criteria_types, weights, spread=fuzzy_spread,
             pref_func=promethee_pref_func, q=promethee_q, p=promethee_p, s=promethee_s,
         ),
+        # Yeni klasik yöntemler
+        "SPOTIS": lambda: _rank_spotis(df, criteria_types, weights),
+        "MULTIMOORA": lambda: _rank_multimoora(df, criteria_types, weights),
+        "RAWEC": lambda: _rank_rawec(df, criteria_types, weights),
+        "RAFSI": lambda: _rank_rafsi(df, criteria_types, weights),
+        "ROV": lambda: _rank_rov(df, criteria_types, weights),
+        "AROMAN": lambda: _rank_aroman(df, criteria_types, weights),
+        "DNMA": lambda: _rank_dnma(df, criteria_types, weights),
+        # Yeni bulanık yöntemler
+        "Fuzzy SPOTIS": lambda: _rank_fuzzy_spotis(df, criteria_types, weights, spread=fuzzy_spread),
+        "Fuzzy MULTIMOORA": lambda: _rank_fuzzy_multimoora(df, criteria_types, weights, spread=fuzzy_spread),
+        "Fuzzy RAWEC": lambda: _rank_fuzzy_rawec(df, criteria_types, weights, spread=fuzzy_spread),
+        "Fuzzy RAFSI": lambda: _rank_fuzzy_rafsi(df, criteria_types, weights, spread=fuzzy_spread),
+        "Fuzzy ROV": lambda: _rank_fuzzy_rov(df, criteria_types, weights, spread=fuzzy_spread),
+        "Fuzzy AROMAN": lambda: _rank_fuzzy_aroman(df, criteria_types, weights, spread=fuzzy_spread),
+        "Fuzzy DNMA": lambda: _rank_fuzzy_dnma(df, criteria_types, weights, spread=fuzzy_spread),
     }
     if method not in dispatch:
         raise ValueError(f"Desteklenmeyen sıralama yöntemi: {method}")
@@ -2536,106 +2884,267 @@ def generate_data_diagnostics(
         })
         risk_flags.append("high_correlation")
 
+    # ── AĞIRLIKLANDI RMA KARAR AĞACI ──────────────────────────────────────────
+    # Öncelik sırası: korelasyon yapısı → varyasyon düzeyi → veri sıkışıklığı
     if max_corr >= 0.85:
         suggested_weight = "CRITIC"
         weight_reason_tr = (
-            f"Karar ağacı çıktısı: Maksimum korelasyon {max_corr:.2f} ile çok yüksek. Bu durumda bilgi tekrarını cezalandıran "
-            "CRITIC ana öneridir; PCA ve IDOCRIW ise ikincil doğrulama seçenekleridir."
+            f"Karar ağacı çıktısı — Yüksek kriter korelasyonu (maks. r = {max_corr:.2f}): "
+            "Kriterler arasında güçlü doğrusal ilişki varken bilgi tekrarını en doğrudan cezalandıran yöntem CRITIC'tir. "
+            "CRITIC, kriter içi varyansı hem kriter-arası çatışma miktarıyla çarpar hem de korelasyonu varyans bileşenine göre ağırlıklandırır; "
+            "bu yapıda IDOCRIW ve PCA doğrulama amaçlı ikincil öneri olarak kullanılabilir."
         )
         weight_reason_en = (
-            f"Decision-tree output: maximum correlation is very high at {max_corr:.2f}. In this setting, CRITIC is the primary recommendation "
-            "because it penalizes information redundancy; PCA and IDOCRIW remain useful secondary checks."
+            f"Decision-tree output — High criterion correlation (max r = {max_corr:.2f}): "
+            "When strong linear relationships exist between criteria, CRITIC is the most direct approach for penalising information redundancy. "
+            "CRITIC multiplies within-criterion variance by inter-criterion conflict while weighting correlations against the variance component; "
+            "IDOCRIW and PCA serve as secondary verification options in this setting."
         )
-    elif max_corr >= 0.70:
+    elif max_corr >= 0.70 and alt_crit_ratio >= 2.5:
         suggested_weight = "IDOCRIW"
         weight_reason_tr = (
-            f"Karar ağacı çıktısı: Maksimum korelasyon {max_corr:.2f} ile orta-yüksek düzeyde, ortalama CV ise {mean_cv:.2f}. "
-            "Bu yapı hem bilgi tekrarını hem de ayırt ediciliği birlikte okuyan hibrit bir yöntem gerektiriyor; bu nedenle IDOCRIW ilk öneridir."
+            f"Karar ağacı çıktısı — Orta-yüksek korelasyon (maks. r = {max_corr:.2f}), yeterli alt/krit oranı ({alt_crit_ratio:.1f}): "
+            "IDOCRIW, Entropi tabanlı bilgi içeriğini CILOS'un göreli etki kaybı yapısıyla birleştiren hibrit bir yöntemdir. "
+            "Hem bilgi tekrarını hem de her kriterin diğerleri üzerindeki baskı gücünü aynı anda ölçer; "
+            "bu profilde sadece korelasyona odaklanan CRITIC'ten daha dengeli ve savunulabilir bir ağırlık üretir."
         )
         weight_reason_en = (
-            f"Decision-tree output: maximum correlation is moderate-to-high at {max_corr:.2f}, while mean CV is {mean_cv:.2f}. "
-            "This profile calls for a hybrid weighting method that reads both redundancy and discrimination, so IDOCRIW is recommended first."
+            f"Decision-tree output — Moderate-to-high correlation (max r = {max_corr:.2f}), adequate alt/crit ratio ({alt_crit_ratio:.1f}): "
+            "IDOCRIW combines Entropy-based information content with CILOS criterion-impact-loss structure in a hybrid framework. "
+            "It simultaneously measures information redundancy and each criterion's influence on the others; "
+            "in this profile it produces more balanced and defensible weights than CRITIC alone."
+        )
+    elif max_corr >= 0.70 and alt_crit_ratio < 2.5:
+        suggested_weight = "CILOS"
+        weight_reason_tr = (
+            f"Karar ağacı çıktısı — Orta-yüksek korelasyon (maks. r = {max_corr:.2f}), sıkışık veri yapısı (alt/krit = {alt_crit_ratio:.1f}): "
+            "CILOS, kriter etki kaybı (Criterion Impact LOSs) ilkesine dayanır: her kriter çıkarıldığında en iyi alternatifin diğer kriterler üzerindeki kaybı hesaplanır. "
+            "Alternatif sayısı kritere oranla sınırlı olduğunda korelasyon matrisine duyarlı yöntemler kararsız sonuç üretebilir; "
+            "CILOS bu koşulda daha istikrarlı ve yorumlanabilir ağırlıklar verir."
+        )
+        weight_reason_en = (
+            f"Decision-tree output — Moderate-to-high correlation (max r = {max_corr:.2f}), tight data structure (alt/crit = {alt_crit_ratio:.1f}): "
+            "CILOS is based on the Criterion Impact LOSs principle: it computes the loss to the best alternative on remaining criteria when each criterion is removed. "
+            "When the alternative count is low relative to criteria, correlation-sensitive methods may produce unstable results; "
+            "CILOS delivers more stable and interpretable weights under this condition."
         )
     elif mean_cv > 0.35:
         suggested_weight = "Entropy"
         weight_reason_tr = (
-            f"Karar ağacı çıktısı: Ortalama CV {mean_cv:.2f} ile yüksek ve korelasyon {max_corr:.2f} ile sınırlı. "
-            "Kriterler güçlü biçimde ayrıştığı için Entropy ana öneridir; Standart Sapma ve IDOCRIW ise yakın alternatiflerdir."
+            f"Karar ağacı çıktısı — Yüksek varyasyon (ort. CV = {mean_cv:.2f}), düşük korelasyon (maks. r = {max_corr:.2f}): "
+            "Kriterler birbirinden güçlü biçimde ayrışıyorsa Shannon Entropi en doğal seçimdir: "
+            "her kriter için değer dağılımının ne kadar 'düzensiz' olduğunu ölçer ve dağılım tekdüze ise ağırlığı sıfıra yaklaştırır. "
+            "Bu profilde Standart Sapma ve LOPCOW yakın alternatif, IDOCRIW ise hibrit doğrulama seçeneğidir."
         )
         weight_reason_en = (
-            f"Decision-tree output: mean CV is high at {mean_cv:.2f}, while correlation stays limited at {max_corr:.2f}. "
-            "Because criteria discriminate strongly, Entropy is the primary recommendation, with Standard Deviation and IDOCRIW as close alternatives."
+            f"Decision-tree output — High variation (mean CV = {mean_cv:.2f}), low correlation (max r = {max_corr:.2f}): "
+            "When criteria discriminate strongly from one another, Shannon Entropy is the most natural choice: "
+            "it measures how 'disordered' each criterion's value distribution is and drives weights toward zero when a distribution is uniform. "
+            "Standard Deviation and LOPCOW are close alternatives in this profile; IDOCRIW serves as a hybrid verification option."
+        )
+    elif mean_cv >= 0.18:
+        suggested_weight = "MEREC"
+        weight_reason_tr = (
+            f"Karar ağacı çıktısı — Dengeli-orta varyasyon (ort. CV = {mean_cv:.2f}), korelasyon sınırlı (maks. r = {max_corr:.2f}): "
+            "MEREC (Method based on the Removal Effects of Criteria), her kriteri tek tek çıkararak performans matrisindeki toplam kaybı hesaplar; "
+            "bu sayede kriterlerin birbirini ne ölçüde 'tamamladığını' ağırlığa dönüştürür. "
+            "Orta düzey varyasyonun olduğu dengeli profillerde MEREC, aşırı baskın sinyal üretmeden güvenilir sonuç verir; "
+            "LOPCOW ise yakın ikinci seçenektir."
+        )
+        weight_reason_en = (
+            f"Decision-tree output — Balanced-moderate variation (mean CV = {mean_cv:.2f}), limited correlation (max r = {max_corr:.2f}): "
+            "MEREC (Method based on the Removal Effects of Criteria) computes the total performance loss in the matrix when each criterion is removed one at a time; "
+            "this translates how much criteria 'complement' each other into weights. "
+            "In balanced profiles with moderate variation, MEREC produces reliable results without generating an overly dominant signal; "
+            "LOPCOW is a close second option."
         )
     else:
-        suggested_weight = "MEREC" if mean_cv >= 0.18 else "LOPCOW"
+        suggested_weight = "LOPCOW"
         weight_reason_tr = (
-            f"Karar ağacı çıktısı: Ortalama CV {mean_cv:.2f} ve maksimum korelasyon {max_corr:.2f}. "
-            "Veri yapısı dengeli olduğu için MEREC/LOPCOW ailesi, aşırı baskın tek sinyal üretmeden savunulabilir objektif ağırlıklar verir."
+            f"Karar ağacı çıktısı — Düşük varyasyon (ort. CV = {mean_cv:.2f}), düşük korelasyon (maks. r = {max_corr:.2f}): "
+            "Varyasyonun sınırlı olduğu homojen profillerde Entropy veya Standart Sapma küçük farklılıkları abartabilir. "
+            "LOPCOW (Logarithmic Percentage Change-driven Objective Weighting), normalize edilmiş kriteri logaritmik yüzde değişimi biçiminde ifade eder; "
+            "ölçek bağımsızlığı ve küçük farkları orantılı okuma özelliğiyle düşük varyasyonlu veri için en sağlıklı seçimdir."
         )
         weight_reason_en = (
-            f"Decision-tree output: mean CV is {mean_cv:.2f} and maximum correlation is {max_corr:.2f}. "
-            "Because the data profile is balanced, the MEREC/LOPCOW family provides defendable objective weights without overreacting to a single dominant signal."
+            f"Decision-tree output — Low variation (mean CV = {mean_cv:.2f}), low correlation (max r = {max_corr:.2f}): "
+            "In homogeneous profiles with limited variation, Entropy or Standard Deviation can exaggerate small differences. "
+            "LOPCOW (Logarithmic Percentage Change-driven Objective Weighting) expresses each normalised criterion as a logarithmic percentage change; "
+            "its scale-independence and proportional sensitivity to small differences make it the most appropriate choice for low-variation data."
         )
 
+    # ── SIRALAMA KARAR AĞACI ──────────────────────────────────────────────────
+    # Öncelik: alternatif sayısı → dağılım sorunları → büyük+yüksek CV →
+    #          korelasyon+maliyet yapısı → sıkışık problem → geniş ölçek aralığı →
+    #          homojen profil → genel denge
     if n_alt <= 6:
-        suggested_ranking_methods = ["PROMETHEE", "VIKOR", "TOPSIS"]
+        suggested_ranking_methods = ["PROMETHEE", "RAFSI", "VIKOR"]
         ranking_reason_tr = (
-            f"Karar ağacı çıktısı: Alternatif sayısı {n_alt} ile küçük. Küçük örneklemde PROMETHEE ikili üstünlükleri daha okunur verir, "
-            "VIKOR çatışan kriterlerde uzlaşı çözümü üretir, TOPSIS ise ideal çözüme yakınlık üzerinden dengeli bir referans sunar."
+            f"Karar ağacı çıktısı — Küçük örneklem ({n_alt} alternatif): "
+            "Az sayıda alternatif varken yöntem seçimi, sıralama hassasiyeti ve sonuç yorumlanabilirliği açısından kritik hale gelir. "
+            "PROMETHEE, her alternatif çiftini ayrı ayrı karşılaştırdığı için küçük örneklemlerde ince farkları en iyi görünür kılan yöntemdir. "
+            "RAFSI (Ranking of Alternatives through Functional mapping of criterion sub-intervals into a Single Interval), "
+            "referans noktaları üzerinden oransal bir değerlendirme yaptığı için az alternatifte tutarlı ve savunulabilir sıralar üretir. "
+            "VIKOR ise çatışan kriterler altında uzlaşı çözümü bulma kabiliyetiyle küçük grupların en iyi alternatifini belirlemede güvenilir bir tamamlayıcıdır."
         )
         ranking_reason_en = (
-            f"Decision-tree output: the number of alternatives is small ({n_alt}). In small samples, PROMETHEE makes pairwise dominance easier to read, "
-            "VIKOR offers a compromise solution under conflicting criteria, and TOPSIS provides a balanced distance-based benchmark."
+            f"Decision-tree output — Small sample ({n_alt} alternatives): "
+            "With few alternatives, method choice becomes critical for ranking sensitivity and result interpretability. "
+            "PROMETHEE compares each pair of alternatives individually, making it the best method for revealing fine differences in small samples. "
+            "RAFSI (Ranking of Alternatives through Functional mapping of criterion sub-intervals into a Single Interval) "
+            "uses proportional reference-point evaluation and produces consistent, defensible rankings with few alternatives. "
+            "VIKOR complements these by finding a compromise solution under conflicting criteria, reliably identifying the best alternative in small groups."
         )
-    elif max_corr >= 0.78 and cost_ratio >= 0.30:
-        suggested_ranking_methods = ["VIKOR", "PROMETHEE", "TOPSIS"]
+    elif mean_abs_skew >= 1.10 or outlier_ratio >= 0.08:
+        suggested_ranking_methods = ["DNMA", "EDAS", "CODAS"]
         ranking_reason_tr = (
-            f"Karar ağacı çıktısı: Maksimum korelasyon {max_corr:.2f} ve maliyet kriteri oranı %{cost_ratio*100:.0f}. "
-            "Kriter çatışmasının belirgin olduğu bu yapıda VIKOR uzlaşıyı, PROMETHEE ikili üstünlükleri, TOPSIS ise genel dengeyi daha gerçekçi okur."
+            f"Karar ağacı çıktısı — Asimetrik/aykırı değerli dağılım (ort. çarpıklık = {mean_abs_skew:.2f}, aykırı oran = %{outlier_ratio*100:.1f}): "
+            "Dağılımlar güçlü biçimde çarpıksa veya aykırı değer oranı yüksekse, ideal noktadan mutlak mesafeye dayanan yöntemler (TOPSIS) "
+            "aykırı değerlere duyarlı hale gelebilir. "
+            "DNMA (Dynamic Normalization-based MCDM Approach), her kriterin normalizasyon aralığını dinamik olarak belirler; "
+            "bu sayede farklı ölçek ve çarpıklık yapılarına karşı en sağlam sıralamayı üretir. "
+            "EDAS, ortalamadan pozitif/negatif sapmayı ölçtüğü için uç değerlere daha az duyarlıdır. "
+            "CODAS ise en kötü alternatiften Öklid ve Hamming uzaklıklarını birlikte kullanarak güçlü ayırt ediciliği korur."
         )
         ranking_reason_en = (
-            f"Decision-tree output: maximum correlation is {max_corr:.2f} and the cost-criterion ratio is {cost_ratio*100:.0f}%. "
-            "Under this level of criterion conflict, VIKOR reads compromise well, PROMETHEE clarifies pairwise dominance, and TOPSIS preserves overall balance."
+            f"Decision-tree output — Asymmetric/outlier-heavy distributions (mean skewness = {mean_abs_skew:.2f}, outlier ratio = {outlier_ratio*100:.1f}%): "
+            "When distributions are strongly skewed or the outlier ratio is high, methods that rely on absolute distance from the ideal point (TOPSIS) "
+            "become sensitive to extreme values. "
+            "DNMA (Dynamic Normalization-based MCDM Approach) determines each criterion's normalisation range dynamically, "
+            "producing the most robust rankings against varied scales and skewness structures. "
+            "EDAS measures positive/negative deviation from the average and is therefore less sensitive to extreme values. "
+            "CODAS combines Euclidean and Hamming distances from the worst alternative, maintaining strong discrimination."
         )
-    elif mean_abs_skew >= 1.00 or outlier_ratio >= 0.08:
-        suggested_ranking_methods = ["EDAS", "CODAS", "TOPSIS"]
+    elif n_alt >= 18 and mean_cv >= 0.20:
+        suggested_ranking_methods = ["SPOTIS", "AROMAN", "TOPSIS"]
         ranking_reason_tr = (
-            f"Karar ağacı çıktısı: Ortalama mutlak çarpıklık {mean_abs_skew:.2f} ve aykırı gözlem oranı %{outlier_ratio*100:.1f}. "
-            "Dağılımlar asimetrik olduğu için EDAS ortalamaya göre sapmayı, CODAS kötü senaryodan ayrışmayı, TOPSIS ise genel mesafe dengesini iyi yakalar."
+            f"Karar ağacı çıktısı — Büyük örneklem ve yüksek varyasyon ({n_alt} alternatif, ort. CV = {mean_cv:.2f}): "
+            "Alternatif sayısı arttıkça klasik yöntemlerde sıralama tersine çevirme (rank reversal) riski yükselir. "
+            "SPOTIS (Stable Preference Ordering Towards Ideal Solution), sabit bir ideal referans noktası kullanır; "
+            "alternatif eklense veya çıkarılsa bile sıralama kararlı kalır — büyük kümelerde bu özellik rakipsizdir. "
+            "AROMAN (Alternative Ranking Order Method Accounting for two-step Normalization), "
+            "iki aşamalı normalizasyon ile farklı ölçek ve birim yapılarına karşı dirençlidir ve büyük alternatif setlerinde tutarlı sonuç verir. "
+            "TOPSIS ise ölçeklenebilir referans çözümü olarak doğrulama amacıyla tabloda yer alır."
         )
         ranking_reason_en = (
-            f"Decision-tree output: mean absolute skewness is {mean_abs_skew:.2f} and the outlier ratio is {outlier_ratio*100:.1f}%. "
-            "Because the distributions are asymmetric, EDAS captures deviation from the average well, CODAS separates alternatives from the adverse zone, and TOPSIS preserves overall distance balance."
+            f"Decision-tree output — Large sample and high variation ({n_alt} alternatives, mean CV = {mean_cv:.2f}): "
+            "As the number of alternatives grows, the risk of rank reversal in classical methods increases. "
+            "SPOTIS (Stable Preference Ordering Towards Ideal Solution) uses a fixed ideal reference point; "
+            "rankings remain stable even when alternatives are added or removed — an unmatched property in large sets. "
+            "AROMAN (Alternative Ranking Order Method Accounting for two-step Normalization) "
+            "resists different scale and unit structures through two-step normalisation and delivers consistent results in large alternative sets. "
+            "TOPSIS is included as a scalable benchmark for verification."
         )
-    elif n_alt >= 15 and mean_cv >= 0.22:
-        suggested_ranking_methods = ["TOPSIS", "EDAS", "CODAS"]
+    elif max_corr >= 0.75 and cost_ratio >= 0.30:
+        suggested_ranking_methods = ["VIKOR", "RAWEC", "PROMETHEE"]
         ranking_reason_tr = (
-            f"Karar ağacı çıktısı: {n_alt} alternatif, ortalama CV {mean_cv:.2f} ve CV yayılımı {cv_std:.2f}. "
-            "Alternatif sayısı yükseldiğinde TOPSIS ölçeklenebilir bir ana referans verir; EDAS ve CODAS ise sapma ve uzaklık gücüyle geniş veri yapısında güçlü çalışır."
+            f"Karar ağacı çıktısı — Yüksek kriter çatışması ve karma yön yapısı (maks. r = {max_corr:.2f}, maliyet oranı = %{cost_ratio*100:.0f}): "
+            "Hem kriterler arası korelasyon güçlüyse hem de maliyet kriterleri ağırlıklıysa, "
+            "sonuçlar optimizasyon yönüne karşı duyarlı hale gelir. "
+            "VIKOR bu koşulda uzlaşı çözümü üretmekte en güçlü yöntemdir. "
+            "RAWEC (Ranking with Weights of Criterion Change), her kriterin ağırlığındaki değişime karşı sıralama stabilitesini test eder; "
+            "çatışmalı kriter yapılarında hangi alternatiflerin gerçekten sağlam olduğunu ortaya koyar. "
+            "PROMETHEE ise ikili karşılaştırma mantığıyla maliyet-fayda dengesi kurmanın en okunur yolunu sunar."
         )
         ranking_reason_en = (
-            f"Decision-tree output: there are {n_alt} alternatives, mean CV is {mean_cv:.2f}, and CV spread is {cv_std:.2f}. "
-            "As the number of alternatives grows, TOPSIS remains a scalable benchmark, while EDAS and CODAS stay strong through deviation- and distance-based discrimination."
+            f"Decision-tree output — High criterion conflict and mixed direction structure (max r = {max_corr:.2f}, cost ratio = {cost_ratio*100:.0f}%): "
+            "When inter-criterion correlation is strong and cost criteria dominate, "
+            "results become sensitive to the optimisation direction. "
+            "VIKOR is the strongest method for producing a compromise solution in this setting. "
+            "RAWEC (Ranking with Weights of Criterion Change) tests ranking stability against changes in each criterion's weight, "
+            "revealing which alternatives are genuinely robust under conflicting criterion structures. "
+            "PROMETHEE offers the most readable path to balancing cost and benefit through pairwise comparison logic."
         )
-    elif mean_cv <= 0.14 and max_corr <= 0.60:
-        suggested_ranking_methods = ["VIKOR", "MARCOS", "PROMETHEE"]
+    elif alt_crit_ratio < 2.0:
+        suggested_ranking_methods = ["MARCOS", "ROV", "RAFSI"]
         ranking_reason_tr = (
-            f"Karar ağacı çıktısı: Ortalama CV {mean_cv:.2f} ile düşük ve maksimum korelasyon {max_corr:.2f} ile sınırlı. "
-            "Ayrışmanın zayıf olduğu bu yapıda VIKOR uzlaşıyı, MARCOS ideal-karşıt ideal dengesini, PROMETHEE ise yakın alternatifler arasındaki ince farkları daha iyi görünür kılar."
+            f"Karar ağacı çıktısı — Sıkışık problem boyutu (alt/krit = {alt_crit_ratio:.1f}): "
+            "Alternatif sayısı kriter sayısına yakın olduğunda birçok yöntem kararsız veya gürültülü sonuç üretebilir. "
+            "MARCOS (Measurement of Alternatives and Ranking according to COmpromise Solution), "
+            "hem ideal hem de karşı-ideal çözüme olan uzaklığı yardımcı işlevlerle birleştirir; "
+            "az alternatifli sıkışık yapılarda dengeli ve kararlı bir referans çözüm sunar. "
+            "ROV (Range of Value), her alternatifin kriter aralığındaki konumunu maksimum ve minimum fayda sınırları arasında değerlendirir; "
+            "ölçek farklılıklarına dayanıklıdır. "
+            "RAFSI ise fonksiyonel alt-aralık eşlemesiyle az alternatifte bile tutarlı oransal sıralar üretir."
         )
         ranking_reason_en = (
-            f"Decision-tree output: mean CV is low at {mean_cv:.2f}, while maximum correlation remains limited at {max_corr:.2f}. "
-            "When separation is weak, VIKOR reads compromise well, MARCOS leverages ideal versus anti-ideal balance, and PROMETHEE makes fine pairwise differences more visible."
+            f"Decision-tree output — Tight problem size (alt/crit = {alt_crit_ratio:.1f}): "
+            "When the number of alternatives is close to the number of criteria, many methods may produce unstable or noisy results. "
+            "MARCOS (Measurement of Alternatives and Ranking according to COmpromise Solution) "
+            "combines distances to both the ideal and anti-ideal solutions through utility functions, "
+            "providing a balanced and stable reference solution in tight, low-alternative structures. "
+            "ROV (Range of Value) evaluates each alternative's position within the criterion range between maximum and minimum utility bounds; "
+            "it is robust to scale differences. "
+            "RAFSI produces consistent proportional rankings even with few alternatives through functional sub-interval mapping."
+        )
+    elif max_cv >= 0.45:
+        suggested_ranking_methods = ["ROV", "RAWEC", "TOPSIS"]
+        ranking_reason_tr = (
+            f"Karar ağacı çıktısı — Geniş ölçek aralığı (maks. CV = {max_cv:.2f}, ort. CV = {mean_cv:.2f}): "
+            "En az bir kriter çok geniş bir değer aralığına sahipken normalizasyon seçimi kritik hale gelir. "
+            "ROV (Range of Value), her kriter için tam aralığı referans alır; "
+            "uç değerleri olan kriterlerin ağırlığını doğrudan aralık büyüklüğüne göre ölçeklendirir ve ölçek baskınlığını bastırır. "
+            "RAWEC ise ağırlık değişimlerine göre sıralama stabilitesini test ederek geniş aralıklı kriterlerdeki duyarlılığı görünür kılar. "
+            "TOPSIS doğrulama referansı olarak tabloda yer alır."
+        )
+        ranking_reason_en = (
+            f"Decision-tree output — Wide scale range (max CV = {max_cv:.2f}, mean CV = {mean_cv:.2f}): "
+            "When at least one criterion spans a very wide value range, the choice of normalisation becomes critical. "
+            "ROV (Range of Value) uses the full range of each criterion as a reference, "
+            "scaling the weight of criteria with extreme values according to range size directly and suppressing scale dominance. "
+            "RAWEC tests ranking stability against weight changes, making sensitivity in wide-range criteria visible. "
+            "TOPSIS is included as a verification benchmark."
+        )
+    elif mean_cv <= 0.14 and max_corr <= 0.55:
+        suggested_ranking_methods = ["VIKOR", "AROMAN", "MARCOS"]
+        ranking_reason_tr = (
+            f"Karar ağacı çıktısı — Homojen ve düşük çatışmalı profil (ort. CV = {mean_cv:.2f}, maks. r = {max_corr:.2f}): "
+            "Kriterler az ayrıştığında ve korelasyon düşük olduğunda alternatiflerin birbirinden belirgin biçimde ayrılması güçleşir. "
+            "VIKOR, bu koşulda uzlaşı çözümü üreterek yakın performanslı alternatifler arasındaki ince farkları en iyi okur. "
+            "AROMAN, iki aşamalı normalizasyonuyla homojen yapılarda bile küçük performans farklarını kararlı biçimde sıralar. "
+            "MARCOS ideal ve karşı-ideal dengesini yardımcı işlevlerle birleştirerek homojen profillerde tutarlı ve yorumlanabilir bir sıralama sunar."
+        )
+        ranking_reason_en = (
+            f"Decision-tree output — Homogeneous and low-conflict profile (mean CV = {mean_cv:.2f}, max r = {max_corr:.2f}): "
+            "When criteria discriminate weakly and correlation is low, it becomes difficult to separate alternatives clearly. "
+            "VIKOR reads fine differences among close-performing alternatives best in this setting by generating a compromise solution. "
+            "AROMAN ranks small performance differences stably even in homogeneous structures through two-step normalisation. "
+            "MARCOS combines ideal and anti-ideal balance through utility functions, delivering a consistent and interpretable ranking in homogeneous profiles."
+        )
+    elif n_alt >= 10 and mean_cv >= 0.15:
+        suggested_ranking_methods = ["TOPSIS", "SPOTIS", "EDAS"]
+        ranking_reason_tr = (
+            f"Karar ağacı çıktısı — Orta-büyük örneklem ve orta varyasyon ({n_alt} alternatif, ort. CV = {mean_cv:.2f}): "
+            "Bu profil dengeli bir veri yapısını temsil eder. "
+            "TOPSIS, ideal çözüme göreli yakınlığı Öklid uzaklığıyla ölçen, akademik literatürde en yaygın referans yöntemidir. "
+            "SPOTIS, sıralama kararlılığını güvence altına almak için tabloda yer alır; "
+            "sabit ideal noktası sayesinde alternatif setinde olası değişiklikler sıralamayı tersine çevirmez. "
+            "EDAS ise sapma tabanlı mantığıyla TOPSIS'in mesafe temelli sonucunu bağımsız biçimde doğrular."
+        )
+        ranking_reason_en = (
+            f"Decision-tree output — Medium-to-large sample and moderate variation ({n_alt} alternatives, mean CV = {mean_cv:.2f}): "
+            "This profile represents a balanced data structure. "
+            "TOPSIS measures relative closeness to the ideal solution via Euclidean distance and is the most widely used reference method in the academic literature. "
+            "SPOTIS is included to safeguard ranking stability: "
+            "its fixed ideal point ensures that potential changes in the alternative set do not reverse the ranking. "
+            "EDAS independently verifies TOPSIS's distance-based result through its deviation-based logic."
         )
     else:
-        suggested_ranking_methods = ["TOPSIS", "VIKOR", "PROMETHEE"]
+        suggested_ranking_methods = ["TOPSIS", "VIKOR", "AROMAN"]
         ranking_reason_tr = (
-            f"Karar ağacı çıktısı: Veri yapısı dengeli; ortalama CV {mean_cv:.2f}, maksimum korelasyon {max_corr:.2f}, çarpıklık {mean_abs_skew:.2f}. "
-            "Bu profilde TOPSIS genel referans çözümü verir, VIKOR uzlaşıyı test eder, PROMETHEE ise sonucu ikili üstünlük açısından doğrular."
+            f"Karar ağacı çıktısı — Genel dengeli profil (ort. CV = {mean_cv:.2f}, maks. r = {max_corr:.2f}, çarpıklık = {mean_abs_skew:.2f}): "
+            "Veri yapısı belirgin bir risk bayrağı taşımıyor; kriterler orta düzeyde ayrışıyor ve korelasyon sınırlı. "
+            "TOPSIS bu profil için genel referans çözümü sağlar ve akademik olarak en yaygın doğrulama aracıdır. "
+            "VIKOR uzlaşı boyutunu test eder; birden fazla yöntemin önerdiği alternatifi kümülatif sıralamada öne taşır. "
+            "AROMAN, iki aşamalı normalizasyonuyla ölçek farklılıklarına karşı dayanıklı bir üçüncü bakış açısı ekler "
+            "ve TOPSIS/VIKOR ile tutarlılık kontrolüne olanak tanır."
         )
         ranking_reason_en = (
-            f"Decision-tree output: the data profile is balanced; mean CV is {mean_cv:.2f}, maximum correlation is {max_corr:.2f}, and skewness is {mean_abs_skew:.2f}. "
-            "In this profile, TOPSIS provides the main benchmark, VIKOR tests compromise behavior, and PROMETHEE validates the result through pairwise dominance."
+            f"Decision-tree output — General balanced profile (mean CV = {mean_cv:.2f}, max r = {max_corr:.2f}, skewness = {mean_abs_skew:.2f}): "
+            "The data structure carries no prominent risk flag; criteria discriminate at a moderate level and correlation is limited. "
+            "TOPSIS provides the general benchmark solution for this profile and is the most widely validated tool in the academic literature. "
+            "VIKOR tests the compromise dimension, elevating the alternative that multiple methods agree on in cumulative ranking. "
+            "AROMAN adds a resistant third perspective through two-step normalisation and enables a consistency check against TOPSIS and VIKOR."
         )
 
     suggested_ranking_methods = suggested_ranking_methods[:3]
