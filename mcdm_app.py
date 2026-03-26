@@ -7530,6 +7530,59 @@ _analytics_settings = access.get_analytics_settings()
 _current_user = access.get_current_user()
 
 # ---------------------------------------------------------
+# AUTH GATE — Giriş zorunluysa login ekranı
+# ---------------------------------------------------------
+if _auth_settings.require_login and not _current_user.is_logged_in:
+    _render_auth_gate(_auth_settings)
+
+if _current_user.is_logged_in:
+    access.bootstrap_user_session(_current_user, _analytics_settings)
+
+# --- Hareketsizlik zaman aşımı (4 saat) ---
+if _current_user.is_logged_in:
+    _now_ts = time.time()
+    _last_activity_ts = st.session_state.get("_mcdm_last_activity_at", _now_ts)
+    if (_now_ts - _last_activity_ts) > SESSION_INACTIVITY_SECONDS:
+        access.track_event("inactivity_logout", {"idle_seconds": int(_now_ts - _last_activity_ts)})
+        access.logout_user()
+        st.rerun()
+    st.session_state["_mcdm_last_activity_at"] = _now_ts
+
+# --- E-posta doğrulama kontrolü ---
+if _current_user.is_logged_in and not _current_user.email_verified:
+    _grace_given = st.session_state.get("_mcdm_email_grace_given", False)
+    if not _grace_given:
+        _grace_granted = access.consume_email_verification_grace(
+            _current_user.auth_subject,
+            _analytics_settings,
+        )
+        if _grace_granted:
+            st.session_state["_mcdm_email_grace_given"] = True
+            st.warning(
+                tt(
+                    "✉️ E-posta adresiniz henüz doğrulanmamış. Lütfen kayıt e-postanızdaki bağlantıya tıklayın. "
+                    "Bu oturumda devam edebilirsiniz; ancak sonraki girişte doğrulama zorunlu olacaktır.",
+                    "✉️ Your email address is not yet verified. Please click the link in your registration email. "
+                    "You may continue this session, but verification will be required on your next sign-in.",
+                )
+            )
+        else:
+            _render_email_verification_wall(_auth_settings)
+            st.stop()
+
+# --- Ad-Soyad toplama (gerekirse) ---
+if _current_user.is_logged_in:
+    _needs_name = (
+        not _current_user.name
+        or _current_user.name.lower() == _current_user.email.lower()
+        or "@" in _current_user.name
+    )
+    if _needs_name and not st.session_state.get("_mcdm_name_collected"):
+        _render_name_collection_screen(_current_user)
+        st.stop()
+
+
+# ---------------------------------------------------------
 # SOL PANEL — Auth durumuna göre içerik
 # ---------------------------------------------------------
 missing_strategy, clip_outliers = "Sil", False  # defaults (logged-out veya data yok)
@@ -7762,57 +7815,6 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
 
-# ---------------------------------------------------------
-# AUTH GATE — Giriş zorunluysa login ekranı
-# ---------------------------------------------------------
-if _auth_settings.require_login and not _current_user.is_logged_in:
-    _render_auth_gate(_auth_settings)
-
-if _current_user.is_logged_in:
-    access.bootstrap_user_session(_current_user, _analytics_settings)
-
-# --- Hareketsizlik zaman aşımı (4 saat) ---
-if _current_user.is_logged_in:
-    _now_ts = time.time()
-    _last_activity_ts = st.session_state.get("_mcdm_last_activity_at", _now_ts)
-    if (_now_ts - _last_activity_ts) > SESSION_INACTIVITY_SECONDS:
-        access.track_event("inactivity_logout", {"idle_seconds": int(_now_ts - _last_activity_ts)})
-        access.logout_user()
-        st.rerun()
-    st.session_state["_mcdm_last_activity_at"] = _now_ts
-
-# --- E-posta doğrulama kontrolü ---
-if _current_user.is_logged_in and not _current_user.email_verified:
-    _grace_given = st.session_state.get("_mcdm_email_grace_given", False)
-    if not _grace_given:
-        _grace_granted = access.consume_email_verification_grace(
-            _current_user.auth_subject,
-            _analytics_settings,
-        )
-        if _grace_granted:
-            st.session_state["_mcdm_email_grace_given"] = True
-            st.warning(
-                tt(
-                    "✉️ E-posta adresiniz henüz doğrulanmamış. Lütfen kayıt e-postanızdaki bağlantıya tıklayın. "
-                    "Bu oturumda devam edebilirsiniz; ancak sonraki girişte doğrulama zorunlu olacaktır.",
-                    "✉️ Your email address is not yet verified. Please click the link in your registration email. "
-                    "You may continue this session, but verification will be required on your next sign-in.",
-                )
-            )
-        else:
-            _render_email_verification_wall(_auth_settings)
-            st.stop()
-
-# --- Ad-Soyad toplama (gerekirse) ---
-if _current_user.is_logged_in:
-    _needs_name = (
-        not _current_user.name
-        or _current_user.name.lower() == _current_user.email.lower()
-        or "@" in _current_user.name
-    )
-    if _needs_name and not st.session_state.get("_mcdm_name_collected"):
-        _render_name_collection_screen(_current_user)
-        st.stop()
 
 # ---------------------------------------------------------
 # ANA GÖVDE
