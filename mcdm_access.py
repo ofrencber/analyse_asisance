@@ -136,6 +136,19 @@ def get_auth_settings() -> AuthSettings:
     admin_emails = frozenset(email.lower() for email in _as_list(cfg.get("admin_emails")))
     auth_root = _section("auth")
     has_shared = bool(auth_root.get("redirect_uri")) and bool(auth_root.get("cookie_secret"))
+    # [mcdm_auth] provider okunamazsa [auth] alt-anahtarlarından otomatik tespit et
+    if not provider:
+        for _candidate in ["auth0", "google", "microsoft", "okta", "github"]:
+            if _nested_section("auth", _candidate).get("client_id"):
+                provider = _candidate
+                break
+    if not signup_provider or signup_provider == provider:
+        # auth0signup gibi bir imza anahtarı var mı kontrol et
+        _signup_candidate = (provider or "") + "signup"
+        if _nested_section("auth", _signup_candidate).get("client_id"):
+            signup_provider = _signup_candidate
+        else:
+            signup_provider = provider
     if provider:
         provider_cfg = _nested_section("auth", provider)
         configured = has_shared and bool(provider_cfg.get("client_id")) and bool(provider_cfg.get("client_secret")) and bool(provider_cfg.get("server_metadata_url"))
@@ -606,8 +619,6 @@ def login_user(provider: str | None = None) -> None:
         provider = get_auth_settings().provider
     if provider:
         st.login(provider)
-    else:
-        st.login()
 
 
 def auth_gate_context() -> Dict[str, Any]:

@@ -7411,12 +7411,12 @@ def _render_user_session_card(auth_settings: access.AuthSettings, current_user: 
                 """,
                 unsafe_allow_html=True,
             )
-            if auth_settings.enabled:
+            if auth_settings.enabled and auth_settings.provider:
                 if st.button(tt("🔐 Giris Yap", "🔐 Sign In"), width="stretch", key="btn_sidebar_login"):
-                    st.login(auth_settings.provider)
+                    access.login_user(auth_settings.provider)
                 if auth_settings.signup_provider and auth_settings.signup_provider != auth_settings.provider:
                     if st.button(tt("✉️ Kayit Ol", "✉️ Sign Up"), width="stretch", key="btn_sidebar_signup"):
-                        st.login(auth_settings.signup_provider)
+                        access.login_user(auth_settings.signup_provider)
             return
 
         role_label = tt("Yonetici", "Admin") if access.is_admin_email(current_user.email, auth_settings) else tt("Uye", "Member")
