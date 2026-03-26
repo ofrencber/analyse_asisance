@@ -602,10 +602,12 @@ def update_display_name(auth_subject: str, name: str, analytics_settings: Analyt
 
 
 def login_user(provider: str | None = None) -> None:
+    if not provider:
+        provider = get_auth_settings().provider
     if provider:
         st.login(provider)
-        return
-    st.login()
+    else:
+        st.login()
 
 
 def auth_gate_context() -> Dict[str, Any]:
