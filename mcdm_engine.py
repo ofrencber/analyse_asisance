@@ -2099,6 +2099,7 @@ def compare_methods(
     base_table: Optional[pd.DataFrame] = None,
     base_details: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    from scipy.stats import spearmanr
     if not methods:
         return {}
     score_frames: List[pd.DataFrame] = []
