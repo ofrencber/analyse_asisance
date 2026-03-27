@@ -6,9 +6,6 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
-from scipy.stats import spearmanr
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
 
 EPS = 1e-12
 
@@ -580,6 +577,8 @@ def descriptive_statistics(data: pd.DataFrame, criteria: Sequence[str]) -> pd.Da
 
 
 def pca_diagnostics(data: pd.DataFrame, criteria: Sequence[str], criteria_types: Dict[str, str]) -> Dict[str, Any]:
+    from sklearn.decomposition import PCA
+    from sklearn.preprocessing import StandardScaler
     df = _as_numeric_df(data, criteria)
     oriented = _normalize_minmax(df, criteria_types)
     scaler = StandardScaler()
@@ -1351,6 +1350,7 @@ def _rank_promethee(
     gaia_decision_df = pd.DataFrame()
     try:
         if m >= 2 and n >= 1 and np.isfinite(phi_criterion).any():
+            from sklearn.decomposition import PCA
             n_comp = min(2, m, n)
             pca = PCA(n_components=n_comp)
             alt_coords = pca.fit_transform(phi_criterion)
@@ -2185,6 +2185,7 @@ def sensitivity_analysis(
     sigma: float = 0.12,
     seed: int = 42,
 ) -> Dict[str, Any]:
+    from scipy.stats import spearmanr
     base_res, _ = rank_alternatives(
         data,
         criteria,

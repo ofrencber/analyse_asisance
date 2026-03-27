@@ -11,19 +11,9 @@ from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
-from scipy.stats import spearmanr
 
 import mcdm_access as access
-import mcdm_engine as me
-
-try:
-    import pyreadstat  # noqa: F401
-    SPSS_AVAILABLE = True
-except Exception:
-    SPSS_AVAILABLE = False
 
 APP_DIR = Path(__file__).resolve().parent
 MAX_UPLOAD_SIZE_MB = 20
@@ -34,23 +24,119 @@ MAX_PANEL_YEAR_SELECTION = 10
 MAX_SENSITIVITY_ITERATIONS = 1500
 SESSION_INACTIVITY_SECONDS = 4 * 3600  # 4 saat hareketsizlikte otomatik çıkış
 
-try:
-    from docx import Document
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.oxml import OxmlElement
-    from docx.oxml.ns import qn
-    from docx.shared import Inches, Pt
-    DOCX_AVAILABLE = True
-except Exception:
-    DOCX_AVAILABLE = False
+SPSS_AVAILABLE: bool | None = None
+DOCX_AVAILABLE: bool | None = None
+MPL_AVAILABLE: bool | None = None
 
-try:
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+Document = None
+WD_ALIGN_PARAGRAPH = None
+OxmlElement = None
+qn = None
+Inches = None
+Pt = None
+plt = None
+px = None
+go = None
+spearmanr = None
+me = None
+
+
+def _ensure_pyreadstat() -> bool:
+    global SPSS_AVAILABLE
+    if SPSS_AVAILABLE is not None:
+        return bool(SPSS_AVAILABLE)
+    try:
+        import pyreadstat  # noqa: F401
+    except Exception:
+        SPSS_AVAILABLE = False
+    else:
+        SPSS_AVAILABLE = True
+    return bool(SPSS_AVAILABLE)
+
+
+def _ensure_docx_support() -> bool:
+    global DOCX_AVAILABLE, Document, WD_ALIGN_PARAGRAPH, OxmlElement, qn, Inches, Pt
+    if DOCX_AVAILABLE is not None:
+        return bool(DOCX_AVAILABLE)
+    try:
+        from docx import Document as _Document
+        from docx.enum.text import WD_ALIGN_PARAGRAPH as _WD_ALIGN_PARAGRAPH
+        from docx.oxml import OxmlElement as _OxmlElement
+        from docx.oxml.ns import qn as _qn
+        from docx.shared import Inches as _Inches, Pt as _Pt
+    except Exception:
+        DOCX_AVAILABLE = False
+        return False
+
+    Document = _Document
+    WD_ALIGN_PARAGRAPH = _WD_ALIGN_PARAGRAPH
+    OxmlElement = _OxmlElement
+    qn = _qn
+    Inches = _Inches
+    Pt = _Pt
+    DOCX_AVAILABLE = True
+    return True
+
+
+def _ensure_matplotlib_support() -> bool:
+    global MPL_AVAILABLE, plt
+    if MPL_AVAILABLE is not None:
+        return bool(MPL_AVAILABLE)
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as _plt
+    except Exception:
+        MPL_AVAILABLE = False
+        plt = None
+        return False
+
+    plt = _plt
     MPL_AVAILABLE = True
-except Exception:
-    MPL_AVAILABLE = False
+    return True
+
+
+def _ensure_plotly_support() -> bool:
+    global px, go
+    if px is not None and go is not None:
+        return True
+    try:
+        import plotly.express as _px
+        import plotly.graph_objects as _go
+    except Exception:
+        px = None
+        go = None
+        return False
+    px = _px
+    go = _go
+    return True
+
+
+def _ensure_spearman_support() -> bool:
+    global spearmanr
+    if spearmanr is not None:
+        return True
+    try:
+        from scipy.stats import spearmanr as _spearmanr
+    except Exception:
+        spearmanr = None
+        return False
+    spearmanr = _spearmanr
+    return True
+
+
+def _ensure_mcdm_engine() -> bool:
+    global me
+    if me is not None:
+        return True
+    try:
+        import mcdm_engine as _me
+    except Exception:
+        me = None
+        return False
+    me = _me
+    return True
 
 st.set_page_config(
     page_title="MCDM Toolbox — Prof. Dr. Ömer Faruk Rençber",
@@ -59,8 +145,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-st.markdown(
-    """
+@st.cache_data(show_spinner=False)
+def _get_app_css() -> str:
+    return """
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
 
@@ -725,6 +812,33 @@ st.markdown(
 
         .sidebar-small-note { font-size: 0.80rem; line-height: 1.5; color: var(--text-main); }
 
+        .analysis-mini-banner {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.58rem 0.95rem;
+            margin: 0 0 0.85rem 0;
+            border-radius: 12px;
+            background: linear-gradient(120deg, #17324D 0%, #234768 52%, #16314C 100%);
+            border: 1px solid rgba(184, 154, 92, 0.26);
+            box-shadow: 0 8px 20px rgba(5, 13, 24, 0.12);
+        }
+        .analysis-mini-banner-left {
+            font-size: 0.9rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            color: #F3F6FB !important;
+            white-space: nowrap;
+        }
+        .analysis-mini-banner-right {
+            font-size: 0.84rem;
+            font-weight: 600;
+            color: #DCE6F3 !important;
+            text-align: right;
+            white-space: nowrap;
+        }
+
         h1, h2, h3, h4, h5, h6 { color: var(--text-main) !important; }
         p, span, label, div { color: var(--text-main); }
 
@@ -742,14 +856,24 @@ st.markdown(
                 align-items: flex-start;
                 gap: 0.28rem;
             }
+            .analysis-mini-banner {
+                flex-direction: column;
+                align-items: flex-start;
+                padding: 0.62rem 0.8rem;
+            }
+            .analysis-mini-banner-left,
+            .analysis-mini-banner-right {
+                white-space: normal;
+                text-align: left;
+            }
             .kpi-grid { grid-template-columns:repeat(2, minmax(0,1fr)); }
             .assistant-grid { grid-template-columns:1fr; }
             .tracking-grid { grid-template-columns:1fr; }
         }
     </style>
-    """,
-    unsafe_allow_html=True,
-)
+    """
+
+st.markdown(_get_app_css(), unsafe_allow_html=True)
 
 def init_state() -> None:
     defaults = {
@@ -2303,6 +2427,8 @@ def recommend_parameter_defaults(selected_methods: List[str], n_alt: int, n_crit
     return defaults
 
 def _safe_spearman(x: np.ndarray, y: np.ndarray) -> float:
+    if not _ensure_spearman_support():
+        return 0.0
     try:
         rho, _ = spearmanr(x, y)
         if rho is None or not np.isfinite(rho):
@@ -2310,6 +2436,18 @@ def _safe_spearman(x: np.ndarray, y: np.ndarray) -> float:
         return float(rho)
     except Exception:
         return 0.0
+
+
+@st.cache_data(show_spinner=False)
+def _encoded_image_b64(path_str: str) -> str | None:
+    path = Path(path_str)
+    if not path.exists():
+        return None
+    try:
+        with open(path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode("utf-8")
+    except Exception:
+        return None
 
 @st.cache_data(show_spinner=False)
 def compute_weight_robustness(
@@ -2741,7 +2879,7 @@ def load_uploaded_file(uploaded_file) -> pd.DataFrame:
     elif file_name.endswith(".xlsx"):
         df = pd.read_excel(uploaded_file)
     elif file_name.endswith(".sav"):
-        if not SPSS_AVAILABLE:
+        if not _ensure_pyreadstat():
             raise ValueError(
                 tt(
                     "`.sav` dosyaları için `pyreadstat` kurulmalıdır. `pip install pyreadstat` veya `pip install -r requirements.txt` çalıştırın.",
@@ -3145,6 +3283,18 @@ def _current_ui_stage() -> str:
         return "step2"
     return "step1"
 
+
+def _render_analysis_mini_banner() -> None:
+    st.markdown(
+        """
+        <div class="analysis-mini-banner">
+            <div class="analysis-mini-banner-left">MCDM-Karar Destek Sistemi</div>
+            <div class="analysis-mini-banner-right">Prof. Dr. Ömer Faruk Rençber</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 def get_math_formulation_en(w_method: str, r_methods: List[str]) -> str:
     lines: List[str] = ["Mathematical and Algorithmic Framework", ""]
     lines.append(f"Objective weighting method: {method_display_name(w_method)}")
@@ -3372,7 +3522,9 @@ def _docx_detail_interpretation(method: str | None, lang: str) -> str:
 
 def _weight_bar_figure_bytes(weight_df: pd.DataFrame, lang: str) -> bytes | None:
     """Horizontal bar chart of criterion weights; returns PNG bytes or None."""
-    if not MPL_AVAILABLE or weight_df is None or weight_df.empty:
+    if weight_df is None or weight_df.empty:
+        return None
+    if not _ensure_matplotlib_support():
         return None
     try:
         c_col = col_key(weight_df, "Kriter", "Criterion")
@@ -3398,7 +3550,9 @@ def _weight_bar_figure_bytes(weight_df: pd.DataFrame, lang: str) -> bytes | None
 
 def _ranking_bar_figure_bytes(ranking_df: pd.DataFrame, lang: str) -> bytes | None:
     """Vertical bar chart of alternative scores; returns PNG bytes or None."""
-    if not MPL_AVAILABLE or ranking_df is None or ranking_df.empty:
+    if ranking_df is None or ranking_df.empty:
+        return None
+    if not _ensure_matplotlib_support():
         return None
     try:
         alt_col = col_key(ranking_df, "Alternatif", "Alternative")
@@ -3422,6 +3576,117 @@ def _ranking_bar_figure_bytes(ranking_df: pd.DataFrame, lang: str) -> bytes | No
         return buf.getvalue()
     except Exception:
         return None
+
+def _weight_radar_figure_bytes(weight_df: pd.DataFrame, lang: str) -> bytes | None:
+    """Polar radar chart of criterion weights; returns PNG bytes or None."""
+    if weight_df is None or weight_df.empty:
+        return None
+    if not _ensure_matplotlib_support():
+        return None
+    try:
+        c_col = col_key(weight_df, "Kriter", "Criterion")
+        w_col = col_key(weight_df, "Ağırlık", "Weight")
+        if c_col not in weight_df.columns or w_col not in weight_df.columns:
+            return None
+        df = weight_df[[c_col, w_col]].copy()
+        df[w_col] = pd.to_numeric(df[w_col], errors="coerce")
+        df = df.dropna()
+        if len(df) < 3:
+            return None
+        labels = df[c_col].astype(str).tolist()
+        values = df[w_col].astype(float).tolist()
+        N = len(labels)
+        angles = [n / float(N) * 2 * np.pi for n in range(N)]
+        values_closed = values + [values[0]]
+        angles_closed = angles + [angles[0]]
+        fig, ax = plt.subplots(figsize=(5, 5), subplot_kw=dict(polar=True))
+        ax.plot(angles_closed, values_closed, color="#2E75B6", linewidth=2)
+        ax.fill(angles_closed, values_closed, color="#2E75B6", alpha=0.25)
+        ax.set_xticks(angles)
+        ax.set_xticklabels(labels, fontsize=7)
+        ax.set_yticklabels([])
+        ax.spines["polar"].set_visible(True)
+        ax.grid(color="grey", linestyle="--", linewidth=0.5, alpha=0.5)
+        plt.tight_layout()
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        return buf.getvalue()
+    except Exception:
+        return None
+
+
+def _mc_stability_figure_bytes(mc_df: pd.DataFrame, lang: str) -> bytes | None:
+    """Horizontal bar chart of Monte Carlo first-place rates; returns PNG bytes or None."""
+    if mc_df is None or mc_df.empty:
+        return None
+    if not _ensure_matplotlib_support():
+        return None
+    try:
+        if "Alternatif" not in mc_df.columns or "BirincilikOranı" not in mc_df.columns:
+            return None
+        df = mc_df[["Alternatif", "BirincilikOranı"]].copy()
+        df["BirincilikOranı"] = pd.to_numeric(df["BirincilikOranı"], errors="coerce")
+        df = df.dropna().sort_values("BirincilikOranı", ascending=True)
+        fig, ax = plt.subplots(figsize=(6, max(2.5, len(df) * 0.38)))
+        bars = ax.barh(df["Alternatif"].astype(str), df["BirincilikOranı"] * 100, color="#4CAF50")
+        for bar, val in zip(bars, df["BirincilikOranı"] * 100):
+            ax.text(bar.get_width() + 0.5, bar.get_y() + bar.get_height() / 2,
+                    f"{val:.1f}%", va="center", fontsize=7)
+        ax.set_xlabel("Birincilik Oranı (%)" if lang != "EN" else "First-Place Rate (%)", fontsize=9)
+        ax.set_xlim(0, 105)
+        ax.tick_params(axis="both", labelsize=8)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        plt.tight_layout()
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        return buf.getvalue()
+    except Exception:
+        return None
+
+
+def _sensitivity_heatmap_figure_bytes(local_df: pd.DataFrame, lang: str) -> bytes | None:
+    """Heatmap of Spearman ρ by criterion × weight-change scenario; returns PNG bytes or None."""
+    if local_df is None or local_df.empty:
+        return None
+    if not _ensure_matplotlib_support():
+        return None
+    try:
+        required = {"Kriter", "AğırlıkDeğişimi", "SpearmanRho"}
+        if not required.issubset(local_df.columns):
+            return None
+        pivot = local_df.pivot_table(index="Kriter", columns="AğırlıkDeğişimi",
+                                     values="SpearmanRho", aggfunc="mean")
+        if pivot.empty:
+            return None
+        fig, ax = plt.subplots(figsize=(max(4, pivot.shape[1] * 1.1),
+                                        max(3, pivot.shape[0] * 0.45)))
+        im = ax.imshow(pivot.values, cmap="RdYlGn", vmin=0.5, vmax=1.0, aspect="auto")
+        ax.set_xticks(range(pivot.shape[1]))
+        ax.set_xticklabels(pivot.columns.tolist(), fontsize=8)
+        ax.set_yticks(range(pivot.shape[0]))
+        ax.set_yticklabels(pivot.index.tolist(), fontsize=7)
+        xlabel = "Ağırlık Değişimi" if lang != "EN" else "Weight Change"
+        ylabel = "Kriter" if lang != "EN" else "Criterion"
+        ax.set_xlabel(xlabel, fontsize=9)
+        ax.set_ylabel(ylabel, fontsize=9)
+        for r in range(pivot.shape[0]):
+            for c in range(pivot.shape[1]):
+                val = pivot.values[r, c]
+                if not np.isnan(val):
+                    ax.text(c, r, f"{val:.2f}", ha="center", va="center",
+                            fontsize=6, color="black")
+        plt.colorbar(im, ax=ax, fraction=0.03, pad=0.04)
+        plt.tight_layout()
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        return buf.getvalue()
+    except Exception:
+        return None
+
 
 def _doc_add_table_block(
     doc: "Document",
@@ -3739,7 +4004,7 @@ def _preferred_doc_detail_table(result: Dict[str, Any], lang: str) -> tuple[str,
     return None
 
 def generate_apa_docx(result: Dict[str, Any], selected_data: pd.DataFrame, lang: str = "TR") -> bytes | None:
-    if not DOCX_AVAILABLE:
+    if not _ensure_docx_support():
         return None
     doc = Document()
     _configure_apa_doc(doc)
@@ -3837,6 +4102,15 @@ def generate_apa_docx(result: Dict[str, Any], selected_data: pd.DataFrame, lang:
                 fi.get("weights", ""),
                 body_lang,
             )
+        w_radar = _weight_radar_figure_bytes(weight_df_raw, lang)
+        if w_radar:
+            _doc_add_figure_block(
+                doc,
+                _fig_label("Kriter Ağırlık Dağılımı (Radar)" if is_tr else "Criterion Weight Distribution (Radar)"),
+                w_radar,
+                fi.get("weights", ""),
+                body_lang,
+            )
 
     # Table + Figure: Ranking
     ranking_df_raw = (result.get("ranking") or {}).get("table")
@@ -3883,8 +4157,9 @@ def generate_apa_docx(result: Dict[str, Any], selected_data: pd.DataFrame, lang:
             body_lang,
         )
 
-    # Table: Monte Carlo
-    mc_df = (result.get("sensitivity") or {}).get("monte_carlo_summary")
+    # Table + Figures: Monte Carlo & Sensitivity
+    sensitivity_data = result.get("sensitivity") or {}
+    mc_df = sensitivity_data.get("monte_carlo_summary")
     if isinstance(mc_df, pd.DataFrame) and not mc_df.empty:
         _doc_add_table_block(
             doc,
@@ -3893,6 +4168,34 @@ def generate_apa_docx(result: Dict[str, Any], selected_data: pd.DataFrame, lang:
             ti.get("monte_carlo", ""),
             body_lang,
         )
+        mc_img = _mc_stability_figure_bytes(mc_df, lang)
+        if mc_img:
+            _doc_add_figure_block(
+                doc,
+                _fig_label("Monte Carlo Stabilite Analizi" if is_tr else "Monte Carlo Stability Analysis"),
+                mc_img,
+                (
+                    "Her alternatifin Monte Carlo simülasyonunda birincilik oranını göstermektedir."
+                    if is_tr else
+                    "First-place rate of each alternative across Monte Carlo simulations."
+                ),
+                body_lang,
+            )
+    local_df = sensitivity_data.get("local_sensitivity")
+    if isinstance(local_df, pd.DataFrame) and not local_df.empty:
+        sens_img = _sensitivity_heatmap_figure_bytes(local_df, lang)
+        if sens_img:
+            _doc_add_figure_block(
+                doc,
+                _fig_label("Yerel Duyarlılık Analizi (Spearman ρ)" if is_tr else "Local Sensitivity Analysis (Spearman ρ)"),
+                sens_img,
+                (
+                    "Kriter ağırlıklarındaki değişimlerin sıralama tutarlılığına etkisi (Spearman korelasyonu)."
+                    if is_tr else
+                    "Impact of criterion weight perturbations on ranking consistency (Spearman correlation)."
+                ),
+                body_lang,
+            )
 
     # ── 5. Conclusion ─────────────────────────────────────────────────────────
     _add_heading(heading_map["conclusion"])
@@ -5460,7 +5763,7 @@ def generate_panel_excel(panel_results: Dict[str, Dict[str, Any]], lang: str = "
     return output.getvalue()
 
 def generate_panel_apa_docx(panel_results: Dict[str, Dict[str, Any]], lang: str = "TR") -> bytes | None:
-    if not DOCX_AVAILABLE:
+    if not _ensure_docx_support():
         return None
     doc = Document()
     _configure_apa_doc(doc)
@@ -5615,7 +5918,8 @@ def _render_report_download_controls_core(lang: str) -> None:
 
     doc_key = f"docx::{lang}"
     doc_bytes = None
-    if DOCX_AVAILABLE:
+    docx_enabled = _ensure_docx_support()
+    if docx_enabled:
         if doc_key not in blob_cache:
             try:
                 selected_data = result.get("selected_data", pd.DataFrame())
@@ -5660,7 +5964,7 @@ def _render_report_download_controls_core(lang: str) -> None:
         )
 
     with dl2:
-        if DOCX_AVAILABLE:
+        if docx_enabled:
             docx_name = tt("MCDM_Akademik_Rapor.docx", "MCDM_Academic_Report.docx")
             _docx_clicked = _render_export_download_button(
                 tt("📄 Akademik Raporu İndir — APA Word", "📄 Download Academic Report — APA Word"),
@@ -7347,14 +7651,56 @@ def _render_name_collection_screen(user: access.CurrentUser) -> None:
 
 def _render_auth_gate(auth_settings: access.AuthSettings) -> None:
     # Hero banner — giriş yapmamış kullanıcılara gösterilir (yıldızlı gece gökyüzü)
-    _badge_html = (
-        '<span style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);'
-        'color:#E2E8F0;border-radius:20px;padding:0.28rem 0.8rem;font-size:0.78rem;font-weight:600;margin:0.15rem;">AHP · FUCOM · ENTROPY · CRITIC · MEREC</span>'
-        '<span style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);'
-        'color:#E2E8F0;border-radius:20px;padding:0.28rem 0.8rem;font-size:0.78rem;font-weight:600;margin:0.15rem;">TOPSIS · VIKOR · PROMETHEE · MARCOS · MABAC</span>'
-        '<span style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);'
-        'color:#E2E8F0;border-radius:20px;padding:0.28rem 0.8rem;font-size:0.78rem;font-weight:600;margin:0.15rem;">SPOTIS · RAWEC · RAFSI · ROV · AROMAN</span>'
+
+    # CSS: Kayıt Ol butonu sarı gradient, Giriş Yap butonu outline
+    st.markdown(
+        """<style>
+        /* Auth gate — Kayıt Ol (col 1) = sarı CTA */
+        [data-testid="stMain"] > div > div > div > [data-testid="stVerticalBlock"]
+          > [data-testid="stHorizontalBlock"]
+          > [data-testid="column"]:first-child .stButton > button {
+            background: linear-gradient(135deg, #F59E0B 0%, #F97316 100%) !important;
+            color: #111827 !important;
+            font-weight: 800 !important;
+            font-size: 1.05rem !important;
+            padding: 0.8rem 1.2rem !important;
+            border: none !important;
+            border-radius: 10px !important;
+            width: 100% !important;
+            box-shadow: 0 4px 20px rgba(249,115,22,0.45) !important;
+            letter-spacing: 0.01em !important;
+        }
+        [data-testid="stMain"] > div > div > div > [data-testid="stVerticalBlock"]
+          > [data-testid="stHorizontalBlock"]
+          > [data-testid="column"]:first-child .stButton > button:hover {
+            background: linear-gradient(135deg, #FBBF24 0%, #FB923C 100%) !important;
+            box-shadow: 0 6px 28px rgba(249,115,22,0.6) !important;
+            transform: translateY(-1px);
+        }
+        /* Auth gate — Giriş Yap (col 2) = outline */
+        [data-testid="stMain"] > div > div > div > [data-testid="stVerticalBlock"]
+          > [data-testid="stHorizontalBlock"]
+          > [data-testid="column"]:nth-child(2) .stButton > button {
+            background: transparent !important;
+            color: #CBD5E1 !important;
+            font-weight: 600 !important;
+            font-size: 0.95rem !important;
+            padding: 0.8rem 1rem !important;
+            border: 1.5px solid rgba(203,213,225,0.35) !important;
+            border-radius: 10px !important;
+            width: 100% !important;
+        }
+        [data-testid="stMain"] > div > div > div > [data-testid="stVerticalBlock"]
+          > [data-testid="stHorizontalBlock"]
+          > [data-testid="column"]:nth-child(2) .stButton > button:hover {
+            border-color: rgba(203,213,225,0.65) !important;
+            color: #F1F5F9 !important;
+            background: rgba(255,255,255,0.06) !important;
+        }
+        </style>""",
+        unsafe_allow_html=True,
     )
+
     _subtitle = tt("Çok Kriterli Karar Destek Sistemi", "Multi-Criteria Decision Support System")
     _desc = tt(
         "Akademik düzeyde ağırlıklandırma ve sıralama analizleri gerçekleştirin. "
@@ -7362,40 +7708,96 @@ def _render_auth_gate(auth_settings: access.AuthSettings) -> None:
         "Run academic-grade weighting and ranking analyses. "
         "Upload your data, choose your method, and generate publication-ready reports in minutes."
     )
-    _cta = tt("Ücretsiz giriş yapın ve hemen başlayın", "Sign in for free and get started")
-    _vid = tt("Tanıtım Videosu", "Demo Video")
+    _dedication = tt(
+        "Çocuklarım M. Eymen ve H. Serra'ya İthafen",
+        "Dedicated to My Children M. Eymen and H. Serra"
+    )
+    _cta_text = tt(
+        "⬇&nbsp; Ücretsiz hesap oluşturun ve hemen kullanmaya başlayın!",
+        "⬇&nbsp; Create your free account and start using it right away!"
+    )
+    _h1_sub = tt("Karar Destek Sistemi", "Decision Support System")
+
+    _stat_label_total  = tt("Toplam Yöntem", "Total Methods")
+    _stat_label_klasik = tt("Klasik Sıralama", "Classical Ranking")
+    _stat_label_fuzzy  = tt("Bulanık Yöntem", "Fuzzy Methods")
+    _stat_label_obj    = tt("Objektif Ağırlık", "Objective Weighting")
+    _stat_label_subj   = tt("Sübjektif Ağırlık", "Subjective Weighting")
+
+    _card_base = (
+        "border-radius:12px;padding:0.65rem 1.1rem;text-align:center;"
+        "min-width:90px;flex:1;"
+    )
+    _num_base = "font-size:1.9rem;font-weight:800;line-height:1.1;margin-bottom:0.15rem;"
+    _lbl_base = "font-size:0.68rem;letter-spacing:0.07em;text-transform:uppercase;color:#94A3B8;"
+
+    _stats_html = f"""
+<div style="display:flex;gap:0.65rem;flex-wrap:wrap;margin-bottom:1.5rem;">
+  <div style="{_card_base}background:rgba(249,115,22,0.18);border:1px solid rgba(249,115,22,0.38);">
+    <div style="{_num_base}color:#F97316;text-shadow:0 0 18px rgba(249,115,22,0.5);">57</div>
+    <div style="{_lbl_base}">{_stat_label_total}</div>
+  </div>
+  <div style="{_card_base}background:rgba(96,165,250,0.12);border:1px solid rgba(96,165,250,0.28);">
+    <div style="{_num_base}color:#60A5FA;">24</div>
+    <div style="{_lbl_base}">{_stat_label_klasik}</div>
+  </div>
+  <div style="{_card_base}background:rgba(167,139,250,0.12);border:1px solid rgba(167,139,250,0.28);">
+    <div style="{_num_base}color:#A78BFA;">24</div>
+    <div style="{_lbl_base}">{_stat_label_fuzzy}</div>
+  </div>
+  <div style="{_card_base}background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.28);">
+    <div style="{_num_base}color:#34D399;">9</div>
+    <div style="{_lbl_base}">{_stat_label_obj}</div>
+  </div>
+  <div style="{_card_base}background:rgba(251,146,60,0.12);border:1px solid rgba(251,146,60,0.28);">
+    <div style="{_num_base}color:#FB923C;">5</div>
+    <div style="{_lbl_base}">{_stat_label_subj}</div>
+  </div>
+</div>"""
+
     st.markdown(
-        f"""<div style="background-color: #020b18; background-image: radial-gradient(1px 1px at 5% 10%, rgba(255,255,255,0.95) 0%, transparent 100%), radial-gradient(1.5px 1.5px at 12% 22%, rgba(255,255,255,0.8) 0%, transparent 100%), radial-gradient(1px 1px at 18% 5%, rgba(255,255,255,0.9) 0%, transparent 100%), radial-gradient(2px 2px at 25% 35%, rgba(255,255,255,0.6) 0%, transparent 100%), radial-gradient(1px 1px at 30% 15%, rgba(200,220,255,0.9) 0%, transparent 100%), radial-gradient(1.5px 1.5px at 38% 48%, rgba(255,255,255,0.7) 0%, transparent 100%), radial-gradient(1px 1px at 43% 8%, rgba(255,255,255,0.85) 0%, transparent 100%), radial-gradient(2px 2px at 50% 28%, rgba(180,200,255,0.8) 0%, transparent 100%), radial-gradient(1px 1px at 55% 60%, rgba(255,255,255,0.7) 0%, transparent 100%), radial-gradient(1.5px 1.5px at 62% 18%, rgba(255,255,255,0.9) 0%, transparent 100%), radial-gradient(1px 1px at 68% 42%, rgba(255,255,255,0.75) 0%, transparent 100%), radial-gradient(2px 2px at 74% 12%, rgba(200,215,255,0.85) 0%, transparent 100%), radial-gradient(1px 1px at 80% 55%, rgba(255,255,255,0.8) 0%, transparent 100%), radial-gradient(1.5px 1.5px at 85% 30%, rgba(255,255,255,0.65) 0%, transparent 100%), radial-gradient(1px 1px at 90% 8%, rgba(255,255,255,0.9) 0%, transparent 100%), radial-gradient(2px 2px at 95% 45%, rgba(180,210,255,0.7) 0%, transparent 100%), radial-gradient(1px 1px at 8% 72%, rgba(255,255,255,0.6) 0%, transparent 100%), radial-gradient(1.5px 1.5px at 15% 85%, rgba(255,255,255,0.75) 0%, transparent 100%), radial-gradient(1px 1px at 22% 65%, rgba(255,255,255,0.85) 0%, transparent 100%), radial-gradient(1px 1px at 35% 78%, rgba(200,220,255,0.7) 0%, transparent 100%), radial-gradient(2px 2px at 48% 88%, rgba(255,255,255,0.6) 0%, transparent 100%), radial-gradient(1px 1px at 58% 75%, rgba(255,255,255,0.8) 0%, transparent 100%), radial-gradient(1.5px 1.5px at 70% 82%, rgba(255,255,255,0.7) 0%, transparent 100%), radial-gradient(1px 1px at 78% 68%, rgba(180,200,255,0.85) 0%, transparent 100%), radial-gradient(1px 1px at 88% 90%, rgba(255,255,255,0.65) 0%, transparent 100%), radial-gradient(1.5px 1.5px at 93% 72%, rgba(255,255,255,0.8) 0%, transparent 100%), radial-gradient(ellipse at 70% 20%, rgba(20,50,100,0.5) 0%, transparent 55%), radial-gradient(ellipse at 15% 60%, rgba(10,30,70,0.4) 0%, transparent 45%), linear-gradient(180deg, #020810 0%, #040e1f 40%, #061228 100%); border-radius: 16px; padding: 2.8rem 2.5rem 2.4rem 2.5rem; margin-bottom: 1.5rem; position: relative; overflow: hidden;">
-<div><div style="font-size:0.78rem;font-weight:500;letter-spacing:0.12em;color:#60A5FA;text-transform:uppercase;margin-bottom:0.25rem;">✦ &nbsp; {_subtitle}</div>
+        f"""<div style="background-color:#020b18;background-image:radial-gradient(1px 1px at 5% 10%,rgba(255,255,255,.95) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 12% 22%,rgba(255,255,255,.8) 0%,transparent 100%),radial-gradient(1px 1px at 18% 5%,rgba(255,255,255,.9) 0%,transparent 100%),radial-gradient(2px 2px at 25% 35%,rgba(255,255,255,.6) 0%,transparent 100%),radial-gradient(1px 1px at 30% 15%,rgba(200,220,255,.9) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 38% 48%,rgba(255,255,255,.7) 0%,transparent 100%),radial-gradient(1px 1px at 43% 8%,rgba(255,255,255,.85) 0%,transparent 100%),radial-gradient(2px 2px at 50% 28%,rgba(180,200,255,.8) 0%,transparent 100%),radial-gradient(1px 1px at 55% 60%,rgba(255,255,255,.7) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 62% 18%,rgba(255,255,255,.9) 0%,transparent 100%),radial-gradient(1px 1px at 68% 42%,rgba(255,255,255,.75) 0%,transparent 100%),radial-gradient(2px 2px at 74% 12%,rgba(200,215,255,.85) 0%,transparent 100%),radial-gradient(1px 1px at 80% 55%,rgba(255,255,255,.8) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 85% 30%,rgba(255,255,255,.65) 0%,transparent 100%),radial-gradient(1px 1px at 90% 8%,rgba(255,255,255,.9) 0%,transparent 100%),radial-gradient(2px 2px at 95% 45%,rgba(180,210,255,.7) 0%,transparent 100%),radial-gradient(1px 1px at 8% 72%,rgba(255,255,255,.6) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 15% 85%,rgba(255,255,255,.75) 0%,transparent 100%),radial-gradient(1px 1px at 22% 65%,rgba(255,255,255,.85) 0%,transparent 100%),radial-gradient(1px 1px at 35% 78%,rgba(200,220,255,.7) 0%,transparent 100%),radial-gradient(2px 2px at 48% 88%,rgba(255,255,255,.6) 0%,transparent 100%),radial-gradient(1px 1px at 58% 75%,rgba(255,255,255,.8) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 70% 82%,rgba(255,255,255,.7) 0%,transparent 100%),radial-gradient(1px 1px at 78% 68%,rgba(180,200,255,.85) 0%,transparent 100%),radial-gradient(1px 1px at 88% 90%,rgba(255,255,255,.65) 0%,transparent 100%),radial-gradient(1.5px 1.5px at 93% 72%,rgba(255,255,255,.8) 0%,transparent 100%),radial-gradient(ellipse at 70% 20%,rgba(20,50,100,.5) 0%,transparent 55%),radial-gradient(ellipse at 15% 60%,rgba(10,30,70,.4) 0%,transparent 45%),linear-gradient(180deg,#020810 0%,#040e1f 40%,#061228 100%);border-radius:16px;padding:2.8rem 2.5rem 2rem 2.5rem;margin-bottom:0.5rem;position:relative;overflow:hidden;">
+<div style="font-size:0.78rem;font-weight:500;letter-spacing:0.12em;color:#60A5FA;text-transform:uppercase;margin-bottom:0.25rem;">✦ &nbsp; {_subtitle}</div>
 <div style="font-size:0.92rem;color:#94A3B8;font-style:italic;margin-bottom:0.7rem;letter-spacing:0.02em;">Prof. Dr. Ömer Faruk Rençber</div>
-<h1 style="font-size:2.5rem;font-weight:800;margin:0 0 0.7rem 0;line-height:1.15;"><span style="color:#F97316;text-shadow:0 0 28px rgba(249,115,22,0.45);">MCDM</span><span style="color:#FFFFFF;text-shadow:0 0 30px rgba(96,165,250,0.25);"> Toolbox</span></h1>
-<p style="font-size:1.02rem;color:#CBD5E1;max-width:680px;line-height:1.7;margin:0 0 1.5rem 0;">{_desc}</p>
-<div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:1.8rem;">{_badge_html}</div>
-<div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;">
-<div style="background:#F59E0B;color:#1B1B1B;border-radius:10px;padding:0.65rem 1.3rem;font-size:0.93rem;font-weight:700;">🔐 {_cta}</div>
-<a href="https://youtu.be/jp4oih6_Nec" target="_blank" style="display:inline-block;background:#DC2626;color:#FFFFFF;text-decoration:none;border-radius:10px;padding:0.65rem 1.1rem;font-size:0.9rem;font-weight:600;">🎥 {_vid}</a>
-<a href="https://www.instagram.com/mcdm_dss/" target="_blank" style="display:inline-block;background:#C13584;color:#FFFFFF;text-decoration:none;border-radius:10px;padding:0.65rem 1.1rem;font-size:0.9rem;font-weight:600;">📸 @mcdm_dss</a>
-</div></div></div>""",
+<h1 style="font-size:2.5rem;font-weight:800;margin:0 0 0.7rem 0;line-height:1.15;"><span style="color:#F97316;text-shadow:0 0 28px rgba(249,115,22,0.45);">MCDM</span><span style="display:inline-block;margin-left:0.38rem;font-size:0.26em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#FFFFFF;text-shadow:0 0 24px rgba(96,165,250,0.2);vertical-align:middle;">{_h1_sub}</span></h1>
+<p style="font-size:1.02rem;color:#CBD5E1;max-width:680px;line-height:1.7;margin:0 0 1.4rem 0;">{_desc}</p>
+{_stats_html}
+<div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:1rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.6rem;">
+  <span style="font-size:0.95rem;font-weight:700;color:#FCD34D;letter-spacing:0.01em;">{_cta_text}</span>
+  <span style="font-size:0.75rem;color:#475569;font-style:italic;">✦ {_dedication}</span>
+</div>
+</div>""",
         unsafe_allow_html=True,
     )
 
-    auth_col1, auth_col2 = st.columns(2)
-    with auth_col1:
+    # Giriş / Kayıt butonları — col1: sarı CTA, col2: outline login
+    _btn_col1, _btn_col2, _btn_spacer = st.columns([1.6, 1, 0.8])
+    with _btn_col1:
         st.button(
-            tt("🔐 Giris Yap", "🔐 Sign In"),
-            on_click=access.login_user,
-            args=[auth_settings.provider],
-            width="stretch",
-            key="btn_auth_login_gate",
-        )
-    with auth_col2:
-        st.button(
-            tt("✉️ Ucretsiz Kayit Ol", "✉️ Create Free Account"),
+            tt("🚀 Ücretsiz Kayıt Ol · Hemen Başla", "🚀 Sign Up Free · Get Started Now"),
             on_click=access.login_user,
             args=[auth_settings.signup_provider],
             width="stretch",
             key="btn_auth_signup_gate",
         )
+    with _btn_col2:
+        st.button(
+            tt("🔐 Giriş Yap", "🔐 Sign In"),
+            on_click=access.login_user,
+            args=[auth_settings.provider],
+            width="stretch",
+            key="btn_auth_login_gate",
+        )
+
+    # YouTube & Instagram
+    _vid = tt("Tanıtım Videosu", "Demo Video")
+    st.markdown(
+        f'<div style="margin-top:0.8rem;display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;">'
+        f'<a href="https://youtu.be/jp4oih6_Nec" target="_blank" style="display:inline-block;background:#DC2626;color:#FFFFFF;text-decoration:none;border-radius:8px;padding:0.45rem 0.9rem;font-size:0.82rem;font-weight:600;">🎥 {_vid}</a>'
+        f'<a href="https://www.instagram.com/mcdm_dss/" target="_blank" style="display:inline-block;background:#C13584;color:#FFFFFF;text-decoration:none;border-radius:8px;padding:0.45rem 0.9rem;font-size:0.82rem;font-weight:600;">📸 @mcdm_dss</a>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
     st.caption(tt(auth_settings.privacy_notice_tr, auth_settings.privacy_notice_en))
     st.stop()
 
@@ -7518,10 +7920,7 @@ missing_strategy, clip_outliers = "Sil", False  # defaults (logged-out veya data
 
 with st.sidebar:
     _logo_path = APP_DIR / "logo.png"
-    _sidebar_logo_b64 = None
-    if _logo_path.exists():
-        with open(_logo_path, "rb") as _logo_file:
-            _sidebar_logo_b64 = base64.b64encode(_logo_file.read()).decode("utf-8")
+    _sidebar_logo_b64 = _encoded_image_b64(str(_logo_path))
     if _sidebar_logo_b64:
         st.markdown(
             f"""
@@ -7832,6 +8231,10 @@ if raw_data is None:
 _render_data_input_workspace(st.session_state.get("ui_lang", "TR"), raw_data is not None)
 raw_data = st.session_state.get("raw_data")
 if raw_data is None:
+    st.stop()
+_render_analysis_mini_banner()
+if not _ensure_mcdm_engine():
+    st.error(tt("Analiz motoru yuklenemedi. Lutfen kurulumunuzu kontrol edin.", "Analysis engine could not be loaded. Please check the installation."))
     st.stop()
 _ui_stage = _current_ui_stage()
 _loaded_shape = raw_data.shape if isinstance(raw_data, pd.DataFrame) else (0, 0)
@@ -9478,6 +9881,9 @@ if isinstance(panel_results, dict) and panel_results:
     panel_active_year = view_choice
     result = panel_results[view_choice]
 if result is None:
+    st.stop()
+if not _ensure_plotly_support():
+    st.error(tt("Grafik modulu yuklenemedi. Lutfen Plotly kurulumunu kontrol edin.", "Chart module could not be loaded. Please check the Plotly installation."))
     st.stop()
 
 _show_step_hint_once(

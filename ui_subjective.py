@@ -270,13 +270,25 @@ def render_subjective_component(criteria: list[str]):
         if st.button(tt("DEMATEL Hesapla & Uygula", "Calculate & Apply DEMATEL"), key="dem_btn"):
             try:
                 all_weights = []
+                any_singular = False
                 for df in dfs_dem:
                     dem_mat = df.to_numpy(dtype=float)
                     res = sub_engine.calc_dematel(dem_mat)
                     all_weights.append(res['weights'])
-                
+                    if res.get('singular_warning'):
+                        any_singular = True
+
                 final_w = aggregate_weights(all_weights)
                 apply_weights(final_w.tolist(), "DEMATEL")
+                if any_singular:
+                    st.warning(tt(
+                        "⚠️ Etki matrisi tekil (singular) — (I–X) tersi alınamadı. "
+                        "Ağırlıklar sıfır matrisinden hesaplandı; sonuçlar güvenilir olmayabilir. "
+                        "Lütfen matris değerlerini kontrol edin.",
+                        "⚠️ Influence matrix is singular — (I–X) could not be inverted. "
+                        "Weights were computed from a zero matrix; results may be unreliable. "
+                        "Please review your matrix values."
+                    ))
             except Exception as e:
                 st.error(f"Hata: {e}")
 
