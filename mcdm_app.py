@@ -8206,6 +8206,7 @@ if _current_user.is_logged_in:
 # ANA GÖVDE
 # ---------------------------------------------------------
 raw_data = st.session_state.get("raw_data")
+_render_analysis_mini_banner()
 if raw_data is None:
     st.markdown(
         f"""
@@ -8231,7 +8232,6 @@ if raw_data is None:
         """,
         unsafe_allow_html=True,
     )
-_render_analysis_mini_banner()
 _render_data_input_workspace(st.session_state.get("ui_lang", "TR"), raw_data is not None)
 raw_data = st.session_state.get("raw_data")
 if raw_data is None:
