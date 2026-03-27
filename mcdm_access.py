@@ -615,15 +615,15 @@ def update_display_name(auth_subject: str, name: str, analytics_settings: Analyt
 
 
 def login_user(provider: str | None = None) -> None:
-      if not provider:
-          provider = get_auth_settings().provider
-      if not provider:
-          st.error("Auth provider bulunamadı. Secrets yapılandırmasını kontrol edin.")
-          return
-      try:
-          st.login(provider)
-      except Exception as exc:
-          st.error(f"Giriş hatası [{provider}]: {exc}")
+    if not provider:
+        provider = get_auth_settings().provider
+    if not provider:
+        st.error("Auth provider bulunamadı. Secrets yapılandırmasını kontrol edin.")
+        return
+    try:
+        st.login(provider)
+    except Exception as exc:
+        st.error(f"Giriş hatası [{provider}]: {exc}")
 
 
 def auth_gate_context() -> Dict[str, Any]:
