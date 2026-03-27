@@ -819,10 +819,13 @@ def _get_app_css() -> str:
             gap: 1rem;
             padding: 0.58rem 0.95rem;
             margin: 0 0 0.85rem 0;
-            border-radius: 12px;
+            border-radius: 0 0 12px 12px;
             background: linear-gradient(120deg, #17324D 0%, #234768 52%, #16314C 100%);
             border: 1px solid rgba(184, 154, 92, 0.26);
             box-shadow: 0 8px 20px rgba(5, 13, 24, 0.12);
+            position: sticky;
+            top: 0;
+            z-index: 999;
         }
         .analysis-mini-banner-left {
             font-size: 0.9rem;
@@ -3289,7 +3292,7 @@ def _render_analysis_mini_banner() -> None:
         """
         <div class="analysis-mini-banner">
             <div class="analysis-mini-banner-left">MCDM-Karar Destek Sistemi</div>
-            <div class="analysis-mini-banner-right">Prof. Dr. Ömer Faruk Rençber</div>
+            <div class="analysis-mini-banner-right"><em>Prof. Dr. Ömer Faruk Rençber</em></div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -8228,11 +8231,11 @@ if raw_data is None:
         """,
         unsafe_allow_html=True,
     )
+_render_analysis_mini_banner()
 _render_data_input_workspace(st.session_state.get("ui_lang", "TR"), raw_data is not None)
 raw_data = st.session_state.get("raw_data")
 if raw_data is None:
     st.stop()
-_render_analysis_mini_banner()
 if not _ensure_mcdm_engine():
     st.error(tt("Analiz motoru yuklenemedi. Lutfen kurulumunuzu kontrol edin.", "Analysis engine could not be loaded. Please check the installation."))
     st.stop()
