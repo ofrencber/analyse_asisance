@@ -2443,100 +2443,123 @@ def generate_imrad_docx(
     md.append(f"*{disc}*\n")
     md.append("\n*MCDM Karar Destek Sistemi — Prof. Dr. Ömer Faruk Rençber*\n")
 
-    # ── CONVERT MD → DOCX ──
+    # ── CONVERT MD → HTML ──
     md_text = "\n".join(md)
+    import base64 as _b64
 
-    # Try pandoc first (best quality — native Word equations)
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8") as fm:
-            fm.write(md_text)
-            md_path = fm.name
-        docx_path = md_path.replace(".md", ".docx")
-        ref_path = str(Path(__file__).resolve().parent / "_reference.docx")
-        cmd = ["pandoc", md_path, "-o", docx_path, "--from", "markdown", "--to", "docx"]
-        if Path(ref_path).is_file():
-            cmd += ["--reference-doc", ref_path]
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        if proc.returncode == 0:
-            with open(docx_path, "rb") as fo:
-                out = fo.read()
-            import os
-            os.unlink(md_path)
-            os.unlink(docx_path)
-            for tp in _tmp_files:
-                try: os.unlink(tp)
-                except Exception: pass
-            return out
-    except Exception:
-        pass
-
-    # Fallback: python-docx (no native equations but functional)
-    try:
-        if not _ensure_docx():
-            return None
-        doc = Document()
-        _configure_doc(doc)
-        for line in md_text.split("\n"):
-            line = line.rstrip()
-            if not line:
-                doc.add_paragraph("")
+    def _md_to_html_body(md: str) -> str:
+        """Convert markdown to HTML with basic formatting."""
+        lines = md.split("\n")
+        html_parts = []
+        in_table = False
+        for line in lines:
+            s = line.strip()
+            if not s:
+                if in_table:
+                    html_parts.append("</table>")
+                    in_table = False
+                html_parts.append("<p>&nbsp;</p>")
                 continue
-            if line.startswith("# "):
-                _add_heading(doc, line[2:], level=1)
-            elif line.startswith("## "):
-                _add_heading(doc, line[3:], level=2)
-            elif line.startswith("### "):
-                _add_heading(doc, line[4:], level=3)
-            elif line.startswith("!["):
-                # Image: ![caption](path)
-                import re as _re
-                m = _re.match(r"!\[([^\]]*)\]\(([^)]+)\)", line)
+            if s.startswith("# "):
+                html_parts.append(f"<h1>{s[2:]}</h1>")
+            elif s.startswith("### "):
+                html_parts.append(f"<h3>{s[4:]}</h3>")
+            elif s.startswith("## "):
+                html_parts.append(f"<h2>{s[3:]}</h2>")
+            elif s.startswith("!["):
+                m = re.match(r"!\[([^\]]*)\]\(([^)]+)\)", s)
                 if m:
                     cap, img_path = m.group(1), m.group(2)
                     try:
-                        doc.add_picture(img_path, width=Inches(5))
-                        _add_paragraph(doc, cap, italic=True, font_size=10, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+                        with open(img_path, "rb") as _imgf:
+                            img_b64 = _b64.b64encode(_imgf.read()).decode()
+                        html_parts.append(f'<div class="fig"><img src="data:image/png;base64,{img_b64}" style="max-width:85%"><p class="cap">{cap}</p></div>')
                     except Exception:
                         pass
-            elif line.startswith("$$"):
-                # Display math — render as italic text
-                formula = line.strip("$").strip()
+            elif s.startswith("$$"):
+                formula = s.strip("$").strip()
                 if formula:
-                    p = doc.add_paragraph()
-                    run = p.add_run(formula)
-                    run.font.name = "Cambria Math"
-                    run.font.size = Pt(11)
-                    run.italic = True
-                    run.font.color.rgb = RGBColor(0, 0, 0)
-                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            elif line.startswith("|"):
-                # Table row — skip (tables won't render perfectly in fallback)
-                pass
-            elif line.startswith("---"):
-                doc.add_paragraph("─" * 40)
-            elif line.startswith("- "):
-                _add_paragraph(doc, line[2:])
-            elif line.startswith("*") and line.endswith("*") and not line.startswith("**"):
-                # Italic
-                _add_paragraph(doc, line.strip("*"), italic=True, font_size=10)
-            elif line.startswith("**") and line.endswith("**"):
-                _add_paragraph(doc, line.strip("*"), bold=True)
+                    html_parts.append(f'<div class="math">$${formula}$$</div>')
+            elif s.startswith("|"):
+                if not in_table:
+                    html_parts.append('<table class="dt">')
+                    in_table = True
+                if s.startswith("|--") or s.startswith("| --") or s.replace(" ","").replace("-","").replace("|","") == "":
+                    continue
+                cells = [c.strip() for c in s.split("|")[1:-1]]
+                if not any(c for c in cells):
+                    continue
+                tag = "th" if not any(c.replace("*","").strip() for c in cells if c.replace("*","").strip() and c.replace("*","").strip()[0].isdigit()) and html_parts[-1] == '<table class="dt">' else "td"
+                row_html = "".join(f"<{tag}>{c.replace('**','')}</{tag}>" for c in cells)
+                html_parts.append(f"<tr>{row_html}</tr>")
+            elif s.startswith("---"):
+                if in_table:
+                    html_parts.append("</table>")
+                    in_table = False
+                html_parts.append("<hr>")
+            elif s.startswith("- "):
+                html_parts.append(f"<p style='margin-left:1.5em;'>• {s[2:]}</p>")
+            elif s.startswith("***") and s.endswith("***"):
+                html_parts.append(f"<p><b><i>{s[3:-3]}</i></b></p>")
+            elif s.startswith("*") and s.endswith("*") and not s.startswith("**"):
+                html_parts.append(f"<p class='guide'><i>{s.strip('*')}</i></p>")
+            elif s.startswith("**") and s.endswith("**"):
+                html_parts.append(f"<p><b>{s.strip('*')}</b></p>")
             else:
-                # Remove markdown bold/italic markers
-                clean = line.replace("**", "").replace("***", "")
-                _add_paragraph(doc, clean)
+                # Inline bold/italic
+                processed = re.sub(r'\*\*([^*]+)\*\*', r'<b>\1</b>', s)
+                processed = re.sub(r'\*([^*]+)\*', r'<i>\1</i>', processed)
+                # Inline math
+                processed = re.sub(r'\$([^$]+)\$', r'\\(\1\\)', processed)
+                html_parts.append(f"<p>{processed}</p>")
+        if in_table:
+            html_parts.append("</table>")
+        return "\n".join(html_parts)
 
-        buf = io.BytesIO()
-        doc.save(buf)
-        for tp in _tmp_files:
-            try:
-                import os
-                os.unlink(tp)
-            except Exception:
-                pass
-        return buf.getvalue()
-    except Exception:
-        return None
+    body = _md_to_html_body(md_text)
+
+    html = f"""<!DOCTYPE html>
+<html lang="{'en' if lang == 'EN' else 'tr'}">
+<head>
+<meta charset="utf-8">
+<title>{_build_title(d, lang)}</title>
+<script>
+MathJax = {{tex: {{inlineMath: [['\\\\(','\\\\)']]}}, displayMath: [['$$','$$']]}};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+<style>
+@page {{ size: A4; margin: 2.5cm; }}
+body {{ font-family: 'Times New Roman', serif; font-size: 12pt; color: #000; line-height: 1.6; text-align: justify; max-width: 800px; margin: 0 auto; padding: 2em; }}
+h1 {{ font-size: 15pt; font-weight: bold; text-align: center; margin: 1em 0 0.5em; color: #000; }}
+h2 {{ font-size: 13pt; font-weight: bold; margin: 1em 0 0.4em; color: #000; border-bottom: 1px solid #ddd; padding-bottom: 0.2em; }}
+h3 {{ font-size: 12pt; font-weight: bold; margin: 0.8em 0 0.3em; color: #000; }}
+p {{ margin: 0.4em 0; }}
+.guide {{ font-style: italic; font-size: 10pt; color: #666; margin: 0.3em 0 0.8em; }}
+.math {{ text-align: center; margin: 0.8em 0; font-size: 11pt; }}
+.fig {{ text-align: center; margin: 1em 0; }}
+.fig img {{ max-width: 85%; border: 1px solid #eee; }}
+.cap {{ font-style: italic; font-size: 10pt; color: #333; margin-top: 0.3em; }}
+.dt {{ width: 100%; border-collapse: collapse; font-size: 10pt; margin: 0.8em 0; }}
+.dt th {{ background: #f0f0f0; border: 1px solid #ccc; padding: 5px 10px; text-align: left; font-weight: bold; }}
+.dt td {{ border: 1px solid #ddd; padding: 4px 10px; }}
+hr {{ border: none; border-top: 1px solid #ccc; margin: 1.5em 0; }}
+.footer {{ font-size: 9pt; font-style: italic; color: #666; margin-top: 2em; border-top: 1px solid #ccc; padding-top: 0.5em; }}
+</style>
+</head>
+<body>
+{body}
+</body>
+</html>"""
+
+    # Cleanup temp image files
+    for tp in _tmp_files:
+        try:
+            import os
+            os.unlink(tp)
+        except Exception:
+            pass
+
+    return html.encode("utf-8")
 
 
 

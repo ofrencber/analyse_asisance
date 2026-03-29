@@ -5933,22 +5933,17 @@ def _render_report_download_controls_core(lang: str) -> None:
         st.session_state["report_docx"] = doc_bytes
         st.session_state["download_blob_cache"] = blob_cache
 
-    # --- IMRAD article generation ---
+    # --- IMRAD article generation (HTML) ---
     imrad_key = f"imrad::{lang}"
     imrad_bytes = None
-    if docx_enabled:
-        if imrad_key not in blob_cache:
-            try:
-                selected_data = result.get("selected_data", pd.DataFrame())
-                blob_cache[imrad_key] = (
-                    mcdm_article.generate_panel_imrad_docx(panel_results, lang=lang)
-                    if is_panel_download
-                    else mcdm_article.generate_imrad_docx(result, selected_data, lang=lang)
-                )
-            except Exception:
-                blob_cache[imrad_key] = None
-        imrad_bytes = blob_cache.get(imrad_key)
-        st.session_state["download_blob_cache"] = blob_cache
+    if imrad_key not in blob_cache:
+        try:
+            selected_data = result.get("selected_data", pd.DataFrame())
+            blob_cache[imrad_key] = mcdm_article.generate_imrad_docx(result, selected_data, lang=lang)
+        except Exception:
+            blob_cache[imrad_key] = None
+    imrad_bytes = blob_cache.get(imrad_key)
+    st.session_state["download_blob_cache"] = blob_cache
 
     dl1, dl2, dl3 = st.columns(3)
     with dl1:
@@ -5980,19 +5975,19 @@ def _render_report_download_controls_core(lang: str) -> None:
             st.warning(tt("Word çıktısı için python-docx kurulu olmalıdır.", "python-docx must be installed for Word output."))
 
     with dl3:
-        if docx_enabled and imrad_bytes:
-            imrad_name = tt("MCDM_IMRAD_Makale.docx", "MCDM_IMRAD_Article.docx")
+        if imrad_bytes:
+            imrad_name = tt("MCDM_IMRAD_Makale.html", "MCDM_IMRAD_Article.html")
             _imrad_clicked = _render_export_download_button(
-                tt("📝 IMRAD Makale (Word)", "📝 IMRAD Article (Word)"),
+                tt("📝 IMRAD Makale (HTML)", "📝 IMRAD Article (HTML)"),
                 imrad_bytes,
                 imrad_name,
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "text/html",
                 key=f"download_imrad_results_{lang}",
             )
             if _imrad_clicked:
-                access.track_event("report_downloaded", {"format": "imrad_docx", "lang": lang, "is_panel": is_panel_download})
-            st.caption(tt("Formüller ve gerekçeler dahil makale taslağı. Tez ve dergi için.", "Article draft with formulas. For theses and journals."))
-        elif docx_enabled:
+                access.track_event("report_downloaded", {"format": "imrad_html", "lang": lang, "is_panel": is_panel_download})
+            st.caption(tt("Formüller ve gerekçeler dahil makale taslağı. Tarayıcıda açılır, yazdırılabilir.", "Article draft with formulas. Opens in browser, printable."))
+        else:
             st.caption(tt("IMRAD makale taslağı oluşturulamadı.", "IMRAD draft could not be generated."))
 
 if hasattr(st, "fragment"):
