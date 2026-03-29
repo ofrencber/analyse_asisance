@@ -2164,9 +2164,14 @@ def _write_references(doc, d: Dict[str, Any], lang: str, lang_code: str) -> None
 
 
 
-def _df_to_md_table(df):
+_COL_TR_EN = {"Kriter": "Criterion", "Ağırlık": "Weight", "ÖnemSırası": "Rank",
+              "Alternatif": "Alternative", "Skor": "Score", "Sıra": "Rank"}
+
+def _df_to_md_table(df, lang="TR"):
     """Convert DataFrame to markdown pipe table without tabulate dependency."""
     cols = list(df.columns)
+    if lang == "EN":
+        cols = [_COL_TR_EN.get(c, c) for c in cols]
     header = "| " + " | ".join(str(c) for c in cols) + " |"
     sep = "| " + " | ".join("---" for _ in cols) + " |"
     rows = []
@@ -2220,10 +2225,24 @@ def generate_imrad_docx(
     md.append(f"## {h['introduction']}\n")
     guide_intro = "This section should present the research problem, literature review, research gap, and contribution." if lang == "EN" else "Bu bölümde araştırma problemi, literatür taraması, araştırma boşluğu ve çalışmanın katkısı sunulmalıdır."
     md.append(f"*{guide_intro}*\n")
+
+    # 1.1 Çalışmanın Amacı ve Kapsamı
     if lang == "EN":
-        md.append(f"This study applies {wm} for criteria weighting" + (f" and {rm} for ranking" if rm else "") + f" on {d['n_alt']} alternatives and {d['n_crit']} criteria. The methodology integrates objective weight determination with systematic ranking and multi-layered robustness verification.\n")
+        md.append("### 1.1 Purpose and Scope of the Study\n")
+        md.append(f"The purpose of this study is to objectively evaluate the performance of {d['n_alt']} alternatives across {d['n_crit']} criteria and to produce a defensible preference ordering through a systematic multi-criteria decision-making (MCDM) framework. ")
+        md.append(f"Criteria weights are determined using the {wm} method, which derives importance levels directly from the data structure without requiring subjective expert judgment. ")
+        if rm:
+            md.append(f"The alternatives are then ranked using the {rm} method, which {'models measurement uncertainty through triangular fuzzy numbers (TFN)' if is_fuzzy else 'evaluates alternatives based on their distance to ideal and anti-ideal solutions'}. ")
+        md.append(f"The robustness of the results is validated through local sensitivity analysis, Monte Carlo simulation ({d['mc_n']} iterations), and cross-method comparison. ")
+        md.append("This multi-layered methodology ensures that the findings are not artifacts of a single assumption or parameter choice.\n")
     else:
-        md.append(f"Bu çalışmada {d['n_alt']} alternatif ve {d['n_crit']} kriter üzerinde {wm} ile ağırlıklandırma" + (f" ve {rm} ile sıralama" if rm else "") + " uygulanmaktadır. Önerilen metodoloji, nesnel ağırlık belirlemeyi sistematik sıralama ve çok katmanlı sağlamlık doğrulamasıyla bütünleştirmektedir.\n")
+        md.append("### 1.1 Çalışmanın Amacı ve Kapsamı\n")
+        md.append(f"Bu çalışmanın amacı, {d['n_alt']} alternatifin {d['n_crit']} kriter üzerindeki performansını nesnel biçimde değerlendirmek ve sistematik bir çok kriterli karar verme (ÇKKV) çerçevesiyle savunulabilir bir tercih sıralaması üretmektir. ")
+        md.append(f"Kriter ağırlıkları, uzman yargısına gerek duymaksızın verilerin kendi yapısından önem düzeylerini türeten {wm} yöntemiyle belirlenmektedir. ")
+        if rm:
+            md.append(f"Alternatifler, {'ölçüm belirsizliğini üçgensel bulanık sayılar (TFN) aracılığıyla modelleyen' if is_fuzzy else 'alternatiflerin ideal ve anti-ideal çözümlere uzaklığını değerlendiren'} {rm} yöntemiyle sıralanmaktadır. ")
+        md.append(f"Sonuçların sağlamlığı lokal duyarlılık analizi, Monte Carlo simülasyonu ({d['mc_n']} iterasyon) ve çapraz yöntem karşılaştırması ile doğrulanmaktadır. ")
+        md.append("Bu çok katmanlı metodoloji, bulguların tek bir varsayıma veya parametre seçimine bağımlı olmadığını garanti altına almaktadır.\n")
 
     # ── 2. METHOD ──
     md.append(f"## {h['method']}\n")
@@ -2233,6 +2252,42 @@ def generate_imrad_docx(
         md.append("The proposed methodology consists of three integrated layers: (1) objective criteria weighting from the raw decision matrix, " + ("(2) fuzzification of the decision matrix via TFN, " if is_fuzzy else "") + (f"({'3' if is_fuzzy else '2'}) systematic ranking, and ({'4' if is_fuzzy else '3'}) multi-layered robustness validation.\n"))
     else:
         md.append("Önerilen metodoloji birbiriyle bütünleşik üç katmandan oluşmaktadır: (1) ham karar matrisinden nesnel kriter ağırlıklandırma, " + ("(2) karar matrisinin TFN ile bulanıklaştırılması, " if is_fuzzy else "") + (f"({'3' if is_fuzzy else '2'}) sistematik sıralama ve ({'4' if is_fuzzy else '3'}) çok katmanlı sağlamlık doğrulaması.\n"))
+
+    # Philosophy of the methodology
+    if lang == "EN":
+        md.append("### 2.0 Philosophy of the Methodology\n")
+    else:
+        md.append("### 2.0 Yöntemin Felsefesi\n")
+
+    if lang == "EN":
+        # Use English justification texts for philosophy
+        w_en = _WEIGHT_JUSTIFICATION_EN.get(wm, "")
+        if w_en:
+            md.append(f"**{wm}:** {w_en}\n")
+        if rm:
+            base_rm = rm.replace("Fuzzy ", "")
+            r_en = _RANKING_JUSTIFICATION_EN.get(rm, "") or _RANKING_JUSTIFICATION_EN.get(base_rm, "")
+            if r_en:
+                md.append(f"**{rm}:** {r_en}\n")
+    else:
+        # Use Turkish academic philosophy from engine
+        try:
+            from mcdm_engine import METHOD_PHILOSOPHY as _MP
+            w_phil = _MP.get(wm, {})
+            if w_phil.get("academic"):
+                md.append(f"**{wm}:** {w_phil['academic']}\n")
+            if rm:
+                r_phil = _MP.get(rm, {}) or _MP.get(rm.replace('Fuzzy ', ''), {})
+                if r_phil.get("academic"):
+                    md.append(f"**{rm}:** {r_phil['academic']}\n")
+        except ImportError:
+            pass
+
+    if is_fuzzy:
+        if lang == "EN":
+            md.append("The fuzzy extension models measurement uncertainty and data imprecision through triangular fuzzy numbers (TFN). Rather than treating criterion values as deterministic quantities, TFN representation acknowledges that each observed value carries an implicit confidence interval, strengthening the defensibility of the ranking under uncertainty.\n")
+        else:
+            md.append("Bulanık uzantı, ölçüm belirsizliğini ve veri kesinliksizliğini üçgensel bulanık sayılar (TFN) aracılığıyla modellemektedir. Kriter değerlerini deterministik büyüklükler olarak ele almak yerine TFN temsili, her gözlenen değerin örtük bir güven aralığı taşıdığını kabul ederek sıralamanın belirsizlik altındaki savunulabilirliğini güçlendirmektedir.\n")
 
     # Flowchart
     try:
@@ -2265,31 +2320,39 @@ def generate_imrad_docx(
         else:
             md.append(f"{len(en)} alternatif ({', '.join(en)}) eşik tabanlı ön eleme prosedürü ile analiz dışı bırakılmıştır.\n")
 
-    # 2.2 Weight — Philosophy + Justification + Formulas
+    # 2.2 Weight — Justification + Formulas (philosophy is in section 2.0)
     md.append(f"### {h['method_weight']}\n")
-    try:
-        from mcdm_engine import METHOD_PHILOSOPHY
-        phil = METHOD_PHILOSOPHY.get(wm, {})
-        if phil.get("academic"):
-            md.append(phil["academic"] + "\n")
-    except ImportError:
-        pass
     wj = (_WEIGHT_JUSTIFICATION_EN if lang == "EN" else _WEIGHT_JUSTIFICATION_TR).get(wm, "")
     if wj:
         md.append(wj + "\n")
     wc = _find_template_content(wm, template["weight_methods"])
     if wc:
-        md.append(wc + "\n")
+        if lang == "EN":
+            # Template is Turkish — keep only formulas and step numbers
+            for line in wc.split("\n"):
+                s = line.strip()
+                if not s or s == "---":
+                    continue
+                if s.startswith("$$"):
+                    md.append(s + "\n")
+                elif s.startswith("Adım"):
+                    md.append(s.replace("Adım", "Step") + "\n")
+                elif s.startswith("**Dayanak"):
+                    md.append(s.replace("Dayanak:", "Reference:") + "\n")
+                # Skip Turkish prose lines in EN mode
+        else:
+            md.append(wc + "\n")
 
-    # 2.3 Ranking
+    # 2.3 Ranking (philosophy is in section 2.0)
     if rm:
         md.append(f"### {h['method_rank']}\n")
-        try:
-            rphil = METHOD_PHILOSOPHY.get(rm, {}) or METHOD_PHILOSOPHY.get(rm.replace("Fuzzy ", ""), {})
-            if rphil.get("academic"):
-                md.append(rphil["academic"] + "\n")
-        except Exception:
-            pass
+        if lang != "EN":
+            try:
+                rphil = METHOD_PHILOSOPHY.get(rm, {}) or METHOD_PHILOSOPHY.get(rm.replace("Fuzzy ", ""), {})
+                if rphil.get("academic"):
+                    md.append(rphil["academic"] + "\n")
+            except Exception:
+                pass
         base_rm = rm.replace("Fuzzy ", "")
         rj = (_RANKING_JUSTIFICATION_EN if lang == "EN" else _RANKING_JUSTIFICATION_TR).get(rm, "") or (_RANKING_JUSTIFICATION_EN if lang == "EN" else _RANKING_JUSTIFICATION_TR).get(base_rm, "")
         if rj:
@@ -2302,10 +2365,28 @@ def generate_imrad_docx(
                     md.append(f"The decision matrix was converted to TFN with {spread_txt}. Fuzzification is applied after weighting to preserve weight objectivity.\n")
                 else:
                     md.append(f"Karar matrisi {spread_txt} spread ile TFN'ye dönüştürülmüştür. Bulanıklaştırma adımı, ağırlık vektörünün nesnelliğini korumak amacıyla bilinçli olarak ağırlık hesabından sonraya konumlandırılmaktadır.\n")
-                md.append(fc_common + "\n")
+                _TR_EN_R = {"Adım": "Step", "Akış:": "Procedure:", "Dayanak:": "Reference:",
+                           "Fayda": "Benefit", "Maliyet": "Cost", "fayda": "benefit", "maliyet": "cost",
+                           "tüm alternatifleri": "all alternatives", "tüm kriterler": "all criteria",
+                           "Büyük": "Higher", "Düşük": "Lower", "varsayılan": "default"}
+                if lang == "EN":
+                    for line in fc_common.split("\n"):
+                        s = line.strip()
+                        if s.startswith("$$") or s.startswith("Adım"):
+                            md.append(s.replace("Adım", "Step") + "\n")
+                else:
+                    md.append(fc_common + "\n")
         rc = _find_template_content(rm, template["ranking_methods"])
         if rc:
-            md.append(rc + "\n")
+            if lang == "EN":
+                for line in rc.split("\n"):
+                    s = line.strip()
+                    if not s or s == "---":
+                        continue
+                    if s.startswith("$$") or s.startswith("Adım") or s.startswith("**Dayanak"):
+                        md.append(s.replace("Adım", "Step").replace("Dayanak:", "Reference:") + "\n")
+            else:
+                md.append(rc + "\n")
 
     # 2.4 Robustness
     md.append(f"### {h['method_robust']}\n")
@@ -2335,7 +2416,7 @@ def generate_imrad_docx(
             wt[c] = wt[c].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "")
         tbl_cap = f"**{'Table' if lang == 'EN' else 'Tablo'} 1.** {wm} {'weights' if lang == 'EN' else 'ağırlıkları'}."
         md.append(tbl_cap + "\n")
-        md.append(_df_to_md_table(wt) + "\n")
+        md.append(_df_to_md_table(wt, lang) + "\n")
     if lang != "EN":
         md.append(f"Tablo 1, {wm} yöntemiyle hesaplanan kriter ağırlıklarını sunmaktadır. Ağırlık değerleri, her kriterin karar sürecine olan göreli katkısını yansıtmaktadır.\n")
     else:
@@ -2367,7 +2448,7 @@ def generate_imrad_docx(
             for c in rt.select_dtypes(include=["float", "number"]).columns:
                 rt[c] = rt[c].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "")
             md.append(f"**{'Table' if lang == 'EN' else 'Tablo'} 2.** {rm} {'ranking' if lang == 'EN' else 'sıralaması'}.\n")
-            md.append(_df_to_md_table(rt) + "\n")
+            md.append(_df_to_md_table(rt, lang) + "\n")
         if lang != "EN":
             md.append(f"Tablo 2, {rm} yöntemiyle elde edilen alternatif sıralamasını göstermektedir. Skor değerleri, her alternatifin tüm kriterler bazındaki bütüncül performansını temsil etmektedir.\n")
         else:
@@ -2427,32 +2508,67 @@ def generate_imrad_docx(
 
     # ── 4. DISCUSSION ──
     md.append(f"## {h['discussion']}\n")
-    guide_disc = "Compare findings with literature, interpret the leader's advantage, discuss method strengths and limitations." if lang == "EN" else "Bulgular literatürle karşılaştırılmalı, liderin avantajı yorumlanmalı, yöntemin güçlü ve zayıf yönleri tartışılmalıdır."
+    guide_disc = "Compare findings with the literature, interpret the leader's advantage, and discuss method strengths and limitations." if lang == "EN" else "Bulgular literatürle karşılaştırılmalı, liderin avantajı yorumlanmalı, yöntemin güçlü ve zayıf yönleri tartışılmalıdır."
     md.append(f"*{guide_disc}*\n")
-    if d["top_alt"]:
-        if lang == "EN":
-            md.append(f"The leading position of **{d['top_alt']}** is supported by the weight distribution ({wm}) and scoring logic ({rm or wm}).\n")
-        else:
-            md.append(f"**{d['top_alt']}** alternatifinin lider konumu {wm} ağırlık dağılımı ve {rm or wm} skorlama mantığıyla desteklenmektedir.\n")
+
+    if lang == "EN":
+        if d["top_alt"]:
+            md.append(f"The analysis reveals that **{d['top_alt']}** achieves the highest score ({f(d['top_score'], lang)}) under the {wm} + {rm or wm} methodology. ")
+            gap = abs(d["top_score"] - d["second_score"])
+            if gap > 0.05:
+                md.append(f"The score gap of {f(gap, lang)} between the first and second alternatives indicates a clear separation, reinforcing the reliability of this finding. ")
+            else:
+                md.append(f"However, the narrow score gap of {f(gap, lang)} suggests that the top two alternatives perform comparably, warranting cautious interpretation. ")
+        if d["mean_spearman"] > 0:
+            md.append(f"Cross-method agreement (mean Spearman ρ = {f(d['mean_spearman'], lang)}) {'confirms that the ranking is robust to method selection' if d['mean_spearman'] >= 0.85 else 'indicates partial sensitivity to method choice, suggesting that the rationale for the selected method should be carefully documented'}. ")
+        md.append(f"\n\nThe strength of {wm} lies in its ability to derive weights directly from data without expert intervention, ensuring objectivity and reproducibility. ")
+        if rm:
+            md.append(f"{rm} complements this by providing a systematic scoring framework that {'incorporates measurement uncertainty through TFN modeling' if is_fuzzy else 'evaluates alternatives relative to ideal reference points'}. ")
+        md.append("The multi-layered robustness protocol (local sensitivity + Monte Carlo + cross-method comparison) ensures that the conclusions are not artifacts of a single assumption.\n")
+    else:
+        if d["top_alt"]:
+            md.append(f"Analiz sonuçları, {wm} + {rm or wm} metodolojisi altında **{d['top_alt']}** alternatifinin en yüksek skoru ({f(d['top_score'], lang)}) elde ettiğini ortaya koymaktadır. ")
+            gap = abs(d["top_score"] - d["second_score"])
+            if gap > 0.05:
+                md.append(f"Birinci ve ikinci alternatif arasındaki {f(gap, lang)} skor farkı net bir ayrışmaya işaret etmekte olup bu bulgunun güvenilirliğini pekiştirmektedir. ")
+            else:
+                md.append(f"Bununla birlikte, {f(gap, lang)} düzeyindeki dar skor farkı ilk iki alternatifin benzer performans sergilediğini göstermekte ve sonucun ihtiyatlı yorumlanmasını gerektirmektedir. ")
+        if d["mean_spearman"] > 0:
+            md.append(f"Yöntemler arası uyum (ortalama Spearman ρ = {f(d['mean_spearman'], lang)}) {'sıralamanın yöntem seçimine karşı dayanıklı olduğunu doğrulamaktadır' if d['mean_spearman'] >= 0.85 else 'sıralamanın yöntem seçimine kısmen duyarlı olduğuna işaret etmekte olup seçilen yöntemin gerekçesinin dikkatle belgelenmesi gerekmektedir'}. ")
+        md.append(f"\n\n{wm} yönteminin güçlü yönü, ağırlıkları uzman müdahalesine gerek kalmadan doğrudan veriden türetebilmesi, böylece nesnellik ve tekrar üretilebilirlik sağlamasıdır. ")
+        if rm:
+            md.append(f"{rm} yöntemi bunu, {'ölçüm belirsizliğini TFN modellemesiyle skorlama sürecine dahil eden' if is_fuzzy else 'alternatifleri ideal referans noktalarına göre değerlendiren'} sistematik bir skorlama çerçevesi sunarak tamamlamaktadır. ")
+        md.append("Çok katmanlı sağlamlık protokolü (lokal duyarlılık + Monte Carlo + çapraz yöntem karşılaştırması) sonuçların tek bir varsayımın yapıtı olmadığını garanti altına almaktadır.\n")
 
     # ── 5. CONCLUSION ──
     md.append(f"## {h['conclusion']}\n")
-    guide_conc = "Summarize key findings, state contribution, suggest future work." if lang == "EN" else "Ana bulguları özetleyin, katkıyı belirtin, gelecek çalışma önerin."
+    guide_conc = "Summarize key findings, state the contribution, and suggest future research directions." if lang == "EN" else "Ana bulguları özetleyiniz, çalışmanın katkısını belirtiniz ve gelecek araştırma yönlerini öneriniz."
     md.append(f"*{guide_conc}*\n")
     if lang == "EN":
-        md.append(f"This study evaluated {d['n_alt']} alternatives across {d['n_crit']} criteria using {wm}" + (f" and {rm}" if rm else "") + ".")
+        md.append(f"This study presented a multi-criteria evaluation framework integrating {wm} for objective criteria weighting" + (f" and {rm} for alternative ranking" if rm else "") + f", applied to {d['n_alt']} alternatives across {d['n_crit']} criteria. ")
+        if d["top_alt"]:
+            if stab >= 0.80:
+                md.append(f"**{d['top_alt']}** ranked first consistently across all robustness tests (MC stability: {f(stab*100, lang, 1)}%), establishing a reliable reference point for decision-makers. ")
+            elif stab >= 0.60:
+                md.append(f"**{d['top_alt']}** showed relative advantage ({f(stab*100, lang, 1)}% stability), though the result should be interpreted alongside the sensitivity findings. ")
+            else:
+                md.append(f"**{d['top_alt']}** achieved the highest score, but the low stability ({f(stab*100, lang, 1)}%) suggests sensitivity to weight perturbations. ")
+        md.append("The proposed methodology contributes to the literature by integrating data-driven weighting with multi-layered robustness validation within a unified decision support framework.\n")
     else:
-        md.append(f"Bu çalışmada {wm}" + (f" ve {rm}" if rm else "") + f" ile {d['n_alt']} alternatif ve {d['n_crit']} kriter değerlendirilmiştir.")
-    if d["top_alt"] and stab >= 0.60:
-        if lang == "EN":
-            md.append(f" **{d['top_alt']}** emerged as the leader ({f(stab*100, lang, 1)}% stability).\n")
-        else:
-            md.append(f" **{d['top_alt']}** lider olarak belirlenmiştir (%{f(stab*100, lang, 1)} kararlılık).\n")
-    else:
-        md.append("\n")
+        md.append(f"Bu çalışmada, {d['n_alt']} alternatif ve {d['n_crit']} kriter üzerinde {wm} ile nesnel kriter ağırlıklandırma" + (f" ve {rm} ile alternatif sıralama" if rm else "") + "yı bütünleştiren çok kriterli bir değerlendirme çerçevesi sunulmuştur. ")
+        if d["top_alt"]:
+            if stab >= 0.80:
+                md.append(f"**{d['top_alt']}** alternatifi tüm sağlamlık testlerinde tutarlı biçimde birinci sırada yer almış (MC kararlılık: %{f(stab*100, lang, 1)}) ve karar vericiler için güvenilir bir referans noktası oluşturmuştur. ")
+            elif stab >= 0.60:
+                md.append(f"**{d['top_alt']}** alternatifi göreli avantaj sergilemiştir (%{f(stab*100, lang, 1)} kararlılık); bununla birlikte sonucun duyarlılık bulguları eşliğinde değerlendirilmesi önerilmektedir. ")
+            else:
+                md.append(f"**{d['top_alt']}** en yüksek skoru elde etmiş olmakla birlikte düşük kararlılık düzeyi (%{f(stab*100, lang, 1)}) ağırlık pertürbasyonlarına duyarlılığa işaret etmektedir. ")
+        md.append("Önerilen metodoloji, veri temelli ağırlıklandırmayı çok katmanlı sağlamlık doğrulamasıyla bütünleşik bir karar destek çerçevesi içinde birleştirerek literatüre katkı sağlamaktadır.\n")
 
     # ── REFERENCES ──
     md.append(f"## {h['references']}\n")
+    # System citation — always first
+    md.append("- Rençber, Ö. F. (2026). MCDM Karar Destek Sistemi (Version 1.1) [Computer software]. https://mcdm-assistance.streamlit.app/\n")
     try:
         from mcdm_engine import _report_references
         for ref in _report_references(d["weight_method"], d["ranking_method"]):
