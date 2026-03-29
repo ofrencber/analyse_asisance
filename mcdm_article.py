@@ -2391,19 +2391,19 @@ def generate_imrad_docx(
     # 2.4 Robustness
     md.append(f"### {h['method_robust']}\n")
     if lang == "EN":
-        rob = "Reliability was verified through: (1) local sensitivity (±10%/±20% per criterion, " + str(d['n_crit']*4) + " scenarios)"
+        md.append("A ranking result is only as credible as its resilience to the assumptions it rests upon. For this reason, the robustness of the findings is assessed through a multi-layered verification protocol combining three independent tests.\n")
+        md.append(f"**(1) Local Sensitivity Analysis:** Each criterion weight is perturbed by ±10% and ±20% while the remaining weights are re-normalized, producing {d['n_crit']*4} scenarios. For each scenario, the Spearman rank correlation between the perturbed ranking and the base ranking is computed. High correlation (close to 1.0) indicates that the ranking is stable against weight changes on that criterion.\n")
         if d["mc_n"] > 0:
-            rob += f", (2) Monte Carlo (N={d['mc_n']}, σ={f(d['mc_sigma'], lang)})"
+            md.append(f"**(2) Monte Carlo Simulation:** The weight vector is randomly perturbed {d['mc_n']} times using log-normal noise with standard deviation sigma = {f(d['mc_sigma'], lang)}. In each iteration, the ranking is recomputed and the first-place alternative is recorded. The stability rate represents the percentage of iterations in which the base leader retains first place. Stability above 80% is considered high, 60-80% moderate, and below 60% low.\n")
         if d["comp_methods"]:
-            rob += f", (3) cross-method comparison ({', '.join(d['comp_methods'][:3])})"
-        md.append(rob + ".\n")
+            md.append(f"**(3) Cross-Method Comparison:** The ranking is independently computed using {', '.join(d['comp_methods'][:3])} and pairwise Spearman rank correlations are calculated. High average agreement confirms that the findings are not artifacts of the chosen method.\n")
     else:
-        rob = "Sonuçların güvenilirliği aşağıdaki çok katmanlı sağlamlık protokolü ile doğrulanmaktadır: (1) lokal duyarlılık (kriter başına ±%10/±%20, " + str(d['n_crit']*4) + " senaryo)"
+        md.append("Bir sıralama sonucu, ancak dayandığı varsayımlara karşı direncini kanıtladığı ölçüde güvenilir kabul edilmektedir. Bu nedenle bulguların sağlamlığı, birbirinden bağımsız üç testten oluşan çok katmanlı bir doğrulama protokolüyle değerlendirilmektedir.\n")
+        md.append(f"**(1) Lokal Duyarlılık Analizi:** Her kriter ağırlığı ±%10 ve ±%20 oranında değiştirilerek kalan ağırlıklar yeniden normalize edilmekte ve toplam {d['n_crit']*4} senaryo üretilmektedir. Her senaryoda, baz sıralama ile pertürbe edilmiş sıralama arasındaki Spearman sıra korelasyonu hesaplanmaktadır. 1.0'a yakın korelasyon, sıralamanın ilgili kriter ağırlığındaki değişimlere karşı kararlı olduğunu göstermektedir.\n")
         if d["mc_n"] > 0:
-            rob += f", (2) Monte Carlo (N={d['mc_n']}, σ={f(d['mc_sigma'], lang)})"
+            md.append(f"**(2) Monte Carlo Simülasyonu:** Ağırlık vektörü, sigma = {f(d['mc_sigma'], lang)} standart sapmalı log-normal gürültü kullanılarak {d['mc_n']} kez rastgele pertürbe edilmektedir. Her iterasyonda sıralama yeniden hesaplanarak birinci sıradaki alternatif kaydedilmektedir. Kararlılık oranı, baz liderin birinciliğini koruduğu iterasyonların yüzdesini temsil etmektedir. %80 üzeri yüksek, %60-80 arası orta, %60 altı düşük kararlılık olarak değerlendirilmektedir.\n")
         if d["comp_methods"]:
-            rob += f", (3) çapraz yöntem karşılaştırması ({', '.join(d['comp_methods'][:3])})"
-        md.append(rob + ".\n")
+            md.append(f"**(3) Çapraz Yöntem Karşılaştırması:** Sıralama, {', '.join(d['comp_methods'][:3])} yöntemleriyle bağımsız olarak hesaplanmakta ve ikili Spearman sıra korelasyonları elde edilmektedir. Yüksek ortalama uyum, bulguların seçilen yönteme özgü bir yapıt olmadığını doğrulamaktadır.\n")
 
     # ── 3. RESULTS ──
     md.append(f"## {h['results']}\n")
@@ -2649,7 +2649,7 @@ def generate_imrad_docx(
                 processed = re.sub(r'\*\*([^*]+)\*\*', r'<b>\1</b>', s)
                 processed = re.sub(r'\*([^*]+)\*', r'<i>\1</i>', processed)
                 # Inline math
-                processed = re.sub(r'\$([^$]+)\$', r'\\(\1\\)', processed)
+                processed = re.sub(r'\$([^$]+)\$', lambda m: re.sub(r'\\text\{([^}]*)\}', r'\1', m.group(1)), processed)
                 html_parts.append(f"<p>{processed}</p>")
         if in_table:
             html_parts.append("</table>")
