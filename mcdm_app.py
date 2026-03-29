@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 
 import mcdm_access as access
+import mcdm_article
 
 APP_DIR = Path(__file__).resolve().parent
 MAX_UPLOAD_SIZE_MB = 20
@@ -40,7 +41,6 @@ go = None
 spearmanr = None
 me = None
 
-
 def _ensure_pyreadstat() -> bool:
     global SPSS_AVAILABLE
     if SPSS_AVAILABLE is not None:
@@ -52,7 +52,6 @@ def _ensure_pyreadstat() -> bool:
     else:
         SPSS_AVAILABLE = True
     return bool(SPSS_AVAILABLE)
-
 
 def _ensure_docx_support() -> bool:
     global DOCX_AVAILABLE, Document, WD_ALIGN_PARAGRAPH, OxmlElement, qn, Inches, Pt
@@ -77,7 +76,6 @@ def _ensure_docx_support() -> bool:
     DOCX_AVAILABLE = True
     return True
 
-
 def _ensure_matplotlib_support() -> bool:
     global MPL_AVAILABLE, plt
     if MPL_AVAILABLE is not None:
@@ -96,7 +94,6 @@ def _ensure_matplotlib_support() -> bool:
     MPL_AVAILABLE = True
     return True
 
-
 def _ensure_plotly_support() -> bool:
     global px, go
     if px is not None and go is not None:
@@ -112,7 +109,6 @@ def _ensure_plotly_support() -> bool:
     go = _go
     return True
 
-
 def _ensure_spearman_support() -> bool:
     global spearmanr
     if spearmanr is not None:
@@ -124,7 +120,6 @@ def _ensure_spearman_support() -> bool:
         return False
     spearmanr = _spearmanr
     return True
-
 
 def _ensure_mcdm_engine() -> bool:
     global me
@@ -139,7 +134,7 @@ def _ensure_mcdm_engine() -> bool:
     return True
 
 st.set_page_config(
-    page_title="MCDM Toolbox — Prof. Dr. Ömer Faruk Rençber",
+    page_title="MCDM Karar Destek Sistemi — Prof. Dr. Ömer Faruk Rençber",
     page_icon="🔬",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -678,8 +673,12 @@ def _get_app_css() -> str:
         .layer-text { font-size: 0.87rem; color: var(--text-main); margin: 0; }
 
         /* ────── BADGES ────── */
-        .badge-benefit { background:#D4EFE2; color:#1A5C40; border-radius:5px; padding:0.1rem 0.35rem; font-size:0.65rem; font-weight:700; }
-        .badge-cost    { background:#FAE0E0; color:#7B1E1E; border-radius:5px; padding:0.1rem 0.35rem; font-size:0.65rem; font-weight:700; }
+        .badge-benefit { background:#D4EFE2; color:#1A5C40; border-radius:5px; padding:0.1rem 0.35rem; font-size:0.65rem; font-weight:700; border-left:3px solid #1A5C40; }
+        .badge-benefit::before { content:"▲ "; font-size:0.55rem; }
+        .badge-cost    { background:#FAE0E0; color:#7B1E1E; border-radius:5px; padding:0.1rem 0.35rem; font-size:0.65rem; font-weight:700; border-left:3px solid #7B1E1E; }
+        .badge-cost::before { content:"▼ "; font-size:0.55rem; }
+        .sidebar-version-badge { display:inline-block; margin-top:0.35rem; padding:0.15rem 0.55rem; font-size:0.58rem; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; color:#FFFFFF; background:linear-gradient(135deg, var(--accent) 0%, #2B6CA0 100%); border-radius:999px; }
+        .section-card-result { background:linear-gradient(135deg, #F7FBF7 0%, #FFFFFF 100%); border-radius:10px; padding:1rem 1.2rem; border:1px solid #C3DCC3; border-left:4px solid #2E7D32; margin-bottom:0.8rem; }
 
         /* ────── NETWORK ────── */
         .network-wrap {
@@ -819,13 +818,10 @@ def _get_app_css() -> str:
             gap: 1rem;
             padding: 0.58rem 0.95rem;
             margin: 0 0 0.85rem 0;
-            border-radius: 0 0 12px 12px;
+            border-radius: 12px;
             background: linear-gradient(120deg, #17324D 0%, #234768 52%, #16314C 100%);
             border: 1px solid rgba(184, 154, 92, 0.26);
             box-shadow: 0 8px 20px rgba(5, 13, 24, 0.12);
-            position: sticky;
-            top: 0;
-            z-index: 999;
         }
         .analysis-mini-banner-left {
             font-size: 0.9rem;
@@ -1150,7 +1146,6 @@ def method_internal_name(name: str) -> str:
             return tr_name
     return name
 
-
 def weight_method_groups() -> List[tuple[str, List[str]]]:
     return [
         (
@@ -1167,7 +1162,6 @@ def weight_method_groups() -> List[tuple[str, List[str]]]:
         ),
     ]
 
-
 def _wm_single_select_cb(selected_name: str, all_methods: List[str]) -> None:
     """Weight method checkbox on_change: enforce single selection."""
     if st.session_state.get(f"weight_cb_{selected_name}", False):
@@ -1178,7 +1172,6 @@ def _wm_single_select_cb(selected_name: str, all_methods: List[str]) -> None:
     else:
         _selected = [m for m in all_methods if st.session_state.get(f"weight_cb_{m}", False)]
         st.session_state["weight_method_pref"] = _selected[0] if _selected else None
-
 
 def ranking_method_groups(layer_key: str) -> List[tuple[str, List[str]]]:
     base_groups: List[tuple[str, List[str]]] = [
@@ -1837,7 +1830,8 @@ def _render_upload_data_source_section(lang: str) -> None:
         )
     )
 
-    with st.expander(tt("📐 Örnek veri formatı ve şablon", "📐 Sample data format and template"), expanded=False):
+    _show_tpl = st.checkbox(tt("📐 Örnek veri formatı ve şablonu göster", "📐 Show sample data format and template"), key="chk_show_template")
+    if _show_tpl:
         render_table(_input_format_notes(lang, panel=False))
         st.markdown(f"**{tt('Tek dönem örnek görünüm', 'Single-period example preview')}**")
         render_table(sample_dataset().head(5) if lang != "EN" else sample_dataset_en().head(5))
@@ -1848,7 +1842,7 @@ def _render_upload_data_source_section(lang: str) -> None:
                 data=generate_input_template_excel(lang=lang, panel=False),
                 file_name=tt("MCDM_Ornek_Format.xlsx", "MCDM_Sample_Format.xlsx"),
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                width="stretch",
+                use_container_width=True,
                 on_click="ignore",
             )
             if _single_tpl_clicked:
@@ -1862,7 +1856,7 @@ def _render_upload_data_source_section(lang: str) -> None:
                 data=generate_input_template_excel(lang="EN", panel=True),
                 file_name="MCDM_Panel_Template.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                width="stretch",
+                use_container_width=True,
                 on_click="ignore",
             )
             if _panel_tpl_clicked:
@@ -1879,15 +1873,15 @@ def _render_upload_data_source_section(lang: str) -> None:
     )
     sample_col_1, sample_col_2, sample_col_3 = st.columns(3)
     with sample_col_1:
-        if st.button(tt("📘 Örnek Veri (TR)", "📘 Sample Data (TR)"), width="stretch", key="btn_sample_tr_main"):
+        if st.button(tt("📘 Örnek Veri (TR)", "📘 Sample Data (TR)"), use_container_width=True, key="btn_sample_tr_main"):
             _stage_data_source(sample_dataset(), "sample_data_tr")
             st.rerun()
     with sample_col_2:
-        if st.button(tt("📗 Örnek Veri (EN)", "📗 Sample Data (EN)"), width="stretch", key="btn_sample_en_main"):
+        if st.button(tt("📗 Örnek Veri (EN)", "📗 Sample Data (EN)"), use_container_width=True, key="btn_sample_en_main"):
             _stage_data_source(sample_dataset_en(), "sample_data_en")
             st.rerun()
     with sample_col_3:
-        if st.button(tt("📙 Panel Veri (EN)", "📙 Panel Data (EN)"), width="stretch", key="btn_sample_panel_en_main"):
+        if st.button(tt("📙 Panel Veri (EN)", "📙 Panel Data (EN)"), use_container_width=True, key="btn_sample_panel_en_main"):
             _stage_data_source(sample_panel_dataset_en(), "sample_panel_en")
             st.rerun()
 
@@ -1917,9 +1911,10 @@ def _render_upload_data_source_section(lang: str) -> None:
                 f"Selected data is ready: {_pending_df.shape[0]} rows, {_pending_df.shape[1]} columns.",
             )
         )
-        with st.expander(tt("👀 Yüklenen veriyi önizle", "👀 Preview selected data"), expanded=False):
+        _show_preview = st.checkbox(tt("👀 Yüklenen veriyi önizle", "👀 Preview selected data"), key="chk_preview_upload")
+        if _show_preview:
             render_table(_pending_df.head(8))
-        if st.button(_data_ready_button_label(), key="btn_use_upload_data_main", width="stretch"):
+        if st.button(_data_ready_button_label(), key="btn_use_upload_data_main", use_container_width=True):
             _activate_data_source(_pending_df, _pending_id, "upload")
             st.rerun()
 
@@ -1959,7 +1954,8 @@ def _render_data_input_workspace(lang: str, is_data_loaded: bool) -> None:
         _render_data_input_workspace_body(lang)
 
 def _render_manual_entry_workspace(lang: str) -> None:
-    with st.expander(tt("✍️ Manuel tablo girişi", "✍️ Manual table entry"), expanded=st.session_state.get("analysis_result") is None):
+    st.markdown(f"#### {tt('✍️ Manuel tablo girişi', '✍️ Manual table entry')}")
+    with st.container():
         st.caption(
             tt(
                 "Dosya yuklemeden ilerlemek icin bu alani kullanin. En hizli akis: yapıyı bir kez kurun, sonra Excel'den toplu yapistirin veya tabloyu kaydedip devam edin.",
@@ -2039,7 +2035,7 @@ def _render_manual_entry_workspace(lang: str) -> None:
                         )
                 _apply_structure = st.form_submit_button(
                     tt("🧱 Yapıyı tabloya uygula", "🧱 Apply structure to table"),
-                    width="stretch",
+                    use_container_width=True,
                 )
 
             if _apply_structure:
@@ -2074,7 +2070,7 @@ def _render_manual_entry_workspace(lang: str) -> None:
             )
             _action_cols = st.columns(4)
             with _action_cols[0]:
-                if st.button(tt("🧪 Örnek değer yükle", "🧪 Load sample values"), key="btn_fill_manual_sample_main", width="stretch"):
+                if st.button(tt("🧪 Örnek değer yükle", "🧪 Load sample values"), key="btn_fill_manual_sample_main", use_container_width=True):
                     _base_manual = _seed_manual_entry_df(
                         st.session_state.get("manual_entry_df"),
                         _manual_rows,
@@ -2090,7 +2086,7 @@ def _render_manual_entry_workspace(lang: str) -> None:
                     )
                     st.rerun()
             with _action_cols[1]:
-                if st.button(tt("🧹 Tabloyu sıfırla", "🧹 Reset table"), key="btn_reset_manual_data_main", width="stretch"):
+                if st.button(tt("🧹 Tabloyu sıfırla", "🧹 Reset table"), key="btn_reset_manual_data_main", use_container_width=True):
                     st.session_state["manual_entry_df"] = _seed_manual_entry_df(
                         None,
                         _manual_rows,
@@ -2100,7 +2096,7 @@ def _render_manual_entry_workspace(lang: str) -> None:
                     )
                     st.rerun()
             with _action_cols[2]:
-                if st.button(tt("➕ 5 satır", "➕ Add 5 rows"), key="btn_add_5_manual_rows", width="stretch"):
+                if st.button(tt("➕ 5 satır", "➕ Add 5 rows"), key="btn_add_5_manual_rows", use_container_width=True):
                     _new_rows = _manual_rows + 5
                     st.session_state["manual_row_count"] = _new_rows
                     st.session_state["manual_entry_df"] = _seed_manual_entry_df(
@@ -2112,7 +2108,7 @@ def _render_manual_entry_workspace(lang: str) -> None:
                     )
                     st.rerun()
             with _action_cols[3]:
-                if st.button(tt("➕ 20 satır", "➕ Add 20 rows"), key="btn_add_20_manual_rows", width="stretch"):
+                if st.button(tt("➕ 20 satır", "➕ Add 20 rows"), key="btn_add_20_manual_rows", use_container_width=True):
                     _new_rows = _manual_rows + 20
                     st.session_state["manual_row_count"] = _new_rows
                     st.session_state["manual_entry_df"] = _seed_manual_entry_df(
@@ -2182,7 +2178,7 @@ def _render_manual_entry_workspace(lang: str) -> None:
                     )
                     _apply_bulk_paste = st.form_submit_button(
                         tt("⚡ Yapıştırılan veriyi tabloya uygula", "⚡ Apply pasted data to the table"),
-                        width="stretch",
+                        use_container_width=True,
                     )
 
                 if _apply_bulk_paste:
@@ -2214,9 +2210,9 @@ def _render_manual_entry_workspace(lang: str) -> None:
                         "Excel copies are usually tab-delimited; this field tries tab, semicolon, and comma separators.",
                     )
                 )
-                with st.expander(tt("👀 Kayıtlı tablo önizlemesi", "👀 Preview saved table"), expanded=False):
+                with st.container():
                     render_table(_manual_seed.head(8))
-                if st.button(_data_ready_button_label(), key="btn_use_manual_data_from_paste_main", width="stretch"):
+                if st.button(_data_ready_button_label(), key="btn_use_manual_data_from_paste_main", use_container_width=True):
                     try:
                         _prepared_manual = _prepare_manual_entry_df(
                             _manual_seed,
@@ -2237,7 +2233,7 @@ def _render_manual_entry_workspace(lang: str) -> None:
                         _manual_seed,
                         hide_index=True,
                         num_rows="fixed",
-                        width="stretch",
+                        use_container_width=True,
                         height=470,
                         key="manual_entry_editor",
                         column_config=_manual_col_cfg,
@@ -2246,13 +2242,13 @@ def _render_manual_entry_workspace(lang: str) -> None:
                     with _grid_btn_col1:
                         _save_manual_grid = st.form_submit_button(
                             tt("💾 Tablo düzenlemelerini kaydet", "💾 Save table edits"),
-                            width="stretch",
+                            use_container_width=True,
                         )
                     with _grid_btn_col2:
                         _save_and_continue_manual = st.form_submit_button(
                             tt("✅ Kaydet ve devam et", "✅ Save and continue"),
                             type="primary",
-                            width="stretch",
+                            use_container_width=True,
                         )
 
                 if _save_manual_grid or _save_and_continue_manual:
@@ -2374,7 +2370,7 @@ def generate_input_template_excel(lang: str = "TR", panel: bool = False) -> byte
 def guess_direction(col_name: str) -> str:
     lowered = col_name.lower()
     cost_keywords = ["maliyet", "risk", "süre", "borç", "gider", "hata", "şikayet", "kayip", "loss", "cost", "time", "defect"]
-    return "Min (Maliyet)" if any(k in lowered for k in cost_keywords) else "Max (Fayda)"
+    return "▼ Min (Maliyet)" if any(k in lowered for k in cost_keywords) else "▲ Max (Fayda)"
 
 def clean_dataframe(df: pd.DataFrame, missing_strategy: str, clip_outliers: bool) -> pd.DataFrame:
     out = df.copy()
@@ -2439,7 +2435,6 @@ def _safe_spearman(x: np.ndarray, y: np.ndarray) -> float:
         return float(rho)
     except Exception:
         return 0.0
-
 
 @st.cache_data(show_spinner=False)
 def _encoded_image_b64(path_str: str) -> str | None:
@@ -3274,7 +3269,8 @@ def _render_tracking_panel(
     if expanded is None:
         st.html(panel_html.strip())
     else:
-        with st.expander(f"{icon} {title}", expanded=expanded):
+        st.markdown(f"**{icon} {title}**")
+        with st.container():
             st.html(panel_html.strip())
 
 def _current_ui_stage() -> str:
@@ -3286,13 +3282,12 @@ def _current_ui_stage() -> str:
         return "step2"
     return "step1"
 
-
 def _render_analysis_mini_banner() -> None:
     st.markdown(
         """
         <div class="analysis-mini-banner">
             <div class="analysis-mini-banner-left">MCDM-Karar Destek Sistemi</div>
-            <div class="analysis-mini-banner-right"><em>Prof. Dr. Ömer Faruk Rençber</em></div>
+            <div class="analysis-mini-banner-right">Prof. Dr. Ömer Faruk Rençber</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -3618,7 +3613,6 @@ def _weight_radar_figure_bytes(weight_df: pd.DataFrame, lang: str) -> bytes | No
     except Exception:
         return None
 
-
 def _mc_stability_figure_bytes(mc_df: pd.DataFrame, lang: str) -> bytes | None:
     """Horizontal bar chart of Monte Carlo first-place rates; returns PNG bytes or None."""
     if mc_df is None or mc_df.empty:
@@ -3648,7 +3642,6 @@ def _mc_stability_figure_bytes(mc_df: pd.DataFrame, lang: str) -> bytes | None:
         return buf.getvalue()
     except Exception:
         return None
-
 
 def _sensitivity_heatmap_figure_bytes(local_df: pd.DataFrame, lang: str) -> bytes | None:
     """Heatmap of Spearman ρ by criterion × weight-change scenario; returns PNG bytes or None."""
@@ -3689,7 +3682,6 @@ def _sensitivity_heatmap_figure_bytes(local_df: pd.DataFrame, lang: str) -> byte
         return buf.getvalue()
     except Exception:
         return None
-
 
 def _doc_add_table_block(
     doc: "Document",
@@ -4254,7 +4246,7 @@ def _render_export_download_button(
         data=bytes(data),
         file_name=file_name,
         mime=mime,
-        width="stretch",
+        use_container_width=True,
         on_click="ignore",
         key=key,
     )
@@ -5941,7 +5933,26 @@ def _render_report_download_controls_core(lang: str) -> None:
         st.session_state["report_docx"] = doc_bytes
         st.session_state["download_blob_cache"] = blob_cache
 
-    dl1, dl2 = st.columns(2)
+    # --- IMRAD article generation ---
+    imrad_key = f"imrad::{lang}"
+    imrad_bytes = None
+    if docx_enabled:
+        if imrad_key not in blob_cache:
+            try:
+                selected_data = result.get("selected_data", pd.DataFrame())
+                blob_cache[imrad_key] = (
+                    mcdm_article.generate_panel_imrad_docx(panel_results, lang=lang)
+                    if is_panel_download
+                    else mcdm_article.generate_imrad_docx(result, selected_data, lang=lang)
+                )
+            except Exception as _imrad_exc:
+                blob_cache[imrad_key] = None
+                import traceback as _tb
+                st.session_state["_imrad_error"] = _tb.format_exc()
+        imrad_bytes = blob_cache.get(imrad_key)
+        st.session_state["download_blob_cache"] = blob_cache
+
+    dl1, dl2, dl3 = st.columns(3)
     with dl1:
         _excel_clicked = _render_export_download_button(
             tt("📊 Tüm Sonuçları İndir (Excel)", "📊 Download All Results (Excel)"),
@@ -5951,42 +5962,44 @@ def _render_report_download_controls_core(lang: str) -> None:
             key=f"download_excel_results_{lang}",
         )
         if _excel_clicked:
-            access.track_event(
-                "report_downloaded",
-                {
-                    "format": "excel",
-                    "lang": lang,
-                    "is_panel": is_panel_download,
-                },
-            )
-        st.caption(
-            tt(
-                "Tarayıcı indirme akışı kullanılır. Tarayıcınızda konum sorma açıksa yer seçme penceresi açılır.",
-                "The browser download flow is used. If your browser asks for a location, a save dialog will open.",
-            )
-        )
+            access.track_event("report_downloaded", {"format": "excel", "lang": lang, "is_panel": is_panel_download})
+        st.caption(tt("Tablolar, grafikler ve ham veriler. İş raporları için.", "Tables, charts and raw data. For business reports."))
 
     with dl2:
         if docx_enabled:
             docx_name = tt("MCDM_Akademik_Rapor.docx", "MCDM_Academic_Report.docx")
             _docx_clicked = _render_export_download_button(
-                tt("📄 Akademik Raporu İndir — APA Word", "📄 Download Academic Report — APA Word"),
+                tt("📄 Akademik Rapor — APA Word", "📄 Academic Report — APA Word"),
                 doc_bytes,
                 docx_name,
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 key=f"download_docx_results_{lang}",
             )
             if _docx_clicked:
-                access.track_event(
-                    "report_downloaded",
-                    {
-                        "format": "docx",
-                        "lang": lang,
-                        "is_panel": is_panel_download,
-                    },
-                )
+                access.track_event("report_downloaded", {"format": "docx", "lang": lang, "is_panel": is_panel_download})
+            st.caption(tt("Yorumlu rapor. Matematiğe hakim olmayan okuyucular için.", "Interpretive report for non-technical readers."))
         else:
             st.warning(tt("Word çıktısı için python-docx kurulu olmalıdır.", "python-docx must be installed for Word output."))
+
+    with dl3:
+        if docx_enabled and imrad_bytes:
+            imrad_name = tt("MCDM_IMRAD_Makale.docx", "MCDM_IMRAD_Article.docx")
+            _imrad_clicked = _render_export_download_button(
+                tt("📝 IMRAD Makale (Word)", "📝 IMRAD Article (Word)"),
+                imrad_bytes,
+                imrad_name,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key=f"download_imrad_results_{lang}",
+            )
+            if _imrad_clicked:
+                access.track_event("report_downloaded", {"format": "imrad_docx", "lang": lang, "is_panel": is_panel_download})
+            st.caption(tt("Formüller ve gerekçeler dahil makale taslağı. Tez ve dergi için.", "Article draft with formulas. For theses and journals."))
+        elif docx_enabled:
+            st.caption(tt("IMRAD makale taslağı oluşturulamadı.", "IMRAD draft could not be generated."))
+            _ie = st.session_state.get("_imrad_error")
+            if _ie:
+                with st.expander("Debug", expanded=False):
+                    st.code(_ie)
 
 if hasattr(st, "fragment"):
     _render_report_download_controls = st.fragment(_render_report_download_controls_core)
@@ -6844,7 +6857,6 @@ def _live_detail_commentary(method: str, detail_df: pd.DataFrame, alt_names: Dic
             f"<b>🔍 {label_found}</b> {found}<br><br>"
             f"<b>⚠️ {label_watch}</b> {watch}")
 
-
 def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str, str]) -> None:
     ranking = result.get("ranking", {}) or {}
     method = ranking.get("method")
@@ -6878,17 +6890,15 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
             render_table(localize_df(_flows_disp))
             fg1, fg2 = st.columns(2)
             with fg1:
-                st.plotly_chart(fig_promethee_flows(flows, alt_names), width="stretch")
-                with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
-                    st.markdown(f'<div class="commentary-box">{tt("PROMETHEE akış grafiği, her alternatifin diğerlerini ne ölçüde geçtiğini (Phi+) ve ne ölçüde geçildiğini (Phi-) birlikte gösterir. PhiNet çizgisi sıralamayı doğrudan belirler; yüksek net akış, ikili karşılaştırmalarda yapısal üstünlüğe işaret eder.", "The PROMETHEE flow chart shows how much each alternative outranks others (Phi+) and is outranked by others (Phi-) simultaneously. The PhiNet line directly determines the ranking; a high net flow indicates structural superiority in pairwise comparisons.")}</div>', unsafe_allow_html=True)
+                st.plotly_chart(fig_promethee_flows(flows, alt_names), use_container_width=True)
+                st.markdown(f'<div class="commentary-box">{tt("PROMETHEE akış grafiği, her alternatifin diğerlerini ne ölçüde geçtiğini (Phi+) ve ne ölçüde geçildiğini (Phi-) birlikte gösterir. PhiNet çizgisi sıralamayı doğrudan belirler; yüksek net akış, ikili karşılaştırmalarda yapısal üstünlüğe işaret eder.", "The PROMETHEE flow chart shows how much each alternative outranks others (Phi+) and is outranked by others (Phi-) simultaneously. The PhiNet line directly determines the ranking; a high net flow indicates structural superiority in pairwise comparisons.")}</div>', unsafe_allow_html=True)
             with fg2:
                 if isinstance(pref, pd.DataFrame) and not pref.empty:
                     st.plotly_chart(
                         fig_preference_heatmap(pref, alt_names, tt("PROMETHEE Tercih Matrisi", "PROMETHEE Preference Matrix")),
-                        width="stretch",
+                        use_container_width=True,
                     )
-                    with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
-                        st.markdown(f'<div class="commentary-box">{tt("Tercih matrisi ısı haritası, her alternatifin diğerine karşı ne kadar güçlü tercih ürettiğini gösterir. Satırdaki koyu hücreler baskınlığı, sütundaki koyu hücreler ise zayıf kalınan eşleşmeleri ortaya çıkarır.", "The preference matrix heatmap shows how strongly each alternative is preferred over another. Dark cells across a row indicate dominance, while dark cells down a column reveal pairings where the alternative is weak.")}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="commentary-box">{tt("Tercih matrisi ısı haritası, her alternatifin diğerine karşı ne kadar güçlü tercih ürettiğini gösterir. Satırdaki koyu hücreler baskınlığı, sütundaki koyu hücreler ise zayıf kalınan eşleşmeleri ortaya çıkarır.", "The preference matrix heatmap shows how strongly each alternative is preferred over another. Dark cells across a row indicate dominance, while dark cells down a column reveal pairings where the alternative is weak.")}</div>', unsafe_allow_html=True)
             if isinstance(gaia_alt, pd.DataFrame) and not gaia_alt.empty:
                 st.markdown(f"##### 🧭 {tt('PROMETHEE GAIA Düzlemi', 'PROMETHEE GAIA Plane')}")
                 if isinstance(gaia_axes, pd.DataFrame) and not gaia_axes.empty and "AçıklananVaryansOranı" in gaia_axes.columns:
@@ -6900,9 +6910,8 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
                                 f"GAIA1+GAIA2 explained variance: {(_exp_vals[0] + _exp_vals[1]) * 100:.1f}%",
                             )
                         )
-                st.plotly_chart(fig_promethee_gaia(gaia_alt, gaia_crit, gaia_dec, alt_names), width="stretch")
-                with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
-                    st.markdown(
+                st.plotly_chart(fig_promethee_gaia(gaia_alt, gaia_crit, gaia_dec, alt_names), use_container_width=True)
+                st.markdown(
                         f'<div class="commentary-box">{tt("GAIA nasıl okunur? 1) Noktalar alternatifleri gösterir; birbirine yakın noktalar benzer davranır. 2) Oklar kriter yönünü gösterir; bir alternatif okun ucuna yakınsa o kriterde daha güçlüdür, ters yöndeyse daha zayıftır. 3) Ok ne kadar uzunsa kriterin ayırt ediciliği o kadar yüksektir. 4) Kırmızı Δ oku modelin genel tercih yönüdür; bu yöne yakın alternatifler genelde üst sıralarda yer alır.", "How to read GAIA: 1) Points are alternatives; nearby points behave similarly. 2) Arrows are criterion directions; an alternative near an arrow tip is stronger on that criterion, opposite direction is weaker. 3) Longer arrows mean stronger discriminating power. 4) The red Δ arrow is the overall preference direction; alternatives close to it usually rank higher.")}</div>',
                         unsafe_allow_html=True,
                     )
@@ -6910,10 +6919,10 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
             shown = True
             st.plotly_chart(
                 fig_preference_heatmap(pref, alt_names, tt("PROMETHEE Tercih Matrisi", "PROMETHEE Preference Matrix")),
-                width="stretch",
+                use_container_width=True,
             )
             if isinstance(gaia_alt, pd.DataFrame) and not gaia_alt.empty:
-                st.plotly_chart(fig_promethee_gaia(gaia_alt, gaia_crit, gaia_dec, alt_names), width="stretch")
+                st.plotly_chart(fig_promethee_gaia(gaia_alt, gaia_crit, gaia_dec, alt_names), use_container_width=True)
 
     elif base_method == "TOPSIS":
         dist_df = details.get("distance_table")
@@ -6928,9 +6937,8 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
                 if col in _dist_disp.columns:
                     _dist_disp[col] = pd.to_numeric(_dist_disp[col], errors="coerce").round(4)
             render_table(localize_df(_dist_disp))
-            st.plotly_chart(fig_topsis_distance_scatter(dist_df, alt_names), width="stretch")
-            with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
-                st.markdown(f'<div class="commentary-box">{tt("TOPSIS uzaklık haritasında sağ üst bölgeye yaklaşan alternatifler ideala daha yakın ve negatif ideale daha uzaktır. Bu görünüm liderin yalnızca yüksek skor değil, aynı zamanda güçlü ayrışma ürettiğini göstermeye yarar.", "In the TOPSIS distance map, alternatives closer to the upper-right region are nearer to the ideal and farther from the negative ideal. This view shows whether the leader not only scores high but also separates strongly from the rest.")}</div>', unsafe_allow_html=True)
+            st.plotly_chart(fig_topsis_distance_scatter(dist_df, alt_names), use_container_width=True)
+            st.markdown(f'<div class="commentary-box">{tt("TOPSIS uzaklık haritasında sağ üst bölgeye yaklaşan alternatifler ideala daha yakın ve negatif ideale daha uzaktır. Bu görünüm liderin yalnızca yüksek skor değil, aynı zamanda güçlü ayrışma ürettiğini göstermeye yarar.", "In the TOPSIS distance map, alternatives closer to the upper-right region are nearer to the ideal and farther from the negative ideal. This view shows whether the leader not only scores high but also separates strongly from the rest.")}</div>', unsafe_allow_html=True)
 
     elif base_method == "VIKOR":
         vikor_df = details.get("vikor_table")
@@ -6945,9 +6953,8 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
                 if col in _vikor_disp.columns:
                     _vikor_disp[col] = pd.to_numeric(_vikor_disp[col], errors="coerce").round(4)
             render_table(localize_df(_vikor_disp))
-            st.plotly_chart(fig_vikor_components(vikor_df, alt_names), width="stretch")
-            with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
-                st.markdown(f'<div class="commentary-box">{tt("VIKOR bileşen grafiği grup faydası (S), bireysel pişmanlık (R) ve uzlaşı skoru (Q) arasındaki dengeyi görünür kılar. Düşük Q ile birlikte makul S ve R değerleri, lider alternatifin uzlaşı çözümü olarak daha savunulabilir olduğunu gösterir.", "The VIKOR component chart makes the balance among group utility (S), individual regret (R), and compromise score (Q) visible. A low Q together with reasonable S and R values indicates the leading alternative is more defensible as a compromise solution.")}</div>', unsafe_allow_html=True)
+            st.plotly_chart(fig_vikor_components(vikor_df, alt_names), use_container_width=True)
+            st.markdown(f'<div class="commentary-box">{tt("VIKOR bileşen grafiği grup faydası (S), bireysel pişmanlık (R) ve uzlaşı skoru (Q) arasındaki dengeyi görünür kılar. Düşük Q ile birlikte makul S ve R değerleri, lider alternatifin uzlaşı çözümü olarak daha savunulabilir olduğunu gösterir.", "The VIKOR component chart makes the balance among group utility (S), individual regret (R), and compromise score (Q) visible. A low Q together with reasonable S and R values indicates the leading alternative is more defensible as a compromise solution.")}</div>', unsafe_allow_html=True)
 
     elif base_method == "EDAS":
         edas_df = details.get("edas_table")
@@ -6962,9 +6969,8 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
                 if col in _edas_disp.columns:
                     _edas_disp[col] = pd.to_numeric(_edas_disp[col], errors="coerce").round(4)
             render_table(localize_df(_edas_disp))
-            st.plotly_chart(fig_edas_balance(edas_df, alt_names), width="stretch")
-            with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
-                st.markdown(f'<div class="commentary-box">{tt("EDAS grafiği, her alternatifin ortalama çözüme göre pozitif ve negatif sapma dengesini gösterir. Yüksek NSP ve yüksek NSN birlikte görülüyorsa alternatif hem avantaj yaratıyor hem de olumsuz sapmayı sınırlıyor demektir.", "The EDAS chart shows the balance of positive and negative distances from the average solution for each alternative. When high NSP and high NSN appear together, the alternative both creates advantage and limits adverse deviation.")}</div>', unsafe_allow_html=True)
+            st.plotly_chart(fig_edas_balance(edas_df, alt_names), use_container_width=True)
+            st.markdown(f'<div class="commentary-box">{tt("EDAS grafiği, her alternatifin ortalama çözüme göre pozitif ve negatif sapma dengesini gösterir. Yüksek NSP ve yüksek NSN birlikte görülüyorsa alternatif hem avantaj yaratıyor hem de olumsuz sapmayı sınırlıyor demektir.", "The EDAS chart shows the balance of positive and negative distances from the average solution for each alternative. When high NSP and high NSN appear together, the alternative both creates advantage and limits adverse deviation.")}</div>', unsafe_allow_html=True)
 
     elif base_method == "CODAS":
         codas_df = details.get("codas_table")
@@ -6979,9 +6985,8 @@ def render_method_specific_insights(result: Dict[str, Any], alt_names: Dict[str,
                 if col in _codas_disp.columns:
                     _codas_disp[col] = pd.to_numeric(_codas_disp[col], errors="coerce").round(4)
             render_table(localize_df(_codas_disp))
-            st.plotly_chart(fig_codas_distance_map(codas_df, alt_names), width="stretch")
-            with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
-                st.markdown(f'<div class="commentary-box">{tt("CODAS haritası, alternatiflerin negatif idealden hem Öklid hem Manhattan uzaklığıyla nasıl ayrıştığını gösterir. Sağ üst bölgeye taşınan ve yüksek H skoru alan alternatifler riskli kötü senaryolardan daha güçlü biçimde ayrışır.", "The CODAS map shows how alternatives separate from the negative ideal in both Euclidean and Taxicab distance terms. Alternatives moving toward the upper-right region with high H scores separate more strongly from adverse worst-case conditions.")}</div>', unsafe_allow_html=True)
+            st.plotly_chart(fig_codas_distance_map(codas_df, alt_names), use_container_width=True)
+            st.markdown(f'<div class="commentary-box">{tt("CODAS haritası, alternatiflerin negatif idealden hem Öklid hem Manhattan uzaklığıyla nasıl ayrıştığını gösterir. Sağ üst bölgeye taşınan ve yüksek H skoru alan alternatifler riskli kötü senaryolardan daha güçlü biçimde ayrışır.", "The CODAS map shows how alternatives separate from the negative ideal in both Euclidean and Taxicab distance terms. Alternatives moving toward the upper-right region with high H scores separate more strongly from adverse worst-case conditions.")}</div>', unsafe_allow_html=True)
 
     if not shown:
         _detail_frames = _extract_detail_tables(details)
@@ -7580,7 +7585,6 @@ def gen_mc_commentary(result: Dict[str, Any]) -> str:
     )
     return _compose_structured_commentary(did, why, found, example, action)
 
-
 def _render_email_verification_wall(auth_settings: access.AuthSettings) -> None:
     """E-posta doğrulanmamış kullanıcıları durduran ekran (ilk giriş grace sona erdikten sonra)."""
     st.markdown(
@@ -7611,7 +7615,6 @@ def _render_email_verification_wall(auth_settings: access.AuthSettings) -> None:
         access.logout_user()
         st.rerun()
 
-
 def _render_name_collection_screen(user: access.CurrentUser) -> None:
     """Kullanıcıdan Ad-Soyad toplar (ilk girişte isim email'e eşleşiyorsa gösterilir)."""
     st.markdown(
@@ -7620,8 +7623,8 @@ def _render_name_collection_screen(user: access.CurrentUser) -> None:
             <div class="tracking-title">👋 {tt("Hosgeldiniz!", "Welcome!")}</div>
             <div class="tracking-subtitle" style="margin-top:0.4rem;">
                 {tt(
-                    "MCDM Toolbox'a hoş geldiniz. Devam etmek için ad ve soyadınızı girin.",
-                    "Welcome to MCDM Toolbox. Please enter your full name to continue.",
+                    "MCDM Karar Destek Sistemi'a hoş geldiniz. Devam etmek için ad ve soyadınızı girin.",
+                    "Welcome to MCDM Karar Destek Sistemi. Please enter your full name to continue.",
                 )}
             </div>
         </div>
@@ -7650,7 +7653,6 @@ def _render_name_collection_screen(user: access.CurrentUser) -> None:
     if st.button(tt("🚪 Cikis Yap", "🚪 Sign Out"), key="btn_name_logout"):
         access.logout_user()
         st.rerun()
-
 
 def _render_auth_gate(auth_settings: access.AuthSettings) -> None:
     # Hero banner — giriş yapmamış kullanıcılara gösterilir (yıldızlı gece gökyüzü)
@@ -7780,7 +7782,7 @@ def _render_auth_gate(auth_settings: access.AuthSettings) -> None:
             tt("🚀 Ücretsiz Kayıt Ol · Hemen Başla", "🚀 Sign Up Free · Get Started Now"),
             on_click=access.login_user,
             args=[auth_settings.signup_provider],
-            width="stretch",
+            use_container_width=True,
             key="btn_auth_signup_gate",
         )
     with _btn_col2:
@@ -7788,7 +7790,7 @@ def _render_auth_gate(auth_settings: access.AuthSettings) -> None:
             tt("🔐 Giriş Yap", "🔐 Sign In"),
             on_click=access.login_user,
             args=[auth_settings.provider],
-            width="stretch",
+            use_container_width=True,
             key="btn_auth_login_gate",
         )
 
@@ -7804,7 +7806,6 @@ def _render_auth_gate(auth_settings: access.AuthSettings) -> None:
     st.caption(tt(auth_settings.privacy_notice_tr, auth_settings.privacy_notice_en))
     st.stop()
 
-
 def _render_user_session_card(auth_settings: access.AuthSettings, current_user: access.CurrentUser) -> None:
     with st.expander(tt("👤 Üye Bilgileri", "👤 Member Info"), expanded=not current_user.is_logged_in):
         if not current_user.is_logged_in:
@@ -7817,10 +7818,10 @@ def _render_user_session_card(auth_settings: access.AuthSettings, current_user: 
                 unsafe_allow_html=True,
             )
             if auth_settings.enabled and auth_settings.provider:
-                if st.button(tt("🔐 Giris Yap", "🔐 Sign In"), width="stretch", key="btn_sidebar_login"):
+                if st.button(tt("🔐 Giris Yap", "🔐 Sign In"), use_container_width=True, key="btn_sidebar_login"):
                     access.login_user(auth_settings.provider)
                 if auth_settings.signup_provider and auth_settings.signup_provider != auth_settings.provider:
-                    if st.button(tt("✉️ Kayit Ol", "✉️ Sign Up"), width="stretch", key="btn_sidebar_signup"):
+                    if st.button(tt("✉️ Kayit Ol", "✉️ Sign Up"), use_container_width=True, key="btn_sidebar_signup"):
                         access.login_user(auth_settings.signup_provider)
             return
 
@@ -7847,11 +7848,10 @@ def _render_user_session_card(auth_settings: access.AuthSettings, current_user: 
             """,
             unsafe_allow_html=True,
         )
-        if st.button(tt("🚪 Cikis Yap", "🚪 Log Out"), width="stretch", key="btn_auth_logout_sidebar"):
+        if st.button(tt("🚪 Cikis Yap", "🚪 Log Out"), use_container_width=True, key="btn_auth_logout_sidebar"):
             access.track_event("logout_clicked", {"source": "sidebar"})
             access.logout_user()
             st.rerun()
-
 
 def _render_admin_usage_panel(auth_settings: access.AuthSettings, current_user: access.CurrentUser) -> None:
     if not current_user.is_logged_in or not access.is_admin_email(current_user.email, auth_settings):
@@ -7908,7 +7908,6 @@ def _render_admin_usage_panel(auth_settings: access.AuthSettings, current_user: 
         _tracking_error = access.tracking_error()
         if _tracking_error:
             st.caption(tt(f"Son izleme hatasi: {_tracking_error}", f"Latest tracking error: {_tracking_error}"))
-
 
 # ---------------------------------------------------------
 # GLOBAL BANNER
@@ -7971,7 +7970,7 @@ with st.sidebar:
                 f"</p>",
                 unsafe_allow_html=True,
             )
-        with st.expander(tt("🧭 Neden MCDM Toolbox?", "🧭 Why MCDM Toolbox?"), expanded=False):
+        with st.expander(tt("🧭 Neden MCDM Karar Destek Sistemi?", "🧭 Why MCDM Karar Destek Sistemi?"), expanded=False):
             st.markdown(
                 f"<p style='font-size:0.78rem; line-height:1.55; color:#2C2C2C; margin:0;'>"
                 f"{tt('✅ 24+ klasik ve bulanık sıralama yöntemi<br>✅ 9 objektif ağırlık yöntemi<br>✅ Monte Carlo duyarlılık analizi<br>✅ SSCI akademik rapor (Word + Excel)<br>✅ Türkçe ve İngilizce arayüz',
@@ -8027,10 +8026,104 @@ with st.sidebar:
                 f"</p>",
                 unsafe_allow_html=True,
             )
+            # Karar ağacı (decision tree) — Metodolojik Yardım içinde
+            _dt_text = tt(
+                "<br><b>📊 AĞIRLIK YÖNTEMİ SEÇİM REHBERİ</b><br>"
+                "• Uzman görüşü yok → <b>Objektif</b> (Entropy, CRITIC, MEREC)<br>"
+                "• Korelasyon yüksek → <b>CRITIC</b> veya <b>PCA</b><br>"
+                "• Kriter çıkarılma etkisi → <b>MEREC</b><br>"
+                "• Hibrit → <b>IDOCRIW</b><br>"
+                "• Uzman + az kriter → <b>AHP</b><br>"
+                "• Uzman + çok kriter → <b>BWM</b><br><br>"
+                "<b>🏆 SIRALAMA YÖNTEMİ SEÇİM REHBERİ</b><br>"
+                "• Genel amaçlı → <b>TOPSIS</b> veya <b>EDAS</b><br>"
+                "• Uzlaşı → <b>VIKOR</b><br>"
+                "• Rank reversal direnci → <b>SPOTIS</b> veya <b>RAFSI</b><br>"
+                "• Çok bileşenli → <b>MULTIMOORA</b><br>"
+                "• Belirsizlik → Fuzzy varyantları<br>",
+                "<br><b>📊 WEIGHTING METHOD GUIDE</b><br>"
+                "• No expert → <b>Objective</b> (Entropy, CRITIC, MEREC)<br>"
+                "• High correlation → <b>CRITIC</b> or <b>PCA</b><br>"
+                "• Removal effect → <b>MEREC</b><br>"
+                "• Hybrid → <b>IDOCRIW</b><br>"
+                "• Expert + few criteria → <b>AHP</b><br>"
+                "• Expert + many criteria → <b>BWM</b><br><br>"
+                "<b>🏆 RANKING METHOD GUIDE</b><br>"
+                "• General purpose → <b>TOPSIS</b> or <b>EDAS</b><br>"
+                "• Compromise → <b>VIKOR</b><br>"
+                "• Rank reversal resistant → <b>SPOTIS</b> or <b>RAFSI</b><br>"
+                "• Multi-component → <b>MULTIMOORA</b><br>"
+                "• Uncertainty → Fuzzy variants<br>",
+            )
+            st.markdown(f"<p style='font-size:0.73rem; line-height:1.55; color:#2C2C2C; margin:0;'>{_dt_text}</p>", unsafe_allow_html=True)
+
+        # ── Terimler Sözlüğü ──
+        _show_glossary = st.checkbox(tt("📖 Terimler Sözlüğü", "📖 Glossary"), key="show_glossary")
+        if _show_glossary:
+            _gl = tt(
+                "<b>ÇKKV:</b> Çok Kriterli Karar Verme.<br>"
+                "<b>Karar Matrisi:</b> Satırlar alternatif, sütunlar kriter.<br>"
+                "<b>Fayda (Max):</b> Büyük=iyi. <b>Maliyet (Min):</b> Küçük=iyi.<br>"
+                "<b>Normalizasyon:</b> Farklı ölçekleri karşılaştırılabilir yapma.<br>"
+                "<b>Ağırlık (w):</b> Kriter göreli önemi, toplamı 1.<br>"
+                "<b>TFN:</b> Üçgensel bulanık sayı (alt, orta, üst).<br>"
+                "<b>Spread:</b> Bulanık bant genişliği; 0.10=±%10.<br>"
+                "<b>PIS/NIS:</b> Pozitif/Negatif ideal çözüm.<br>"
+                "<b>CC:</b> Yakınlık katsayısı (0-1).<br>"
+                "<b>Spearman ρ:</b> Sıra uyumu; 1.0=tam uyum.<br>"
+                "<b>Monte Carlo:</b> Rastgele bozulmayla kararlılık testi.<br>"
+                "<b>Kararlılık:</b> MC'de liderin birinciliği koruma %'si.<br>"
+                "<b>Pertürbasyon:</b> Ağırlığa ±%10/±%20 değişim.<br>"
+                "<b>Rank Reversal:</b> Yeni alternatif ekleyince sıra değişmesi.<br>"
+                "<b>GAIA:</b> PROMETHEE sonuçlarının 2D görselleştirmesi.<br>"
+                "<b>Borda:</b> MULTIMOORA'da 3 bileşen sıra toplamı.<br>"
+                "<b>BAA:</b> MABAC'ta sınır yaklaşım alanı.<br>",
+                "<b>MCDM:</b> Multi-Criteria Decision Making.<br>"
+                "<b>Decision Matrix:</b> Rows=alternatives, columns=criteria.<br>"
+                "<b>Benefit (Max):</b> Higher=better. <b>Cost (Min):</b> Lower=better.<br>"
+                "<b>Normalization:</b> Scaling to comparable range.<br>"
+                "<b>Weight (w):</b> Criterion importance, sums to 1.<br>"
+                "<b>TFN:</b> Triangular fuzzy number (lower, mid, upper).<br>"
+                "<b>Spread:</b> Fuzzy bandwidth; 0.10=±10%.<br>"
+                "<b>PIS/NIS:</b> Positive/Negative ideal solution.<br>"
+                "<b>CC:</b> Closeness coefficient (0-1).<br>"
+                "<b>Spearman ρ:</b> Rank agreement; 1.0=perfect.<br>"
+                "<b>Monte Carlo:</b> Stability test via random perturbation.<br>"
+                "<b>Stability:</b> % of MC runs where leader stays #1.<br>"
+                "<b>Perturbation:</b> ±10%/±20% weight change.<br>"
+                "<b>Rank Reversal:</b> Rankings change when adding alternatives.<br>"
+                "<b>GAIA:</b> 2D projection of PROMETHEE results.<br>"
+                "<b>Borda:</b> Sum of 3 component ranks in MULTIMOORA.<br>"
+                "<b>BAA:</b> Border Approximation Area in MABAC.<br>",
+            )
+            st.markdown(f"<div style='font-size:0.72rem; line-height:1.55; color:#2C2C2C;'>{_gl}</div>", unsafe_allow_html=True)
+
+        # ── SSS / FAQ ──
+        _show_faq = st.checkbox(tt("❓ Sıkça Sorulan Sorular", "❓ FAQ"), key="show_faq")
+        if _show_faq:
+            _faq = tt(
+                "<b>S: Hangi ağırlık yöntemini seçmeliyim?</b><br>Uzman yok → Entropy/CRITIC/MEREC. Sistem veri ön tanısında öneri sunar.<br><br>"
+                "<b>S: Hangi sıralama yöntemi?</b><br>Genel: TOPSIS/EDAS. Uzlaşı: VIKOR. Belirsizlik: Fuzzy. Birden fazla seçip karşılaştırın.<br><br>"
+                "<b>S: İki yöntem farklı lider gösteriyorsa?</b><br>Normal. Spearman ρ≥0.85 → uyumlu. ρ<0.70 → kriter yönlerini kontrol edin.<br><br>"
+                "<b>S: Kararlılık <%60 ise?</b><br>Kriter azaltın, korelasyonlu kriterleri birleştirin, farklı ağırlık deneyin.<br><br>"
+                "<b>S: Excel mi, Rapor mu, Makale mi?</b><br>İş raporu→Excel. Anlamak→APA Rapor. Tez/makale→IMRAD.<br><br>"
+                "<b>S: Fuzzy ne zaman?</b><br>Anket/tahmin verisi, ölçüm hatası varsa. Spread=0.10 genellikle yeterli.<br><br>"
+                "<b>S: Veri limiti?</b><br>50.000 satır, 120 sütun, 20 MB.<br><br>"
+                "<b>S: Panel veri ne zaman?</b><br>Aynı alternatifleri yıllar arası karşılaştırmak için. Yıl/dönem sütunu gerekli.<br>",
+                "<b>Q: Which weighting method?</b><br>No expert→Entropy/CRITIC/MEREC. System suggests in Preliminary Review.<br><br>"
+                "<b>Q: Which ranking method?</b><br>General: TOPSIS/EDAS. Compromise: VIKOR. Uncertainty: Fuzzy. Select multiple to compare.<br><br>"
+                "<b>Q: Two methods show different leaders?</b><br>Normal. Spearman ρ≥0.85→agreement. ρ<0.70→check criterion directions.<br><br>"
+                "<b>Q: Stability <60%?</b><br>Reduce criteria, merge correlated ones, try different weighting.<br><br>"
+                "<b>Q: Excel, Report, or Article?</b><br>Business→Excel. Understanding→APA Report. Thesis/paper→IMRAD.<br><br>"
+                "<b>Q: When to use Fuzzy?</b><br>Survey/estimate data, measurement error. Spread=0.10 usually sufficient.<br><br>"
+                "<b>Q: Data limits?</b><br>50,000 rows, 120 columns, 20 MB.<br><br>"
+                "<b>Q: Panel data when?</b><br>Comparing same alternatives across years. Needs year/period column.<br>",
+            )
+            st.markdown(f"<div style='font-size:0.72rem; line-height:1.55; color:#2C2C2C;'>{_faq}</div>", unsafe_allow_html=True)
 
         is_data_loaded = st.session_state.get("raw_data") is not None
 
-        if st.button(tt("🔄 Yeni Analize Başla (Sıfırla)", "🔄 Start New Analysis (Reset)"), width="stretch"):
+        if st.button(tt("🔄 Yeni Analize Başla (Sıfırla)", "🔄 Start New Analysis (Reset)"), use_container_width=True):
             access.track_event(
                 "analysis_reset",
                 {
@@ -8096,7 +8189,7 @@ with st.sidebar:
                     key="cb_clip_outliers",
                 )
                 st.caption(tt("Yalnız sayısal sütunlara uygulanır.", "Applied to numeric columns only."))
-                if st.button(tt("✅ Ön İşlemeyi Uygula", "✅ Apply Preprocessing"), width="stretch", key="btn_apply_preprocessing"):
+                if st.button(tt("✅ Ön İşlemeyi Uygula", "✅ Apply Preprocessing"), use_container_width=True, key="btn_apply_preprocessing"):
                     st.session_state["missing_strategy_saved"] = _impute_method if impute_checked else "Sil"
                     st.session_state["clip_outliers_saved"] = bool(_clip_outliers_selected)
                     st.session_state["prep_done"] = False
@@ -8145,7 +8238,6 @@ with st.sidebar:
             "</div>",
             unsafe_allow_html=True,
         )
-
 
 # ---------------------------------------------------------
 
@@ -8200,13 +8292,11 @@ if _current_user.is_logged_in:
         _render_name_collection_screen(_current_user)
         st.stop()
 
-
 # ---------------------------------------------------------
 
 # ANA GÖVDE
 # ---------------------------------------------------------
 raw_data = st.session_state.get("raw_data")
-_render_analysis_mini_banner()
 if raw_data is None:
     st.markdown(
         f"""
@@ -8236,6 +8326,7 @@ _render_data_input_workspace(st.session_state.get("ui_lang", "TR"), raw_data is 
 raw_data = st.session_state.get("raw_data")
 if raw_data is None:
     st.stop()
+_render_analysis_mini_banner()
 if not _ensure_mcdm_engine():
     st.error(tt("Analiz motoru yuklenemedi. Lutfen kurulumunuzu kontrol edin.", "Analysis engine could not be loaded. Please check the installation."))
     st.stop()
@@ -8402,13 +8493,13 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                         _select_all_clicked = st.button(
                             tt("✅ Tümünü Seç", "✅ Select All"),
                             key="panel_years_select_all",
-                            width="stretch",
+                            use_container_width=True,
                         )
                     with _clr_all_col:
                         _clear_all_clicked = st.button(
                             tt("🧹 Tümünü Temizle", "🧹 Clear All"),
                             key="panel_years_clear_all",
-                            width="stretch",
+                            use_container_width=True,
                         )
 
                     if _select_all_clicked:
@@ -8592,7 +8683,7 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
         st.caption(tt("Hazırsanız devam edin.", "Continue when ready."))
         if st.button(
             tt("✨ Veri hazırlığına geç", "✨ Continue to data preparation"),
-            width="stretch",
+            use_container_width=True,
             key="step1_continue_btn",
         ):
             st.session_state["step1_done"] = True
@@ -8626,7 +8717,6 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
     if _existing_crits != set(numeric_cols):
         st.session_state["crit_dir"]     = {c: True for c in numeric_cols}  # varsayılan: tümü Fayda
         st.session_state["crit_include"] = {c: True for c in numeric_cols}
-
 
     # ── TEK BİRLEŞİK HAZIRLIK PANELİ ──
     # Diagnostics hesabı (render öncesi)
@@ -8667,10 +8757,7 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
 
         # ── 1) Ön İnceleme Sonuçları ──
         if _has_diag:
-            with st.expander(
-                f"🧭 {tt('Ön İnceleme Sonuçları', 'Preliminary Review Results')}",
-                expanded=False,
-            ):
+            with st.container():
                 st.markdown(
                     f"""<div class="assistant-grid">
                         <div class="assistant-card2">
@@ -8698,7 +8785,7 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                     </div>""",
                     unsafe_allow_html=True,
                 )
-                with st.expander(f"📋 {tt('Detaylı Bulgular ve Öneriler', 'Detailed Findings & Recommendations')}", expanded=False):
+                with st.container():
                     for idx, rec in enumerate(_rec_items, start=1):
                         _r_text, _r_action = diag_rec_text(rec)
                         st.markdown(
@@ -8721,11 +8808,11 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                     )
 
         # ── 2) Veri Ön İzleme ──
-        with st.expander(f"📋 {tt('Veri Ön İzleme', 'Data Preview')} — {tt('ilk 3 satır', 'first 3 rows')}", expanded=False):
+        with st.container():
             render_table(working.head(3))
 
         # ── 3) Kriter Yapılandırması ──
-        with st.expander(f"⚙️ {tt('Kriter Yapılandırması', 'Criteria Configuration')}", expanded=st.session_state.get("analysis_result") is None):
+        with st.container():
             st.markdown("""<style>
             .ct-wrap {
                 border:1px solid #D0D8E4;
@@ -8884,7 +8971,7 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                     if st.button(
                         _dir_benefit,
                         key=f"dir_benefit_{_c}",
-                        width="stretch",
+                        use_container_width=True,
                         type="primary" if _is_benefit else "secondary",
                     ):
                         st.session_state["crit_dir"][_c] = True
@@ -8894,7 +8981,7 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                     if st.button(
                         _dir_cost,
                         key=f"dir_cost_{_c}",
-                        width="stretch",
+                        use_container_width=True,
                         type="primary" if not _is_benefit else "secondary",
                     ):
                         st.session_state["crit_dir"][_c] = False
@@ -8909,7 +8996,7 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
         st.caption(tt("Hazırsanız yöntem seçimine geçin.", "Proceed to method selection when ready."))
         if st.button(
             tt("✅ Veri Ön İşleme Bitti (Yöntem Seçimine Geç)", "✅ Preprocessing Complete (Proceed to Method Selection)"),
-            width="stretch",
+            use_container_width=True,
             key="btn_prep_complete_main",
         ):
             st.session_state.prep_done = True
@@ -8965,7 +9052,7 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
     if not st.session_state.prep_done:
         st.stop()
     else:
-        if st.button(tt("🔄 Kriter Ayarlarına Geri Dön", "🔄 Back to Criteria Settings"), width="stretch"):
+        if st.button(tt("🔄 Kriter Ayarlarına Geri Dön", "🔄 Back to Criteria Settings"), use_container_width=True):
             st.session_state.prep_done = False
             st.session_state["analysis_result"] = None
             st.rerun()
@@ -8989,13 +9076,8 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
         weight_mode_key = "objective"
         manual_weights: Dict[str, float] | None = None
         manual_weights_valid = True
-        _step3_tabs = st.tabs([
-            tt("🎯 1. Ağırlık Belirleme", "🎯 1. Weight Determination"),
-            tt("📊 2. Sıralama Yöntemi", "📊 2. Ranking Method"),
-            tt("🛡️ 3. Dayanıklılık Testi", "🛡️ 3. Robustness Test")
-        ])
-
-        with _step3_tabs[0]:
+        st.markdown(f"#### {tt('🎯 1. Ağırlık Belirleme', '🎯 1. Weight Determination')}")
+        with st.container():
             _show_step_caption(
                 "Ağırlık mantığını seçin.",
                 "Choose the weighting logic.",
@@ -9239,12 +9321,16 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
         sensitivity_sigma = float(st.session_state.get("sensitivity_sigma", 0.12))
         run_heavy_robustness = bool(st.session_state.get("run_heavy_robustness", False))
 
-        with _step3_tabs[1]:
-            _is_manual_mode_local = (weight_mode_key == "manual")
-            _weight_step_done_local = bool(weight_method) and (manual_weights_valid if _is_manual_mode_local else True)
-            
+        _is_manual_mode_local = (weight_mode_key == "manual")
+        _weight_step_done_local = bool(weight_method) and (manual_weights_valid if _is_manual_mode_local else True)
+
+        if _weight_step_done_local:
+            st.divider()
+            st.markdown(f"#### {tt('📊 2. Sıralama Yöntemi', '📊 2. Ranking Method')}")
+
+        with st.container():
             if not _weight_step_done_local:
-                st.warning(tt("⚠️ Sıralama yöntemini seçebilmek için lütfen önce **'1. Ağırlık Belirleme'** sekmesinden onaylı bir ağırlık yöntemi seçin/girin.", "⚠️ To select a ranking method, please first complete the '1. Weight Determination' step with valid inputs."))
+                pass  # Sıralama bölümü gizli — ağırlık seçilmeden gösterilmez
             elif needs_ranking:
 
                 _show_step_caption(
@@ -9306,13 +9392,13 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                 )
                 _mcol1, _mcol2 = st.columns(2)
                 with _mcol1:
-                    if st.button(tt("✅ Önerilen Yöntemleri Çalıştır", "✅ Run Recommended Methods"), width="stretch", key=f"btn_select_recommended_{_layer_key}"):
+                    if st.button(tt("✅ Önerilen Yöntemleri Çalıştır", "✅ Run Recommended Methods"), use_container_width=True, key=f"btn_select_recommended_{_layer_key}"):
                         st.session_state["ranking_prefs"] = list(quick_pick_methods)
                         for rank_method in all_ranks:
                             st.session_state[f"rank_cb_{rank_method}"] = rank_method in quick_pick_methods
                         st.rerun()
                 with _mcol2:
-                    if st.button(tt("🗑️ Temizle", "🗑️ Clear"), width="stretch", key=f"btn_clear_all_{_layer_key}"):
+                    if st.button(tt("🗑️ Temizle", "🗑️ Clear"), use_container_width=True, key=f"btn_clear_all_{_layer_key}"):
                         st.session_state["ranking_prefs"] = []
                         for rank_method in all_ranks:
                             st.session_state[f"rank_cb_{rank_method}"] = False
@@ -9380,7 +9466,7 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                     uses_fuzzy = any(m.startswith("Fuzzy") for m in ranking_methods_selected)
                     rec = recommend_parameter_defaults(ranking_methods_selected, len(working), len(criteria), uses_fuzzy)
 
-                    with st.expander(f"⚙️ {tt('Sıralama Parametreleri', 'Ranking Parameters')}", expanded=False):
+                    with st.container():
                         _show_step_caption(
                             "Yalnız gerekli yöntem parametreleri burada yer alır.",
                             "Only required method parameters appear here.",
@@ -9433,17 +9519,17 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                             render_table(rec_df)
                         else:
                             if uses_fuzzy:
-                                fuzzy_spread = st.slider(tt("Fuzzy — spread (belirsizlik bandı)", "Fuzzy — spread (uncertainty band)"), 0.01, 0.50, float(fuzzy_spread), 0.01)
+                                fuzzy_spread = st.slider(tt("Fuzzy — spread (belirsizlik bandı)", "Fuzzy — spread (uncertainty band)"), 0.01, 0.50, float(fuzzy_spread), 0.01, help=tt("Crisp değerlerin TFN dönüşüm oranı. 0.10=±%10 belirsizlik.", "TFN conversion ratio. 0.10=±10% uncertainty."))
                             if uses_vikor:
-                                vikor_v = st.slider(tt("VIKOR — v (uzlaşı katsayısı)", "VIKOR — v (compromise factor)"), 0.0, 1.0, float(vikor_v), 0.01)
+                                vikor_v = st.slider(tt("VIKOR — v (uzlaşı katsayısı)", "VIKOR — v (compromise factor)"), 0.0, 1.0, float(vikor_v), 0.01, help=tt("v=0.5: denge. v→1: çoğunluk. v→0: azınlık koruması.", "v=0.5: balance. v→1: majority. v→0: minority protection."))
                             if uses_waspas:
-                                waspas_lambda = st.slider(tt("WASPAS — λ (hibrit katsayı)", "WASPAS — λ (hybrid coefficient)"), 0.0, 1.0, float(waspas_lambda), 0.01)
+                                waspas_lambda = st.slider(tt("WASPAS — λ (hibrit katsayı)", "WASPAS — λ (hybrid coefficient)"), 0.0, 1.0, float(waspas_lambda), 0.01, help=tt("λ=1: saf WSM. λ=0: saf WPM. λ=0.5: eşit karışım.", "λ=1: pure WSM. λ=0: pure WPM. λ=0.5: equal mix."))
                             if uses_codas:
-                                codas_tau = st.slider(tt("CODAS — τ (eşik değeri)", "CODAS — τ (threshold)"), 0.0, 0.20, float(codas_tau), 0.005)
+                                codas_tau = st.slider(tt("CODAS — τ (eşik değeri)", "CODAS — τ (threshold)"), 0.0, 0.20, float(codas_tau), 0.005, help=tt("Öklid yakınsa Manhattan devreye girer. Varsayılan: 0.02.", "Manhattan kicks in when Euclidean is close. Default: 0.02."))
                             if uses_cocoso:
-                                cocoso_lambda = st.slider(tt("CoCoSo — λ (birleşim katsayısı)", "CoCoSo — λ (aggregation coefficient)"), 0.0, 1.0, float(cocoso_lambda), 0.01)
+                                cocoso_lambda = st.slider(tt("CoCoSo — λ (birleşim katsayısı)", "CoCoSo — λ (aggregation coefficient)"), 0.0, 1.0, float(cocoso_lambda), 0.01, help=tt("λ→1: toplamsal. λ→0: üstel ağırlık.", "λ→1: additive. λ→0: exponential weight."))
                             if uses_gra:
-                                gra_rho = st.slider(tt("GRA — ρ (ayırt edici katsayı)", "GRA — ρ (distinguishing coefficient)"), 0.10, 0.90, float(gra_rho), 0.01)
+                                gra_rho = st.slider(tt("GRA — ρ (ayırt edici katsayı)", "GRA — ρ (distinguishing coefficient)"), 0.10, 0.90, float(gra_rho), 0.01, help=tt("ρ=0.5: dengeli. ρ→0: uç farklara hassas. ρ→1: bastırır.", "ρ=0.5: balanced. ρ→0: sensitive to extremes. ρ→1: suppresses."))
                             if uses_promethee:
                                 promethee_pref_func = st.selectbox(
                                     tt("PROMETHEE tercih fonksiyonu", "PROMETHEE preference function"),
@@ -9457,10 +9543,12 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                                 if promethee_pref_func == "gaussian":
                                     promethee_s = st.slider("PROMETHEE s", 0.01, 1.0, float(promethee_s), 0.01)
 
-        with _step3_tabs[2]:
-            _is_manual_mode_local = (weight_mode_key == "manual")
-            _weight_step_done_local = bool(weight_method) and (manual_weights_valid if _is_manual_mode_local else True)
-            _ranking_step_done_local = bool(ranking_methods_selected) if needs_ranking else False
+        _ranking_step_done_local = bool(ranking_methods_selected) if needs_ranking else False
+        if _weight_step_done_local and _ranking_step_done_local:
+            st.divider()
+            st.markdown(f"#### {tt('🛡️ 3. Dayanıklılık Testi', '🛡️ 3. Robustness Test')}")
+
+        with st.container():
             
             if not _weight_step_done_local or (needs_ranking and not _ranking_step_done_local):
                 st.warning(tt("⚠️ Dayanıklılık (Robustness) testlerini yapılandırabilmek için lütfen önce Ağırlık ve/veya Sıralama adımlarını tamamlayın.", "⚠️ To configure robustness testing, please first complete the Weighting and/or Ranking steps."))
@@ -9507,7 +9595,7 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                                 _sens_default,
                                 100,
                             )
-                            sensitivity_sigma = st.slider(tt("Monte Carlo sigma", "Monte Carlo sigma"), 0.01, 0.50, float(sensitivity_sigma), 0.01)
+                            sensitivity_sigma = st.slider(tt("Monte Carlo sigma", "Monte Carlo sigma"), 0.01, 0.50, float(sensitivity_sigma), 0.01, help=tt("Log-normal gürültü std sapma. Düşük=hafif, yüksek=agresif. Varsayılan: 0.12.", "Log-normal noise std dev. Low=mild, high=aggressive. Default: 0.12."))
                     else:
                         sensitivity_iterations = 0
                         st.caption(
@@ -9585,7 +9673,69 @@ if _method_step_done:
         icon="🧪",
     )
 
-if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), width="stretch", key="btn_run_analysis_main"):
+# ── İleri Düzey Analizler (Kapalı) ──
+with st.expander(tt("🔬 İleri Düzey Analizler", "🔬 Advanced Analysis Options"), expanded=False):
+    st.caption(tt(
+        "Ön eleme filtreleri ve çoklu paydaş senaryoları gibi ileri analiz araçları. Temel analiz için bu bölümü açmanız gerekmez.",
+        "Advanced tools such as pre-screening filters and multi-stakeholder scenarios. Not required for standard analysis."
+    ))
+
+    # ── Ön Eleme ──
+    st.markdown(f"**{tt('🚧 Ön Eleme Eşikleri', '🚧 Pre-screening Thresholds')}**")
+    st.caption(tt(
+        "Minimum kabul değeri veya maksimum sınır belirleyin. Eşiği karşılamayan alternatifler sıralamadan çıkarılır.",
+        "Set minimum acceptable or maximum limit values. Alternatives failing thresholds are excluded before ranking."
+    ))
+    _show_thresholds = st.checkbox(tt("Ön eleme filtresi kullan", "Use pre-screening filter"), key="show_thresholds")
+    if _show_thresholds and criteria:
+        if "crit_thresholds" not in st.session_state:
+            st.session_state["crit_thresholds"] = {}
+        for _c in criteria:
+            _tc = st.columns([3, 1.5, 1.5], gap="small")
+            _existing = st.session_state["crit_thresholds"].get(_c, {})
+            with _tc[0]:
+                st.markdown(f"**{_c}**")
+            with _tc[1]:
+                _min_v = st.number_input(f"Min {_c}", value=_existing.get("min"), key=f"th_min_{_c}", label_visibility="collapsed", format="%.2f")
+            with _tc[2]:
+                _max_v = st.number_input(f"Max {_c}", value=_existing.get("max"), key=f"th_max_{_c}", label_visibility="collapsed", format="%.2f")
+            _th = {}
+            if _min_v is not None and _min_v != 0.0:
+                _th["min"] = float(_min_v)
+            if _max_v is not None and _max_v != 0.0:
+                _th["max"] = float(_max_v)
+            if _th:
+                st.session_state["crit_thresholds"][_c] = _th
+            elif _c in st.session_state.get("crit_thresholds", {}):
+                del st.session_state["crit_thresholds"][_c]
+
+    st.divider()
+
+    # ── Senaryo Modu ──
+    st.markdown(f"**{tt('🎭 Çoklu Paydaş Senaryo Analizi', '🎭 Multi-Stakeholder Scenario Analysis')}**")
+    st.caption(tt(
+        "Farklı paydaş perspektiflerini (yönetim, mühendislik, müşteri vb.) modellemek için 2-5 ağırlık senaryosu tanımlayın. Her senaryo ayrı çalıştırılır ve sonuçlar karşılaştırılır.",
+        "Define 2-5 weight scenarios to model different stakeholder perspectives (management, engineering, customer, etc.). Each runs separately and results are compared."
+    ))
+    _sc_enabled = st.checkbox(tt("Senaryo analizi kullan", "Use scenario analysis"), key="scenario_enabled")
+    if _sc_enabled and criteria:
+        _n_sc = st.slider(tt("Senaryo sayısı", "Number of scenarios"), 2, 5, 2, key="n_scenarios")
+        if "scenario_weights" not in st.session_state:
+            st.session_state["scenario_weights"] = {}
+        for i in range(_n_sc):
+            _sc_name = st.text_input(tt(f"Senaryo {i+1} adı", f"Scenario {i+1} name"), value=st.session_state.get(f"sc_name_{i}", tt(f"Senaryo {i+1}", f"Scenario {i+1}")), key=f"sc_name_{i}")
+            _sc_w = {}
+            _sc_cols = st.columns(min(len(criteria), 4))
+            for j, c in enumerate(criteria):
+                with _sc_cols[j % len(_sc_cols)]:
+                    _prev = st.session_state.get("scenario_weights", {}).get(_sc_name, {}).get(c, round(1.0/len(criteria), 3))
+                    _sc_w[c] = st.number_input(c, value=_prev, min_value=0.0, max_value=1.0, step=0.01, key=f"sc_w_{i}_{c}", format="%.3f")
+            _ws = sum(_sc_w.values())
+            if _ws > 0:
+                _sc_w = {c: v/_ws for c, v in _sc_w.items()}
+            st.session_state["scenario_weights"][_sc_name] = _sc_w
+
+if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), use_container_width=True, key="btn_run_analysis_main"):
     st.session_state["panel_run_warnings"] = []
     if not weight_method:
         st.error(tt("❗ Lütfen bir ağırlıklandırma yöntemi seçin.", "❗ Please select a weighting method."))
@@ -9662,6 +9812,20 @@ if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), width="stretch", ke
         except TypeError:
             _config_kwargs.pop("run_heavy_robustness", None)
             config = me.AnalysisConfig(**_config_kwargs)
+
+        # ── Ön eleme filtrelemesi ──
+        _thresholds = st.session_state.get("crit_thresholds") or {}
+        if _thresholds:
+            working, _eliminated = me.apply_threshold_filter(working, criteria, criteria_types, _thresholds)
+            if _eliminated:
+                _elim_names = sorted(set(e["alternative"] for e in _eliminated))
+                st.warning(tt(f"🚧 Ön eleme: {len(_elim_names)} alternatif elenmiştir: {', '.join(_elim_names)}", f"🚧 Pre-screening: {len(_elim_names)} alternative(s) eliminated: {', '.join(_elim_names)}"))
+            if len(working) < 2:
+                st.error(tt("Ön eleme sonrası 2'den az alternatif kaldı.", "Fewer than 2 alternatives after pre-screening."))
+                st.stop()
+            st.session_state["eliminated_alternatives"] = _eliminated
+        else:
+            st.session_state["eliminated_alternatives"] = []
 
         start = time.time()
         try:
@@ -9853,6 +10017,18 @@ if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), width="stretch", ke
         st.session_state["report_docx"] = None
         st.session_state["download_blob_cache"] = {}
         st.session_state["download_blob_sig"] = None
+        # ── Senaryo analizi ──
+        if st.session_state.get("scenario_enabled") and st.session_state.get("scenario_weights") and main_rank:
+            try:
+                st.session_state["scenario_results"] = me.run_scenario_analysis(
+                    working, criteria, criteria_types, st.session_state["scenario_weights"], main_rank,
+                    vikor_v=vikor_v, waspas_lambda=waspas_lambda, codas_tau=codas_tau,
+                    cocoso_lambda=cocoso_lambda, gra_rho=gra_rho, promethee_pref_func=promethee_pref_func,
+                    promethee_q=promethee_q, promethee_p=promethee_p, promethee_s=promethee_s, fuzzy_spread=fuzzy_spread)
+            except Exception:
+                st.session_state["scenario_results"] = None
+        else:
+            st.session_state["scenario_results"] = None
         access.track_event(
             "analysis_completed",
             {
@@ -9968,11 +10144,11 @@ st.markdown(
     f"""
     <div class="kpi-strip">
         <div class="kpi-grid">
-            <div class="kpi-item"><div class="kpi-label">{tt('Lider Alternatif', 'Leading Alternative')}</div><div class="kpi-value">{_lead_alt_safe}</div></div>
-            <div class="kpi-item"><div class="kpi-label">{tt('Sıralama Yöntemi', 'Ranking Method')}</div><div class="kpi-value">{_rank_method_safe}</div></div>
-            <div class="kpi-item"><div class="kpi-label">{tt('Kararlılık', 'Stability')}</div><div class="kpi-value">{_stability_txt}</div></div>
-            <div class="kpi-item"><div class="kpi-label">{tt('Analiz Süresi', 'Analysis Time')}</div><div class="kpi-value">{_runtime_txt}</div></div>
-            <div class="kpi-item"><div class="kpi-label">{tt('Veri Boyutu', 'Data Size')}</div><div class="kpi-value">{_shape[0]}×{_shape[1]}</div></div>
+            <div class="kpi-item" title="{tt('En yüksek skoru alan alternatif','Highest scoring alternative')}"><div class="kpi-label">{tt('Lider Alternatif', 'Leading Alternative')}</div><div class="kpi-value">{_lead_alt_safe}</div></div>
+            <div class="kpi-item" title="{tt('Alternatifleri sıralamak için kullanılan yöntem','Method used to rank alternatives')}"><div class="kpi-label">{tt('Sıralama Yöntemi', 'Ranking Method')}</div><div class="kpi-value">{_rank_method_safe}</div></div>
+            <div class="kpi-item" title="{tt('MC simülasyonunda liderin birinciliğini koruma oranı. ≥%80: yüksek, %60-80: orta, <%60: düşük','% of MC runs where leader stays #1. ≥80%: high, 60-80%: moderate, <60%: low')}"><div class="kpi-label">{tt('Kararlılık', 'Stability')}</div><div class="kpi-value">{_stability_txt}</div></div>
+            <div class="kpi-item" title="{tt('Analiz tamamlanma süresi','Analysis completion time')}"><div class="kpi-label">{tt('Analiz Süresi', 'Analysis Time')}</div><div class="kpi-value">{_runtime_txt}</div></div>
+            <div class="kpi-item" title="{tt('Alternatif sayısı × kriter sayısı','Alternatives × criteria')}"><div class="kpi-label">{tt('Veri Boyutu', 'Data Size')}</div><div class="kpi-value">{_shape[0]}×{_shape[1]}</div></div>
         </div>
     </div>
     """,
@@ -10008,7 +10184,7 @@ with st.expander(tt("🧮 Hesaplama Detaylarını Gör", "🧮 View Calculation 
             st.caption(tt(f"Ekranda gösterilen yıl: {panel_active_year}", f"Year currently shown on screen: {panel_active_year}"))
     if "show_calc_details" not in st.session_state:
         st.session_state["show_calc_details"] = False
-    if st.button(tt("🔍 Hesaplama Adımlarını Göster / Gizle", "🔍 Show / Hide Calculation Steps"), width="stretch", key="btn_toggle_calc_details"):
+    if st.button(tt("🔍 Hesaplama Adımlarını Göster / Gizle", "🔍 Show / Hide Calculation Steps"), use_container_width=True, key="btn_toggle_calc_details"):
         st.session_state["show_calc_details"] = not st.session_state["show_calc_details"]
     if st.session_state["show_calc_details"]:
         dt1, dt2, dt3 = st.tabs([tt("⚖️ Ağırlık Adımları", "⚖️ Weighting Steps"), tt("🏆 Sıralama Adımları", "🏆 Ranking Steps"), tt("🎲 Duyarlılık Adımları", "🎲 Sensitivity Steps")])
@@ -10119,14 +10295,14 @@ with tabs[_tab_stats]:
         _num_cols = _stats_disp.select_dtypes(include=[np.number]).columns
         _stats_disp[_num_cols] = _stats_disp[_num_cols].round(3)
         render_table(_stats_disp)
-        with st.expander(f"💬 {tt('Tablo Yorumu', 'Table Commentary')}", expanded=False):
+        with st.container():
             st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_stat_comment)}</div>', unsafe_allow_html=True)
 
     with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=True):
         s1, s2 = st.columns([1, 1])
         with s1:
-            st.plotly_chart(fig_box_plots(result["selected_data"], criteria), width="stretch")
-            with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
+            st.plotly_chart(fig_box_plots(result["selected_data"], criteria), use_container_width=True)
+            with st.container():
                 st.markdown(f'<div class="commentary-box">{tt("Kutu grafikleri her kriterin dağılım profilini gösterir. Geniş kutular ve aykırı noktalar, o kriterin yüksek ayırt edici gücüne işaret eder.", "Box plots show the distribution profile of each criterion. Wide boxes and outlier points indicate high discriminative power.")}</div>', unsafe_allow_html=True)
         with s2:
             corr_df = result.get("correlation_matrix")
@@ -10137,8 +10313,8 @@ with tabs[_tab_stats]:
                     title=tt("Kriterler Arası Korelasyon Haritası", "Correlation Heatmap Among Criteria"),
                 )
                 fig_corr.update_layout(height=420, **_THEME)
-                st.plotly_chart(fig_corr, width="stretch")
-                with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
+                st.plotly_chart(fig_corr, use_container_width=True)
+                with st.container():
                     st.markdown(f'<div class="commentary-box">{tt("Korelasyon ısı haritası, kriterler arasındaki doğrusal ilişkilerin yoğunluğunu gösterir. Kırmızı: güçlü pozitif, mavi: güçlü negatif ilişki. Yüksek korelasyon (|ρ|>0.75) bilgi tekrarına işaret eder.", "The correlation heatmap shows the intensity of linear relationships between criteria. Red: strong positive, blue: strong negative. High correlation (|ρ|>0.75) suggests information redundancy.")}</div>', unsafe_allow_html=True)
             else:
                 st.info(tt("Korelasyon matrisi bulunamadı.", "Correlation matrix not available."))
@@ -10165,18 +10341,18 @@ with tabs[_tab_weights]:
             if _weight_disp_col in _weight_disp.columns:
                 _weight_disp[_weight_disp_col] = pd.to_numeric(_weight_disp[_weight_disp_col], errors="coerce").round(6)
             render_table(_weight_disp)
-        with st.expander(f"💬 {tt('Tablo Yorumu', 'Table Commentary')}", expanded=False):
+        with st.container():
             st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_weight_comment)}</div>', unsafe_allow_html=True)
 
     with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=True):
         fig_col1, fig_col2 = st.columns(2)
         with fig_col1:
-            st.plotly_chart(fig_weight_bar(weight_df), width="stretch")
-            with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
+            st.plotly_chart(fig_weight_bar(weight_df), use_container_width=True)
+            with st.container():
                 st.markdown(f'<div class="commentary-box">{tt("Ağırlık çubuğu grafiği, kriterlerin göreli önem sıralamasını ve büyüklüklerini karşılaştırmalı olarak gösterir. En uzun çubuk, analiz kararını en güçlü etkileyen kriteri temsil eder.", "The weight bar chart compares the relative importance and magnitude of criteria. The longest bar represents the criterion with the highest influence on the analysis decision.")}</div>', unsafe_allow_html=True)
         with fig_col2:
-            st.plotly_chart(fig_weight_radar(weight_df), width="stretch")
-            with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
+            st.plotly_chart(fig_weight_radar(weight_df), use_container_width=True)
+            with st.container():
                 st.markdown(f'<div class="commentary-box">{tt("Radar grafiği, ağırlıkların çok boyutlu dağılımını görsel olarak sunar. Dengeli bir dağılım, kararın tek bir kritere bağımlı olmadığına işaret eder; asimetrik yapı ise belirli bir kriterin hakimiyetini gösterir.", "The radar chart visually presents the multi-dimensional distribution of weights. A balanced distribution indicates the decision is not dependent on a single criterion; asymmetric structure shows dominance of a specific criterion.")}</div>', unsafe_allow_html=True)
 
 with tabs[_tab_robustness]:
@@ -10231,7 +10407,7 @@ with tabs[_tab_robustness]:
                 if _maxdiff_col in _loo_disp.columns:
                     _loo_disp[_maxdiff_col] = pd.to_numeric(_loo_disp[_maxdiff_col], errors="coerce").round(4)
                 render_table(_loo_disp)
-                with st.expander(f"💬 {tt('Tablo Yorumu', 'Table Commentary')}", expanded=False):
+                with st.container():
                     st.markdown(f'<div class="commentary-box">{tt("Leave-one-out tablosu, her alternatifin çıkarıldığında ağırlık düzeninin ne ölçüde korunduğunu gösterir. SpearmanRho sütunu 1\'e yakın değerler yüksek kararlılık anlamına gelir. MaksMutlakFark ise en fazla değişen kriter ağırlığının büyüklüğünü verir.", "The leave-one-out table shows how well the weight order is preserved when each alternative is removed. SpearmanRho values close to 1 indicate high stability. MaxAbsoluteDiff gives the magnitude of the most changed criterion weight.")}</div>', unsafe_allow_html=True)
 
             _boot_df = _wr.get("bootstrap_summary")
@@ -10250,7 +10426,7 @@ with tabs[_tab_robustness]:
                     if _c in _boot_disp.columns:
                         _boot_disp[_c] = pd.to_numeric(_boot_disp[_c], errors="coerce").round(4)
                 render_table(_boot_disp)
-                with st.expander(f"💬 {tt('Tablo Yorumu', 'Table Commentary')}", expanded=False):
+                with st.container():
                     st.markdown(f'<div class="commentary-box">{tt("Bootstrap özet tablosu, her kriterin ağırlığının istatistiksel güven aralığını gösterir. Standart sapması düşük kriterler kararlı ağırlıklara sahiptir ve analizin yapı taşını oluşturur. Geniş aralıklı kriterler için duyarlılık analizi ile çapraz doğrulama yapılması önerilir.", "The bootstrap summary table shows the statistical confidence interval for each criterion weight. Criteria with low standard deviation have stable weights and form the backbone of the analysis. Cross-validation with sensitivity analysis is recommended for criteria with wide intervals.")}</div>', unsafe_allow_html=True)
 
         with st.expander(f"📊 {tt('Şekiller — Sağlamlık Görselleştirmeleri', 'Figures — Robustness Visualizations')}", expanded=False):
@@ -10290,8 +10466,8 @@ with tabs[_tab_robustness]:
                         yaxis_title=tt("Kriter", "Criterion"),
                         **_THEME,
                     )
-                    st.plotly_chart(fig_boot, width="stretch")
-                    with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
+                    st.plotly_chart(fig_boot, use_container_width=True)
+                    with st.container():
                         st.markdown(f'<div class="commentary-box">{tt("Bootstrap güven aralığı grafiği, her kriterin ağırlığının olası aralığını gösterir. Yatay çizgi uzunluğu belirsizlik düzeyini temsil eder: kısa çizgi = güvenilir ağırlık, uzun çizgi = veri değişimine duyarlı ağırlık.", "The bootstrap confidence interval chart shows the plausible range for each criterion weight. Bar length represents uncertainty level: short bar = reliable weight, long bar = weight sensitive to data changes.")}</div>', unsafe_allow_html=True)
 
 if needs_ranking:
@@ -10417,18 +10593,18 @@ if needs_ranking:
                         if _rt_table_score_col in _rt_table_disp.columns:
                             _rt_table_disp[_rt_table_score_col] = pd.to_numeric(_rt_table_disp[_rt_table_score_col], errors="coerce").round(4)
                         render_table(_rt_table_disp)
-                with st.expander(f"💬 {tt('Tablo Yorumu', 'Table Commentary')}", expanded=False):
+                with st.container():
                     st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_rank_comment)}</div>', unsafe_allow_html=True)
 
             with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=True):
                 fig_r1, fig_r2 = st.columns(2)
                 with fig_r1:
-                    st.plotly_chart(fig_rank_bar(_rt_disp), width="stretch")
-                    with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
+                    st.plotly_chart(fig_rank_bar(_rt_disp), use_container_width=True)
+                    with st.container():
                         st.markdown(f'<div class="commentary-box">{tt("Yatay çubuk grafik, her alternatifin sıralama skorunu karşılaştırmalı olarak gösterir. Uzun çubuk yüksek performansı simgeler. Barlar arasındaki mesafe, alternatiflerin birbirinden ne kadar ayrıştığını ortaya koyar.", "The horizontal bar chart comparatively shows the ranking score of each alternative. A longer bar symbolizes higher performance. The distance between bars reveals how much alternatives are differentiated from each other.")}</div>', unsafe_allow_html=True)
                 with fig_r2:
-                    st.plotly_chart(fig_network_alternatives(_rt_disp), width="stretch")
-                    with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
+                    st.plotly_chart(fig_network_alternatives(_rt_disp), use_container_width=True)
+                    with st.container():
                         st.markdown(f'<div class="commentary-box">{tt("Ağ diyagramı, alternatiflerin merkezi referansa göre göreli konumunu dairesel yerleşimde gösterir. Merkeze yakın düğümler daha yüksek skor anlamına gelir. Düğüm boyutu ve rengi performans düzeyini yansıtır.", "The network diagram shows the relative position of alternatives in circular layout against the central reference. Nodes closer to the center mean higher scores. Node size and color reflect performance level.")}</div>', unsafe_allow_html=True)
 
                 contrib = result.get("contribution_table")
@@ -10439,8 +10615,8 @@ if needs_ranking:
                         _contrib_disp[_contrib_alt_col] = _contrib_disp[_contrib_alt_col].astype(str).map(
                             lambda x: alt_names.get(x, x)
                         )
-                    st.plotly_chart(fig_parallel_coords(_rt_disp, _contrib_disp, criteria), width="stretch")
-                    with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
+                    st.plotly_chart(fig_parallel_coords(_rt_disp, _contrib_disp, criteria), use_container_width=True)
+                    with st.container():
                         st.markdown(f'<div class="commentary-box">{tt("Paralel koordinat grafiği, her alternatifin tüm kriterler boyunca performans profilini tek bir görünümde sunar. Çizgilerin rengi ve yoğunluğu skor büyüklüğünü gösterir. Çizgilerin yoğun kesiştiği bölgeler, alternatiflerin benzer kriter değerlerine sahip olduğu alanları işaret eder.", "The parallel coordinates chart presents each alternative\'s performance profile across all criteria in a single view. Line color and intensity show score magnitude. Regions where lines densely intersect indicate areas where alternatives have similar criterion values.")}</div>', unsafe_allow_html=True)
 
             with st.expander(f"🧠 {tt('Yöntem-Özel İçgörüler', 'Method-Specific Insights')}", expanded=False):
@@ -10472,7 +10648,7 @@ if needs_ranking:
                             "Explains in plain language how similarly each method thinks compared with the primary method."
                         ))
                         render_table(_method_rob_df)
-                with st.expander(f"💬 {tt('Tablo Yorumu', 'Table Commentary')}", expanded=False):
+                with st.container():
                     st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_comp_comment)}</div>', unsafe_allow_html=True)
 
             with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=True):
@@ -10485,8 +10661,8 @@ if needs_ranking:
                         title=tt("Spearman Uyum Matrisi", "Spearman Agreement Matrix"),
                     )
                     fig_sp.update_layout(height=420, **_THEME)
-                    st.plotly_chart(fig_sp, width="stretch")
-                    with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
+                    st.plotly_chart(fig_sp, use_container_width=True)
+                    with st.container():
                         st.markdown(f'<div class="commentary-box">{tt("Spearman ısı haritası, seçili yöntemlerin birbiriyle ne kadar tutarlı sıralama ürettiğini gösterir. Yeşil hücreler (ρ ≥ 0.85) yüksek yöntem uyumuna, sarı-kırmızı hücreler ise yöntemler arası görüş ayrılığına işaret eder. Üçgen matristeki tüm hücreler yeşilse sonuçlar metodolojiden bağımsız kararlı kabul edilebilir.", "The Spearman heatmap shows how consistently the selected methods produce rankings. Green cells (ρ ≥ 0.85) indicate high method agreement, yellow-red cells indicate disagreement between methods. If all cells in the triangular matrix are green, results can be considered stable regardless of methodology.")}</div>', unsafe_allow_html=True)
         else:
             st.info(tt("Karşılaştırma için birden fazla yöntem seçilmelidir.", "Select more than one method for comparison."))
@@ -10532,23 +10708,23 @@ if needs_ranking:
                     if _mr_col in _mc_table_disp.columns:
                         _mc_table_disp[_mr_col] = pd.to_numeric(_mc_table_disp[_mr_col], errors="coerce").round(2)
                     render_table(_mc_table_disp)
-                    with st.expander(f"💬 {tt('Tablo Yorumu', 'Table Commentary')}", expanded=False):
+                    with st.container():
                         st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_mc_comment)}</div>', unsafe_allow_html=True)
 
                 with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=True):
                     mg1, mg2 = st.columns(2)
                     with mg1:
-                        st.plotly_chart(fig_mc_rank_bar(_mc_disp), width="stretch")
-                        with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
+                        st.plotly_chart(fig_mc_rank_bar(_mc_disp), use_container_width=True)
+                        with st.container():
                             st.markdown(f'<div class="commentary-box">{tt("Birincilik oranı çubuğu, her alternatifin Monte Carlo simülasyonları boyunca kaç kez birinci sıraya oturduğunu yüzde olarak gösterir. %50 üzeri oran güçlü kararlılığı ifade eder; %20 altı oran alternatifin liderliğinin rastlantısal olduğuna işaret edebilir.", "The first-place rate bar shows what percentage of Monte Carlo simulations each alternative ranked first. A rate above 50% indicates strong stability; a rate below 20% may indicate the alternative\'s leadership is coincidental.")}</div>', unsafe_allow_html=True)
                     with mg2:
-                        st.plotly_chart(fig_mc_stability_bubble(_mc_disp), width="stretch")
-                        with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
+                        st.plotly_chart(fig_mc_stability_bubble(_mc_disp), use_container_width=True)
+                        with st.container():
                             st.markdown(f'<div class="commentary-box">{tt("Balon grafiği, birincilik oranı ile ortalama sıra arasındaki ilişkiyi gösterir. Sol üst köşeye yakın (düşük ortalama sıra, yüksek birincilik oranı) alternatifler en sağlam adaylardır.", "The bubble chart shows the relationship between first-place rate and mean rank. Alternatives close to the upper-left corner (low mean rank, high first-place rate) are the most robust candidates.")}</div>', unsafe_allow_html=True)
 
                     if isinstance(loc_df, pd.DataFrame) and not loc_df.empty:
-                        st.plotly_chart(fig_local_sensitivity(loc_df), width="stretch")
-                        with st.expander(f"💬 {tt('Şekil Yorumu', 'Figure Commentary')}", expanded=False):
+                        st.plotly_chart(fig_local_sensitivity(loc_df), use_container_width=True)
+                        with st.container():
                             st.markdown(f'<div class="commentary-box">{tt("Lokal duyarlılık grafiği, her kriterin ağırlığı ±%10 ve ±%20 değiştirildiğinde sıralamanın ne kadar etkilendiğini Spearman korelasyonu ile ölçer. ρ = 1.0\'a yakın çizgiler, o kriterin ağırlık değişimine karşı sıralamanın kararlı kaldığını gösterir; aşağı düşen çizgiler kritik duyarlılık noktalarına işaret eder.", "The local sensitivity chart measures how much the ranking is affected when each criterion weight changes by ±10% and ±20%, using Spearman correlation. Lines close to ρ = 1.0 show the ranking remains stable against that criterion weight change; lines dropping down indicate critical sensitivity points.")}</div>', unsafe_allow_html=True)
 
 with tabs[_tab_output]:
@@ -10567,7 +10743,43 @@ with tabs[_tab_output]:
             "This title is used only on the Excel cover and file name. The Word output remains unchanged.",
         )
     )
+    # ── Sonra ne yapmalıyım rehberi ──
+    _ar = st.session_state.get("analysis_result")
+    if isinstance(_ar, dict):
+        _guidance = tt(
+            "✅ <b>Sonuçlarınız hazır.</b> (1) Karşılaştırma sekmesinde yöntem uyumunu kontrol edin. (2) Sağlamlık sekmesinde MC kararlılığını inceleyin. (3) Hedefinize uygun formatı indirin: iş raporu→Excel, sunum→APA Rapor, makale/tez→IMRAD.",
+            "✅ <b>Results are ready.</b> (1) Check method agreement in Comparison tab. (2) Review MC stability in Robustness tab. (3) Download the right format: business→Excel, presentation→APA Report, paper/thesis→IMRAD."
+        )
+        st.markdown(f"<div class='assistant-box' style='margin-bottom:1rem;'>{_guidance}</div>", unsafe_allow_html=True)
+
     _render_report_download_controls(_out_lang)
+
+    # ── Ek çıktılar: Yönetici Özeti + Dashboard ──
+    _dl_extra_1, _dl_extra_2 = st.columns(2)
+    with _dl_extra_1:
+        if _ensure_docx_support():
+            try:
+                _exec_bytes = mcdm_article.generate_executive_summary_docx(_ar, _ar.get("selected_data", pd.DataFrame()), lang=_out_lang) if isinstance(_ar, dict) else None
+            except Exception:
+                _exec_bytes = None
+            if _exec_bytes:
+                st.download_button(
+                    tt("📋 Yönetici Özeti (Word)", "📋 Executive Summary (Word)"),
+                    _exec_bytes, tt("MCDM_Yonetici_Ozeti.docx", "MCDM_Executive_Summary.docx"),
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    key=f"dl_exec_{_out_lang}", use_container_width=True)
+                st.caption(tt("Tek sayfalık özet. Yönetim kurulu ve sunum için.", "One-page summary for board meetings."))
+    with _dl_extra_2:
+        try:
+            _dash_html = mcdm_article.generate_dashboard_html(_ar, _ar.get("selected_data", pd.DataFrame()), lang=_out_lang) if isinstance(_ar, dict) else None
+        except Exception:
+            _dash_html = None
+        if _dash_html:
+            st.download_button(
+                tt("🌐 Dashboard (HTML)", "🌐 Dashboard (HTML)"),
+                _dash_html.encode("utf-8"), tt("MCDM_Dashboard.html", "MCDM_Dashboard.html"),
+                "text/html", key=f"dl_dash_{_out_lang}", use_container_width=True)
+            st.caption(tt("Tarayıcıda açılabilen interaktif dashboard.", "Interactive dashboard viewable in any browser."))
 
     st.markdown(_reference_notice_html(_out_lang), unsafe_allow_html=True)
     st.markdown(f"### 📚 {_ref_heading}")
@@ -10587,7 +10799,7 @@ st.markdown(
            style="color:#2E7D9E; text-decoration:none; font-weight:600;">
             🌐 www.ofrencber.com
         </a>
-        &nbsp;·&nbsp; MCDM Toolbox Professional &nbsp;·&nbsp; {tt("Akademik Karar Destek Sistemi", "Academic Decision Support System")}
+        &nbsp;·&nbsp; MCDM Karar Destek Sistemi Professional &nbsp;·&nbsp; {tt("Akademik Karar Destek Sistemi", "Academic Decision Support System")}
     </div>
     """,
     unsafe_allow_html=True,

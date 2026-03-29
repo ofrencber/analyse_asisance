@@ -1,0 +1,1 @@
+Bu sistemde önce kullanım amacını belirleyin, sonra veri girişini yapın. Kriter yönlerini (fayda/maliyet) doğruladıktan sonra uygun ağırlıklandırma ve sıralama yöntemlerini seçerek analizi çalıştırın. Sonuç ekranında ağırlıklar, sıralama, yöntem karşılaştırması ve duyarlılık bulgularını birlikte yorumlayın.

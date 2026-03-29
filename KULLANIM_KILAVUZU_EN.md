@@ -1,0 +1,1 @@
+Start by selecting the usage objective, then upload your dataset. After validating criterion directions (benefit/cost), choose weighting and ranking methods and run the analysis. In the results view, interpret weights, ranking, method comparison, and sensitivity findings together.

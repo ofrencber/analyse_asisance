@@ -524,6 +524,72 @@ def _benefit_cost_summary(criteria_types: Dict[str, str]) -> Dict[str, List[str]
     return {"benefit": benefit, "cost": cost}
 
 
+def apply_threshold_filter(
+    data: pd.DataFrame,
+    criteria: Sequence[str],
+    criteria_types: Dict[str, str],
+    thresholds: Dict[str, Dict[str, float]],
+) -> Tuple[pd.DataFrame, List[Dict[str, Any]]]:
+    """Pre-screen alternatives by minimum/maximum thresholds.
+
+    Parameters
+    ----------
+    thresholds : dict
+        ``{criterion: {"min": float, "max": float}}``.
+        For benefit criteria: alternatives below ``min`` are eliminated.
+        For cost criteria: alternatives above ``max`` are eliminated.
+        Keys are optional — omit ``min``/``max`` to skip that bound.
+
+    Returns
+    -------
+    filtered_data : pd.DataFrame
+        Data with eliminated rows removed.
+    eliminated : list of dict
+        Each entry: ``{"alternative": str, "criterion": str, "value": float,
+        "threshold": float, "direction": str}``.
+    """
+    if not thresholds:
+        return data, []
+
+    eliminated: List[Dict[str, Any]] = []
+    keep_mask = pd.Series(True, index=data.index)
+    df = _as_numeric_df(data, criteria)
+
+    for crit, bounds in thresholds.items():
+        if crit not in df.columns:
+            continue
+        col = df[crit]
+        ctype = criteria_types.get(crit, "max")
+        min_val = bounds.get("min")
+        max_val = bounds.get("max")
+
+        if min_val is not None:
+            fail = col < float(min_val)
+            for idx in df.index[fail & keep_mask]:
+                eliminated.append({
+                    "alternative": str(idx),
+                    "criterion": crit,
+                    "value": float(col.loc[idx]),
+                    "threshold": float(min_val),
+                    "direction": f"< min ({min_val})",
+                })
+            keep_mask &= ~fail
+
+        if max_val is not None:
+            fail = col > float(max_val)
+            for idx in df.index[fail & keep_mask]:
+                eliminated.append({
+                    "alternative": str(idx),
+                    "criterion": crit,
+                    "value": float(col.loc[idx]),
+                    "threshold": float(max_val),
+                    "direction": f"> max ({max_val})",
+                })
+            keep_mask &= ~fail
+
+    return data.loc[keep_mask].copy(), eliminated
+
+
 def validate_problem(data: pd.DataFrame, criteria: Sequence[str], criteria_types: Dict[str, str]) -> Dict[str, Any]:
     df = _as_numeric_df(data, criteria)
     issues: List[str] = []
@@ -739,12 +805,10 @@ def _weights_cilos(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tuple[
         dtype=float,
     )
 
-    p_matrix = pd.DataFrame(0.0, index=cols, columns=cols, dtype=float)
-    for row_criterion in cols:
-        for col_criterion in cols:
-            diag_val = float(a_matrix.loc[col_criterion, col_criterion])
-            current = float(a_matrix.loc[row_criterion, col_criterion])
-            p_matrix.loc[row_criterion, col_criterion] = max(0.0, (diag_val - current) / (diag_val + EPS))
+    a_vals = a_matrix.to_numpy(dtype=float)
+    diag_vals = np.diag(a_vals)
+    p_vals = np.maximum(0.0, (diag_vals[np.newaxis, :] - a_vals) / (diag_vals[np.newaxis, :] + EPS))
+    p_matrix = pd.DataFrame(p_vals, index=cols, columns=cols, dtype=float)
 
     f_matrix = p_matrix.T.copy()
     for crit in cols:
@@ -2005,6 +2069,17 @@ def rank_alternatives(
     fuzzy_spread: float = 0.10,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     df = _as_numeric_df(data, criteria)
+    # Input weight validation
+    w_vec = np.asarray([float(weights.get(c, 0.0)) for c in criteria], dtype=float)
+    if np.any(w_vec < 0):
+        w_vec = np.clip(w_vec, 0.0, None)
+        w_sum = w_vec.sum()
+        if w_sum > EPS:
+            w_vec /= w_sum
+        weights = dict(zip(criteria, w_vec))
+    w_sum = sum(weights.get(c, 0.0) for c in criteria)
+    if w_sum > EPS and not np.isclose(w_sum, 1.0, atol=1e-4):
+        weights = {c: weights.get(c, 0.0) / w_sum for c in criteria}
     dispatch = {
         "TOPSIS": lambda: _rank_topsis(df, criteria_types, weights),
         "VIKOR": lambda: _rank_vikor(df, criteria_types, weights, v_param=vikor_v),
@@ -2149,8 +2224,11 @@ def compare_methods(
     corr = pd.DataFrame(index=method_names, columns=method_names, dtype=float)
     for m1 in method_names:
         for m2 in method_names:
-            rho, _ = spearmanr(rank_table[m1], rank_table[m2])
-            corr.loc[m1, m2] = rho
+            try:
+                rho, _ = spearmanr(rank_table[m1], rank_table[m2])
+                corr.loc[m1, m2] = rho if np.isfinite(rho) else 1.0 if m1 == m2 else np.nan
+            except (ValueError, TypeError):
+                corr.loc[m1, m2] = 1.0 if m1 == m2 else np.nan
     best_counts = []
     for method in method_names:
         top_alt = rank_table.sort_values(method).iloc[0]["Alternatif"]
@@ -2233,7 +2311,11 @@ def sensitivity_analysis(
                 promethee_s=promethee_s,
                 fuzzy_spread=fuzzy_spread,
             )
-            rho, _ = spearmanr(base_rank.sort_index(), res.set_index("Alternatif")["Sıra"].sort_index())
+            try:
+                rho, _ = spearmanr(base_rank.sort_index(), res.set_index("Alternatif")["Sıra"].sort_index())
+                rho = rho if np.isfinite(rho) else 1.0
+            except (ValueError, TypeError):
+                rho = 1.0
             scenario_rows.append(
                 {
                     "Kriter": crit,
@@ -2247,8 +2329,10 @@ def sensitivity_analysis(
     mc_rows = []
     top_counter: Dict[str, int] = {}
     mean_rank_tracker: Dict[str, List[int]] = {str(idx): [] for idx in data.index}
+    _safe_sigma = min(float(sigma), 1.0)
     for _ in range(max(iterations, 1)):
-        noise = rng.normal(0.0, sigma, size=len(criteria))
+        noise = rng.normal(0.0, _safe_sigma, size=len(criteria))
+        noise = np.clip(noise, -5.0, 5.0)
         draw = weight_vec * np.exp(noise)
         draw = _normalize_weights(draw)
         wd = dict(zip(criteria, draw))
@@ -2749,6 +2833,107 @@ def run_full_analysis(data: pd.DataFrame, config: AnalysisConfig) -> Dict[str, A
         },
     }
     return result
+
+
+def run_scenario_analysis(
+    data: pd.DataFrame,
+    criteria: Sequence[str],
+    criteria_types: Dict[str, str],
+    scenarios: Dict[str, Dict[str, float]],
+    ranking_method: str,
+    *,
+    vikor_v: float = 0.5,
+    waspas_lambda: float = 0.5,
+    codas_tau: float = 0.02,
+    cocoso_lambda: float = 0.5,
+    gra_rho: float = 0.5,
+    promethee_pref_func: str = "linear",
+    promethee_q: float = 0.05,
+    promethee_p: float = 0.30,
+    promethee_s: float = 0.20,
+    fuzzy_spread: float = 0.10,
+) -> Dict[str, Any]:
+    """Run the same ranking method with multiple weight scenarios.
+
+    Parameters
+    ----------
+    scenarios : dict
+        ``{"Scenario Name": {"C1": 0.3, "C2": 0.7, ...}, ...}``
+        Each value is a weight dict (will be auto-normalized).
+
+    Returns
+    -------
+    dict with keys:
+        - ``rank_comparison``: DataFrame (alternatives × scenarios → ranks)
+        - ``score_comparison``: DataFrame (alternatives × scenarios → scores)
+        - ``leader_summary``: DataFrame (scenario, leader, score)
+        - ``agreement_matrix``: DataFrame (Spearman ρ between scenarios)
+        - ``all_same_leader``: bool
+        - ``per_scenario``: dict of full ranking tables
+    """
+    from scipy.stats import spearmanr as _sp
+
+    per_scenario: Dict[str, pd.DataFrame] = {}
+    rank_kwargs = dict(
+        vikor_v=vikor_v, waspas_lambda=waspas_lambda, codas_tau=codas_tau,
+        cocoso_lambda=cocoso_lambda, gra_rho=gra_rho,
+        promethee_pref_func=promethee_pref_func, promethee_q=promethee_q,
+        promethee_p=promethee_p, promethee_s=promethee_s, fuzzy_spread=fuzzy_spread,
+    )
+
+    for sc_name, sc_weights in scenarios.items():
+        rt, _ = rank_alternatives(data, criteria, criteria_types, sc_weights, ranking_method, **rank_kwargs)
+        per_scenario[sc_name] = rt
+
+    # Build comparison tables
+    alt_col = "Alternatif"
+    r_col = "Sıra"
+    s_col = "Skor"
+    alts = list(per_scenario[next(iter(per_scenario))][alt_col])
+
+    rank_rows = []
+    score_rows = []
+    for alt in alts:
+        r_row: Dict[str, Any] = {alt_col: alt}
+        s_row: Dict[str, Any] = {alt_col: alt}
+        for sc_name, rt in per_scenario.items():
+            match = rt[rt[alt_col] == alt]
+            r_row[sc_name] = int(match[r_col].iloc[0]) if not match.empty else None
+            s_row[sc_name] = float(match[s_col].iloc[0]) if not match.empty else None
+        rank_rows.append(r_row)
+        score_rows.append(s_row)
+
+    rank_df = pd.DataFrame(rank_rows)
+    score_df = pd.DataFrame(score_rows)
+
+    # Leader summary
+    sc_names = list(scenarios.keys())
+    leaders = []
+    for sc_name in sc_names:
+        rt = per_scenario[sc_name]
+        top = rt.sort_values(r_col).iloc[0]
+        leaders.append({"Senaryo": sc_name, "Lider": str(top[alt_col]), "Skor": float(top[s_col])})
+    leader_df = pd.DataFrame(leaders)
+    all_same = len(set(l["Lider"] for l in leaders)) == 1
+
+    # Spearman agreement between scenarios
+    corr = pd.DataFrame(index=sc_names, columns=sc_names, dtype=float)
+    for s1 in sc_names:
+        for s2 in sc_names:
+            try:
+                rho, _ = _sp(rank_df[s1], rank_df[s2])
+                corr.loc[s1, s2] = rho if np.isfinite(rho) else 1.0 if s1 == s2 else np.nan
+            except (ValueError, TypeError):
+                corr.loc[s1, s2] = 1.0 if s1 == s2 else np.nan
+
+    return {
+        "rank_comparison": rank_df,
+        "score_comparison": score_df,
+        "leader_summary": leader_df,
+        "agreement_matrix": corr,
+        "all_same_leader": all_same,
+        "per_scenario": per_scenario,
+    }
 
 
 def available_methods() -> Dict[str, List[str]]:
