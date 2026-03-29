@@ -5939,9 +5939,13 @@ def _render_report_download_controls_core(lang: str) -> None:
     if imrad_key not in blob_cache:
         try:
             selected_data = result.get("selected_data", pd.DataFrame())
-            blob_cache[imrad_key] = mcdm_article.generate_imrad_docx(result, selected_data, lang=lang)
-        except Exception:
+            _imrad_result = mcdm_article.generate_imrad_docx(result, selected_data, lang=lang)
+            if isinstance(_imrad_result, str):
+                _imrad_result = _imrad_result.encode("utf-8")
+            blob_cache[imrad_key] = _imrad_result
+        except Exception as _exc:
             blob_cache[imrad_key] = None
+            st.session_state["_imrad_gen_error"] = str(_exc)
     imrad_bytes = blob_cache.get(imrad_key)
     st.session_state["download_blob_cache"] = blob_cache
 
@@ -5988,7 +5992,8 @@ def _render_report_download_controls_core(lang: str) -> None:
                 access.track_event("report_downloaded", {"format": "imrad_html", "lang": lang, "is_panel": is_panel_download})
             st.caption(tt("Formüller ve gerekçeler dahil makale taslağı. Tarayıcıda açılır, yazdırılabilir.", "Article draft with formulas. Opens in browser, printable."))
         else:
-            st.caption(tt("IMRAD makale taslağı oluşturulamadı.", "IMRAD draft could not be generated."))
+            _gen_err = st.session_state.get("_imrad_gen_error", "")
+            st.caption(tt(f"IMRAD makale taslağı oluşturulamadı. {_gen_err}", f"IMRAD draft could not be generated. {_gen_err}"))
 
 if hasattr(st, "fragment"):
     _render_report_download_controls = st.fragment(_render_report_download_controls_core)

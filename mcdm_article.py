@@ -2224,7 +2224,10 @@ def generate_imrad_docx(
         md.append("Önerilen metodoloji birbiriyle bütünleşik üç katmandan oluşmaktadır: (1) ham karar matrisinden nesnel kriter ağırlıklandırma, " + ("(2) karar matrisinin TFN ile bulanıklaştırılması, " if is_fuzzy else "") + (f"({'3' if is_fuzzy else '2'}) sistematik sıralama ve ({'4' if is_fuzzy else '3'}) çok katmanlı sağlamlık doğrulaması.\n"))
 
     # Flowchart
-    fc = _generate_flowchart_bytes(d, lang)
+    try:
+        fc = _generate_flowchart_bytes(d, lang)
+    except Exception:
+        fc = None
     if fc:
         fc_path = _save_png(fc)
         cap = "Şekil 1. Önerilen Yöntemin Akış Şeması" if lang != "EN" else "Figure 1. Proposed Methodology Flowchart"
@@ -2332,7 +2335,10 @@ def generate_imrad_docx(
         else:
             md.append(f"En yüksek ağırlık **{d['top_criterion']}** kriterine aittir (w = {f(d['top_weight'], lang)}). Bu bulgu, söz konusu kriterin mevcut veri setinde alternatifleri birbirinden en güçlü biçimde ayırt eden bilgi yapısına sahip olduğuna işaret etmektedir.\n")
 
-    wb = _generate_weight_bar_bytes(d["weight_table"], lang)
+    try:
+        wb = _generate_weight_bar_bytes(d["weight_table"], lang)
+    except Exception:
+        wb = None
     if wb:
         wb_path = _save_png(wb)
         cap_w = ("Şekil 2. Kriter Ağırlık Dağılımı" if lang != "EN" else "Figure 2. Criteria Weight Distribution")
@@ -2364,7 +2370,10 @@ def generate_imrad_docx(
                 gw = "net bir fark" if gap > 0.05 else "dar bir marj"
                 md.append(f"**{d['top_alt']}** birinci sıradadır (skor: {f(d['top_score'], lang)}). İkinciyle fark: {f(gap, lang)} ({gw}).\n")
 
-        rb = _generate_ranking_bar_bytes(d["ranking_table"], lang)
+        try:
+            rb = _generate_ranking_bar_bytes(d["ranking_table"], lang)
+        except Exception:
+            rb = None
         if rb:
             rb_path = _save_png(rb)
             cap_r = "Şekil 3. Alternatif Skorları" if lang != "EN" else "Figure 3. Alternative Scores"
@@ -2374,7 +2383,10 @@ def generate_imrad_docx(
         else:
             md.append("Figure 3 presents the final scores of alternatives comparatively. The degree of separation of the leading alternative serves as a visual indicator of decision reliability.\n")
 
-        mc = _generate_method_specific_chart(d, lang)
+        try:
+            mc = _generate_method_specific_chart(d, lang)
+        except Exception:
+            mc = None
         if mc:
             mc_path = _save_png(mc)
             cap_m = f"Şekil 4. {rm} Görselleştirme" if lang != "EN" else f"Figure 4. {rm} Visualization"
@@ -2818,7 +2830,10 @@ def generate_executive_summary_docx(
             _add_table(doc, top3_r, lang_code=lang_code)
 
     # Mini chart
-    wb = _generate_weight_bar_bytes(d["weight_table"], lang)
+    try:
+        wb = _generate_weight_bar_bytes(d["weight_table"], lang)
+    except Exception:
+        wb = None
     if wb:
         _add_figure(doc, wb, "Criteria Weights" if lang == "EN" else "Kriter Ağırlıkları", lang_code, width_inches=4.5)
 
