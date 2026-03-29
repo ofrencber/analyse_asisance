@@ -9445,6 +9445,17 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                                 ranking_methods_selected.append(rank_method)
                 st.session_state["ranking_prefs"] = ranking_methods_selected
 
+                # PSI uyarısı
+                if any("PSI" in m for m in ranking_methods_selected):
+                    st.info(tt(
+                        "ℹ️ **PSI (Preference Selection Index)** kendi kriter ağırlıklarını istatistiksel sapmadan hesaplamaktadır. "
+                        "Bu yöntem kullanıcıdan ağırlık almaz; seçtiğiniz ağırlık yöntemi yalnızca diğer sıralama yöntemlerinde kullanılacaktır. "
+                        "PSI sonuçlarında ağırlıklar otomatik olarak yöntemin kendi OPV (Overall Preference Value) vektöründen üretilmektedir.",
+                        "ℹ️ **PSI (Preference Selection Index)** calculates its own criterion weights from statistical deviation. "
+                        "This method does not use user-provided weights; your selected weighting method applies only to other ranking methods. "
+                        "PSI results use internally generated OPV (Overall Preference Value) weights."
+                    ))
+
                 if not ranking_methods_selected:
                     st.markdown(
                         f"<p style='color:#B91C1C;font-size:0.78rem;font-weight:700;margin:0.45rem 0 0 0;'>❗ {tt('Lütfen seçiminizi yapın.', 'Please make your selection.')}</p>",
