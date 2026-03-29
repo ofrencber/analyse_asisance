@@ -1160,6 +1160,10 @@ def weight_method_groups() -> List[tuple[str, List[str]]]:
             tt("Etki ve hibrit temelli", "Impact and hybrid based"),
             ["MEREC", "CILOS", "IDOCRIW", "Fuzzy IDOCRIW"],
         ),
+        (
+            tt("Denge ve simetri temelli", "Balance and symmetry based"),
+            ["SPC"],
+        ),
     ]
 
 def _wm_single_select_cb(selected_name: str, all_methods: List[str]) -> None:
@@ -1185,7 +1189,11 @@ def ranking_method_groups(layer_key: str) -> List[tuple[str, List[str]]]:
         ),
         (
             tt("Fayda toplulaştırma odaklı", "Utility aggregation oriented"),
-            ["SAW", "WPM", "MAUT", "WASPAS", "CoCoSo", "ROV", "AROMAN", "DNMA"],
+            ["SAW", "WPM", "MAUT", "WASPAS", "CoCoSo", "ROV", "AROMAN", "DNMA", "WISP"],
+        ),
+        (
+            tt("Ağırlıksız / Kendi kendine ağırlıklı", "Self-weighting / Weight-free"),
+            ["PSI"],
         ),
         (
             tt("Göreli üstünlük ve rekabet odaklı", "Relative dominance and competitiveness oriented"),

@@ -20,6 +20,7 @@ OBJECTIVE_WEIGHT_METHODS = [
     "CILOS",
     "IDOCRIW",
     "Fuzzy IDOCRIW",
+    "SPC",
 ]
 
 CLASSICAL_MCDM_METHODS = [
@@ -47,6 +48,8 @@ CLASSICAL_MCDM_METHODS = [
     "ROV",
     "AROMAN",
     "DNMA",
+    "PSI",
+    "WISP",
 ]
 
 FUZZY_MCDM_METHODS = [
@@ -74,6 +77,8 @@ FUZZY_MCDM_METHODS = [
     "Fuzzy ROV",
     "Fuzzy AROMAN",
     "Fuzzy DNMA",
+    "Fuzzy PSI",
+    "Fuzzy WISP",
 ]
 
 METHOD_PHILOSOPHY: Dict[str, Dict[str, str]] = {
@@ -168,6 +173,26 @@ METHOD_PHILOSOPHY: Dict[str, Dict[str, str]] = {
     "Fuzzy DNMA": {
         "simple": "Fuzzy DNMA, çift normalleştirme yaklaşımını bulanık belirsizlik altında eşit ağırlıkla harmanlayarak skor üretir.",
         "academic": "Fuzzy DNMA, DNMA'nın min-max ve sum normalleştirme bileşenlerini üçgensel bulanık değer senaryoları üzerinde eşit ağırlıklı toplulaştırmayla bütünleştirir.",
+    },
+    "SPC": {
+        "simple": "SPC, her kriterin simetri (denge) noktasından alternatiflerin sapmasını ölçerek ayırt edici kriterlere yüksek ağırlık verir.",
+        "academic": "SPC (Symmetry Point of Criterion), normalize edilmiş karar matrisinde her kriterin denge noktasından alternatiflerin toplam mutlak sapmasını hesaplayarak kriter ayırt ediciliğini mesafe temelli olarak ölçen objektif bir ağırlıklandırma yöntemidir.",
+    },
+    "PSI": {
+        "simple": "PSI, kullanıcıdan ağırlık almadan kriter önemini istatistiksel sapmadan hesaplayarak sıralama üretir.",
+        "academic": "PSI (Preference Selection Index), karar vericiden bağımsız olarak kriter önemini normalize edilmiş değerlerin standart sapmasından türeterek OPV (Overall Preference Value) vektörü oluşturur ve ağırlıklı toplamsal modelle sıralama yapar.",
+    },
+    "Fuzzy PSI": {
+        "simple": "Fuzzy PSI, PSI'nın kendi kendine ağırlık hesaplama mantığını belirsizlik altında üçgensel bulanık senaryolarla uygular.",
+        "academic": "Fuzzy PSI, PSI'nın istatistiksel sapma temelli kendi kendine ağırlık üretimini üçgensel bulanık sayı senaryoları üzerinde gerçekleştirerek belirsizlik duyarlı bir ağırlıksız sıralama sunar.",
+    },
+    "WISP": {
+        "simple": "WISP, toplamsal ve çarpımsal yaklaşımları dört farklı fayda ölçüsüyle birleştirerek tek bir toplulaştırma stratejisine bağımlılığı azaltır.",
+        "academic": "WISP (Weighted Integrated Sum Product), ağırlıklı toplam (Q1), ağırlıklı çarpım (Q2), fark (Q3) ve oran (Q4) olmak üzere dört bağımsız fayda ölçüsünü bütünleştirerek normalize edilmiş genel fayda skoru üreten, WASPAS'ın genişletilmiş ve daha kapsamlı bir versiyonudur.",
+    },
+    "Fuzzy WISP": {
+        "simple": "Fuzzy WISP, WISP'in dört bileşenli fayda ölçümünü bulanık belirsizlik altında üçgensel senaryolarla uygular.",
+        "academic": "Fuzzy WISP, WISP'in toplam-çarpım-fark-oran bileşenlerini üçgensel bulanık değer senaryoları üzerinde hesaplayarak belirsizlik duyarlı çok bileşenli sıralama sunar.",
     },
     "TOPSIS": {
         "simple": "TOPSIS, en iyi hayali seçeneğe yakın ve en kötü hayali seçeneğe uzak olan alternatifi daha iyi sayar.",
@@ -359,6 +384,11 @@ REFERENCE_LIBRARY: Dict[str, str] = {
     "ROV": "Yakowitz, D. S., Lane, L. J., & Szidarovszky, F. (1993). Multi-attribute decision making: Dominance with respect to an importance order of the attributes. Applied Mathematics and Computation, 54(2–3), 167–181. https://doi.org/10.1016/0096-3003(93)90057-L",
     "AROMAN": "Dimitrijević, B., Trpković, A., Atanasković, M., & Grbović, A. (2022). Application of AROMAN Method for Determination of Stability Level for Slope Failures. Civil Engineering Journal, 8(8), 1447–1462. https://doi.org/10.28991/CEJ-2022-08-08-012",
     "DNMA": "Liu, P., & Zhu, B. (2021). A novel psychophysical decision-making model with heterogeneous information and its application in the evaluation of unmanned aerial vehicle selection. Expert Systems with Applications, 166, 114091. https://doi.org/10.1016/j.eswa.2020.114091",
+    "SPC": "Gligorić, M., Gligorić, Z., Beljić, Č., Torbica, S., Savić Šurlan, G., & Beljić, Č. (2023). Novel Hybrid MPSI–MARA Decision-Making Model for Support System Selection in a Viscose Fiber Plant. Sustainability, 15(3), 2422. https://doi.org/10.3390/su15032422",
+    "PSI": "Maniya, K. D., & Bhatt, M. G. (2010). A selection of material using a novel type decision-making method: Preference selection index method. Materials & Design, 31(4), 1785–1789. https://doi.org/10.1016/j.matdes.2009.11.020",
+    "WISP": "Stanujkic, D., Karabasevic, D., Popovic, G., Pamučar, D., Stević, Ž., Zavadskas, E. K., & Smarandache, F. (2021). A New Fuzzy Extension of the WISP Method. Axioms, 10(4), 347. https://doi.org/10.3390/axioms10040347",
+    "Fuzzy PSI": "Maniya, K. D., & Bhatt, M. G. (2010). A selection of material using a novel type decision-making method: Preference selection index method. Materials & Design, 31(4), 1785–1789.",
+    "Fuzzy WISP": "Stanujkic, D., Karabasevic, D., Popovic, G., et al. (2021). A New Fuzzy Extension of the WISP Method. Axioms, 10(4), 347.",
     "Fuzzy SPOTIS": "Shekhovtsov, A., & Sałabun, W. (2021). A comparative case study of the VIKOR and TOPSIS ranking methods in a novel approach for solving the fuzzy MCDM problem. Applied Soft Computing, 111, 107637. https://doi.org/10.1016/j.asoc.2021.107637",
     "Fuzzy MULTIMOORA": "Brauers, W. K. M., & Zavadskas, E. K. (2012). Robustness of MULTIMOORA: A method for multi-objective optimization. Informatica, 23(1), 1–25.",
     "Fuzzy RAWEC": "Sotoudeh-Anvari, A. (2023). A novel multi-attribute decision-making method based on the weight of each criterion (RAWEC). Journal of Soft Computing and Decision Analytics, 1(1), 192–207.",
@@ -909,6 +939,35 @@ def _weights_fuzzy_idocriw(
     return w, det
 
 
+def _weights_spc(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tuple[Dict[str, float], Dict[str, Any]]:
+    """SPC — Symmetry Point of Criterion (Gligorić et al., 2023).
+
+    Her kriterin simetri noktasından (denge noktası) alternatiflerin
+    ortalama sapmasını ölçer. Sapma büyük olan kriter daha ayırt edicidir.
+    """
+    norm = _normalize_minmax(data, criteria_types)
+    cols = list(norm.columns)
+    arr = norm.to_numpy(dtype=float)
+
+    # Simetri noktası: her kriterin normalize aralığının ortası
+    spv = (arr.min(axis=0) + arr.max(axis=0)) / 2.0
+
+    # Her kriter için alternatiflerin simetri noktasına toplam mesafesi
+    distances = np.abs(arr - spv[np.newaxis, :]).sum(axis=0)
+
+    # Ağırlık: mesafe büyük → kriter daha ayırt edici → daha yüksek ağırlık
+    raw = distances / (distances.sum() + EPS)
+    weights = _normalize_weights(raw)
+    w = dict(zip(cols, weights))
+    det = {
+        "normalized_matrix": norm,
+        "symmetry_points": pd.DataFrame({"Kriter": cols, "SimetriNoktası": spv}),
+        "distances": pd.DataFrame({"Kriter": cols, "ToplamMesafe": distances}),
+        "spc": pd.DataFrame({"Kriter": cols, "HamAğırlık": raw, "Ağırlık": weights}),
+    }
+    return w, det
+
+
 def compute_objective_weights(
     data: pd.DataFrame,
     criteria: Sequence[str],
@@ -927,6 +986,7 @@ def compute_objective_weights(
         "CILOS": _weights_cilos,
         "IDOCRIW": _weights_idocriw,
         "Fuzzy IDOCRIW": lambda d, ct: _weights_fuzzy_idocriw(d, ct, spread=fuzzy_spread),
+        "SPC": _weights_spc,
     }
     if method not in dispatch:
         raise ValueError(f"Desteklenmeyen ağırlıklandırma yöntemi: {method}")
@@ -2006,6 +2066,80 @@ def _rank_dnma(
     return score, det
 
 
+def _rank_psi(
+    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float] | None = None,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """PSI — Preference Selection Index (Maniya & Bhatt, 2010).
+
+    Ağırlık gerektirmez; kriter önemini istatistiksel sapma ile kendi hesaplar.
+    Kullanıcı ağırlık verse bile PSI kendi OPV'sini üretir.
+    Yüksek skor = iyi.
+    """
+    norm = _normalize_minmax(data, criteria_types)
+    arr = norm.to_numpy(dtype=float)
+
+    # Ortalama performans ve tercih sapması
+    mean_vals = arr.mean(axis=0)
+    pv = np.sum((arr - mean_vals[np.newaxis, :]) ** 2, axis=0)
+    deviation = np.sqrt(pv + EPS)
+
+    # OPV — kendi ürettiği ağırlık vektörü
+    opv = deviation / (deviation.sum() + EPS)
+
+    # PSI skoru
+    score = (arr * opv[np.newaxis, :]).sum(axis=1)
+
+    det = {
+        "normalized_matrix": norm,
+        "psi_table": pd.DataFrame({
+            "Alternatif": data.index.astype(str),
+            "Skor": score,
+        }),
+        "opv_weights": pd.DataFrame({
+            "Kriter": list(data.columns),
+            "OPV": opv,
+        }),
+    }
+    return score, det
+
+
+def _rank_wisp(
+    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float],
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """WISP — Weighted Integrated Sum Product (Stanujkic et al., 2021).
+
+    SAW ve WPM'yi 4 fayda ölçüsüyle (toplam, çarpım, fark, oran) bütünleştirir.
+    Yüksek skor = iyi.
+    """
+    norm = _normalize_minmax(data, criteria_types)
+    arr = norm.to_numpy(dtype=float)
+    wvec = np.asarray([weights[c] for c in data.columns], dtype=float)
+
+    # 4 bileşen
+    q1 = (arr * wvec[np.newaxis, :]).sum(axis=1)                       # Weighted Sum
+    q2 = np.prod(np.power(arr + EPS, wvec[np.newaxis, :]), axis=1)     # Weighted Product
+    q3 = q1 - q2                                                       # Difference
+    q4 = q1 / (q2 + EPS)                                               # Ratio
+
+    # Normalize
+    q1n = q1 / (np.max(q1) + EPS)
+    q2n = q2 / (np.max(q2) + EPS)
+    q3n = q3 / (np.max(np.abs(q3)) + EPS)
+    q4n = q4 / (np.max(q4) + EPS)
+
+    score = (q1n + q2n + q3n + q4n) / 4.0
+
+    det = {
+        "normalized_matrix": norm,
+        "wisp_table": pd.DataFrame({
+            "Alternatif": data.index.astype(str),
+            "Q1_Sum": q1, "Q2_Product": q2, "Q3_Diff": q3, "Q4_Ratio": q4,
+            "Skor": score,
+        }),
+    }
+    return score, det
+
+
 # Bulanık sarmalayıcılar (üçgensel BDS senaryoları üzerinden)
 
 def _rank_fuzzy_spotis(
@@ -2048,6 +2182,18 @@ def _rank_fuzzy_dnma(
     data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10,
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
     return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_dnma)
+
+
+def _rank_fuzzy_psi(
+    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_psi)
+
+
+def _rank_fuzzy_wisp(
+    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10,
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_wisp)
 
 
 def rank_alternatives(
@@ -2137,6 +2283,10 @@ def rank_alternatives(
         "Fuzzy ROV": lambda: _rank_fuzzy_rov(df, criteria_types, weights, spread=fuzzy_spread),
         "Fuzzy AROMAN": lambda: _rank_fuzzy_aroman(df, criteria_types, weights, spread=fuzzy_spread),
         "Fuzzy DNMA": lambda: _rank_fuzzy_dnma(df, criteria_types, weights, spread=fuzzy_spread),
+        "PSI": lambda: _rank_psi(df, criteria_types, weights),
+        "WISP": lambda: _rank_wisp(df, criteria_types, weights),
+        "Fuzzy PSI": lambda: _rank_fuzzy_psi(df, criteria_types, weights, spread=fuzzy_spread),
+        "Fuzzy WISP": lambda: _rank_fuzzy_wisp(df, criteria_types, weights, spread=fuzzy_spread),
     }
     if method not in dispatch:
         raise ValueError(f"Desteklenmeyen sıralama yöntemi: {method}")
