@@ -19,6 +19,7 @@ OBJECTIVE_WEIGHT_METHODS = [
     "PCA",
     "CILOS",
     "IDOCRIW",
+    "Fuzzy CILOS",
     "Fuzzy IDOCRIW",
     "SPC",
 ]
@@ -109,6 +110,10 @@ METHOD_PHILOSOPHY: Dict[str, Dict[str, str]] = {
     "IDOCRIW": {
         "simple": "IDOCRIW, Entropi ile CILOS mantığını birleştirerek hem bilgi çeşitliliğini hem de kriter kayıp etkisini birlikte okur.",
         "academic": "IDOCRIW, entropi temelli bilgi içeriğini CILOS tabanlı göreli etki kaybı yapısıyla bütünleştirerek kriter ağırlıklarını hibrit ve objektif biçimde üretir.",
+    },
+    "Fuzzy CILOS": {
+        "simple": "Fuzzy CILOS, kriter etki kaybı mantığını belirsizlik altında üç senaryolu bulanık çerçevede uygular.",
+        "academic": "Fuzzy CILOS, CILOS yönteminin göreli etki kayıpları matrisini bulanıklaştırılmış alt-orta-üst performans senaryoları üzerinde ayrı ayrı hesaplayarak belirsizlik duyarlı kriter ağırlıkları üretir.",
     },
     "Fuzzy IDOCRIW": {
         "simple": "Fuzzy IDOCRIW, IDOCRIW mantığını belirsizlik altında üç senaryolu bulanık bir çerçevede uygular.",
@@ -886,6 +891,38 @@ def _weights_idocriw(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tupl
     }
     return w, det
 
+def _weights_fuzzy_cilos(
+    data: pd.DataFrame,
+    criteria_types: Dict[str, str],
+    spread: float = 0.10,
+) -> Tuple[Dict[str, float], Dict[str, Any]]:
+    """Fuzzy CILOS — 3 senaryo (alt-orta-üst) üzerinde CILOS çalıştırılır, ortalaması alınır."""
+    pos, _ = _shift_positive(data)
+    lower = pos * max(0.0, 1.0 - spread)
+    middle = pos.copy()
+    upper = pos * (1.0 + spread)
+    cols = list(pos.columns)
+    stack: List[np.ndarray] = []
+    rows: List[Dict[str, Any]] = []
+
+    for scenario_name, scenario_df in [("Lower", lower), ("Middle", middle), ("Upper", upper)]:
+        w, _ = _weights_cilos(scenario_df, criteria_types)
+        vec = np.asarray([float(w[c]) for c in cols], dtype=float)
+        stack.append(vec)
+        for crit, val in zip(cols, vec):
+            rows.append({"Senaryo": scenario_name, "Kriter": crit, "CILOSAğırlığı": val})
+
+    avg = np.mean(stack, axis=0)
+    weights = _normalize_weights(avg)
+    w = dict(zip(cols, weights))
+    det = {
+        "scenario_details": pd.DataFrame(rows),
+        "fuzzy_cilos": pd.DataFrame({"Kriter": cols, "OrtalamaAğırlık": avg, "Ağırlık": weights}),
+        "parameters": {"spread": float(spread)},
+    }
+    return w, det
+
+
 def _weights_fuzzy_idocriw(
     data: pd.DataFrame,
     criteria_types: Dict[str, str],
@@ -985,6 +1022,7 @@ def compute_objective_weights(
         "PCA": _weights_pca,
         "CILOS": _weights_cilos,
         "IDOCRIW": _weights_idocriw,
+        "Fuzzy CILOS": lambda d, ct: _weights_fuzzy_cilos(d, ct, spread=fuzzy_spread),
         "Fuzzy IDOCRIW": lambda d, ct: _weights_fuzzy_idocriw(d, ct, spread=fuzzy_spread),
         "SPC": _weights_spc,
     }

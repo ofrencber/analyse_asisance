@@ -1158,7 +1158,7 @@ def weight_method_groups() -> List[tuple[str, List[str]]]:
         ),
         (
             tt("Etki ve hibrit temelli", "Impact and hybrid based"),
-            ["MEREC", "CILOS", "IDOCRIW", "Fuzzy IDOCRIW"],
+            ["MEREC", "CILOS", "Fuzzy CILOS", "IDOCRIW", "Fuzzy IDOCRIW"],
         ),
         (
             tt("Denge ve simetri temelli", "Balance and symmetry based"),
