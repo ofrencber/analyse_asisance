@@ -5945,10 +5945,8 @@ def _render_report_download_controls_core(lang: str) -> None:
                     if is_panel_download
                     else mcdm_article.generate_imrad_docx(result, selected_data, lang=lang)
                 )
-            except Exception as _imrad_exc:
+            except Exception:
                 blob_cache[imrad_key] = None
-                import traceback as _tb
-                st.session_state["_imrad_error"] = _tb.format_exc()
         imrad_bytes = blob_cache.get(imrad_key)
         st.session_state["download_blob_cache"] = blob_cache
 
@@ -5996,10 +5994,6 @@ def _render_report_download_controls_core(lang: str) -> None:
             st.caption(tt("Formüller ve gerekçeler dahil makale taslağı. Tez ve dergi için.", "Article draft with formulas. For theses and journals."))
         elif docx_enabled:
             st.caption(tt("IMRAD makale taslağı oluşturulamadı.", "IMRAD draft could not be generated."))
-            _ie = st.session_state.get("_imrad_error")
-            if _ie:
-                with st.expander("Debug", expanded=False):
-                    st.code(_ie)
 
 if hasattr(st, "fragment"):
     _render_report_download_controls = st.fragment(_render_report_download_controls_core)
