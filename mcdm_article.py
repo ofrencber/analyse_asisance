@@ -2443,8 +2443,10 @@ def generate_imrad_docx(
     md.append(f"*{disc}*\n")
     md.append("\n*MCDM Karar Destek Sistemi — Prof. Dr. Ömer Faruk Rençber*\n")
 
-    # ── PANDOC ──
+    # ── CONVERT MD → DOCX ──
     md_text = "\n".join(md)
+
+    # Try pandoc first (best quality — native Word equations)
     try:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8") as fm:
             fm.write(md_text)
@@ -2455,19 +2457,84 @@ def generate_imrad_docx(
         if Path(ref_path).is_file():
             cmd += ["--reference-doc", ref_path]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        if proc.returncode != 0:
+        if proc.returncode == 0:
+            with open(docx_path, "rb") as fo:
+                out = fo.read()
+            import os
+            os.unlink(md_path)
+            os.unlink(docx_path)
+            for tp in _tmp_files:
+                try: os.unlink(tp)
+                except Exception: pass
+            return out
+    except Exception:
+        pass
+
+    # Fallback: python-docx (no native equations but functional)
+    try:
+        if not _ensure_docx():
             return None
-        with open(docx_path, "rb") as fo:
-            out = fo.read()
-        import os
-        os.unlink(md_path)
-        os.unlink(docx_path)
+        doc = Document()
+        _configure_doc(doc)
+        for line in md_text.split("\n"):
+            line = line.rstrip()
+            if not line:
+                doc.add_paragraph("")
+                continue
+            if line.startswith("# "):
+                _add_heading(doc, line[2:], level=1)
+            elif line.startswith("## "):
+                _add_heading(doc, line[3:], level=2)
+            elif line.startswith("### "):
+                _add_heading(doc, line[4:], level=3)
+            elif line.startswith("!["):
+                # Image: ![caption](path)
+                import re as _re
+                m = _re.match(r"!\[([^\]]*)\]\(([^)]+)\)", line)
+                if m:
+                    cap, img_path = m.group(1), m.group(2)
+                    try:
+                        doc.add_picture(img_path, width=Inches(5))
+                        _add_paragraph(doc, cap, italic=True, font_size=10, alignment=WD_ALIGN_PARAGRAPH.CENTER)
+                    except Exception:
+                        pass
+            elif line.startswith("$$"):
+                # Display math — render as italic text
+                formula = line.strip("$").strip()
+                if formula:
+                    p = doc.add_paragraph()
+                    run = p.add_run(formula)
+                    run.font.name = "Cambria Math"
+                    run.font.size = Pt(11)
+                    run.italic = True
+                    run.font.color.rgb = RGBColor(0, 0, 0)
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            elif line.startswith("|"):
+                # Table row — skip (tables won't render perfectly in fallback)
+                pass
+            elif line.startswith("---"):
+                doc.add_paragraph("─" * 40)
+            elif line.startswith("- "):
+                _add_paragraph(doc, line[2:])
+            elif line.startswith("*") and line.endswith("*") and not line.startswith("**"):
+                # Italic
+                _add_paragraph(doc, line.strip("*"), italic=True, font_size=10)
+            elif line.startswith("**") and line.endswith("**"):
+                _add_paragraph(doc, line.strip("*"), bold=True)
+            else:
+                # Remove markdown bold/italic markers
+                clean = line.replace("**", "").replace("***", "")
+                _add_paragraph(doc, clean)
+
+        buf = io.BytesIO()
+        doc.save(buf)
         for tp in _tmp_files:
             try:
+                import os
                 os.unlink(tp)
             except Exception:
                 pass
-        return out
+        return buf.getvalue()
     except Exception:
         return None
 
