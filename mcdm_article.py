@@ -2163,6 +2163,17 @@ def _write_references(doc, d: Dict[str, Any], lang: str, lang_code: str) -> None
 # ---------------------------------------------------------------------------
 
 
+
+def _df_to_md_table(df):
+    """Convert DataFrame to markdown pipe table without tabulate dependency."""
+    cols = list(df.columns)
+    header = "| " + " | ".join(str(c) for c in cols) + " |"
+    sep = "| " + " | ".join("---" for _ in cols) + " |"
+    rows = []
+    for _, row in df.iterrows():
+        rows.append("| " + " | ".join(str(v) for v in row) + " |")
+    return header + "\n" + sep + "\n" + "\n".join(rows)
+
 def generate_imrad_docx(
     result: Dict[str, Any],
     selected_data: pd.DataFrame,
@@ -2324,7 +2335,7 @@ def generate_imrad_docx(
             wt[c] = wt[c].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "")
         tbl_cap = f"**{'Table' if lang == 'EN' else 'Tablo'} 1.** {wm} {'weights' if lang == 'EN' else 'ağırlıkları'}."
         md.append(tbl_cap + "\n")
-        md.append(wt.to_markdown(index=False) + "\n")
+        md.append(_df_to_md_table(wt) + "\n")
     if lang != "EN":
         md.append(f"Tablo 1, {wm} yöntemiyle hesaplanan kriter ağırlıklarını sunmaktadır. Ağırlık değerleri, her kriterin karar sürecine olan göreli katkısını yansıtmaktadır.\n")
     else:
@@ -2356,7 +2367,7 @@ def generate_imrad_docx(
             for c in rt.select_dtypes(include=["float", "number"]).columns:
                 rt[c] = rt[c].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "")
             md.append(f"**{'Table' if lang == 'EN' else 'Tablo'} 2.** {rm} {'ranking' if lang == 'EN' else 'sıralaması'}.\n")
-            md.append(rt.to_markdown(index=False) + "\n")
+            md.append(_df_to_md_table(rt) + "\n")
         if lang != "EN":
             md.append(f"Tablo 2, {rm} yöntemiyle elde edilen alternatif sıralamasını göstermektedir. Skor değerleri, her alternatifin tüm kriterler bazındaki bütüncül performansını temsil etmektedir.\n")
         else:
