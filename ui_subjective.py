@@ -126,6 +126,29 @@ def _sample_smart_csv(criteria: list[str]) -> bytes:
     df = pd.DataFrame({tt("Kriter", "Criterion"): criteria, "Puan (10-100 vb.)": pts})
     return df.to_csv(index=False).encode("utf-8")
 
+def _sample_dematel_csv(criteria: list[str]) -> bytes:
+    """Fuzzy DEMATEL örnek: l-m-u sütunlu kare matris."""
+    n = len(criteria)
+    rng = np.random.default_rng(42)
+    rows = []
+    for i, ri in enumerate(criteria):
+        row = {tt("Kriter", "Criterion"): ri}
+        for j, cj in enumerate(criteria):
+            if i == j:
+                row[f"{cj}_l"] = 0.0
+                row[f"{cj}_m"] = 0.0
+                row[f"{cj}_u"] = 0.0
+            else:
+                m = float(rng.choice([1, 2, 3, 4]))
+                l = max(0.0, round(m - rng.uniform(0.3, 0.8), 2))
+                u = round(m + rng.uniform(0.3, 0.8), 2)
+                u = min(u, 4.0)
+                row[f"{cj}_l"] = l
+                row[f"{cj}_m"] = m
+                row[f"{cj}_u"] = u
+        rows.append(row)
+    return pd.DataFrame(rows).to_csv(index=False).encode("utf-8")
+
 def _render_upload_and_sample(
     method_key: str,
     ss_key: str,
@@ -798,29 +821,17 @@ def render_subjective_component(criteria: list[str]):
                 if dem_key not in st.session_state:
                     st.session_state[dem_key] = dem_def()
 
-                upload = st.file_uploader(
-                    tt("DEMATEL matrisi yükle (CSV/XLSX)", "Upload DEMATEL matrix (CSV/XLSX)"),
-                    type=["csv", "xlsx"],
-                    key=f"dematel_upload_{n_crit}_{i}",
-                    help=tt(
-                        "Kare sayısal DEMATEL matrisi veya l-m-u üçlülerinden oluşan bulanık DEMATEL dosyası yükleyebilirsiniz.",
-                        "Upload a square numeric DEMATEL matrix or a fuzzy DEMATEL file with l-m-u triplets.",
-                    ),
+                _render_upload_and_sample(
+                    method_key="dematel",
+                    ss_key=dem_key,
+                    parse_fn=lambda f, c: _parse_dematel_upload(f, c)[0],
+                    sample_fn=_sample_dematel_csv,
+                    sample_filename="sample_fuzzy_dematel.csv",
+                    upload_label="DEMATEL matrisi yükle (CSV/XLSX)",
+                    upload_label_en="Upload DEMATEL matrix (CSV/XLSX)",
+                    criteria=criteria,
+                    expert_idx=i,
                 )
-                upload_sig_key = f"dematel_upload_sig_{n_crit}_{i}"
-                if upload is not None:
-                    upload_sig = hashlib.sha1(upload.getvalue()).hexdigest()
-                    if st.session_state.get(upload_sig_key) != upload_sig:
-                        try:
-                            parsed_df, parse_note = _parse_dematel_upload(upload, criteria)
-                        except Exception as exc:
-                            st.error(str(exc))
-                        else:
-                            st.session_state[dem_key] = parsed_df
-                            st.session_state[upload_sig_key] = upload_sig
-                            st.success(tt("DEMATEL matrisi yüklendi ve tabloya aktarıldı.", "The DEMATEL matrix was loaded into the table."))
-                            if parse_note:
-                                st.caption(parse_note)
 
                 dfs_dem.append(st.data_editor(st.session_state[dem_key], key=f"edit_{dem_key}", use_container_width=True))
         
