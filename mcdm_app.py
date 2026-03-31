@@ -9634,73 +9634,177 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                 if len(_weight_help_lines) > 1:
                     st.caption(_weight_help_lines[1])
 
-                _mcols = st.columns(min(3, max(1, len(criteria))))
-                manual_raw_text: Dict[str, str] = {}
-                for i, c in enumerate(criteria):
-                    with _mcols[i % len(_mcols)]:
-                        manual_raw_text[c] = st.text_input(
-                            c,
-                            value=str(st.session_state.get(f"manual_w_{c}", "")),
-                            placeholder=tt("örn. 7.5", "e.g. 7.5"),
-                            key=f"manual_w_{c}",
-                        ).strip()
-
-                st.caption(
-                    tt(
-                        "Seçili kriterler için ham önem puanı girin. Değerlerin toplamının 1 olması gerekmez; sistem analiz anında oranları otomatik normalize eder. Bu alan, AHP veya benzeri bir yaklaşımla dışarıda belirlediğiniz göreli önemleri esnek biçimde girmeniz için tasarlanmıştır.",
-                        "Enter raw importance values for the selected criteria. Their total does not need to be 1; the system automatically normalizes the ratios during analysis. This area is designed for flexibly entering relative priorities produced externally through AHP or a similar approach.",
-                    )
+                _manual_w_mode = st.radio(
+                    tt("Giriş türü", "Entry type"),
+                    [tt("🔹 Kesin (Crisp)", "🔹 Crisp"), tt("🔺 Bulanık TFN (l, m, u)", "🔺 Fuzzy TFN (l, m, u)")],
+                    horizontal=True,
+                    key="manual_weight_entry_mode",
+                    help=tt(
+                        "Crisp: her kriter için tek değer. Fuzzy TFN: alt (l), orta (m), üst (u) girin; ağırlık merkezi (l+2m+u)/4 ile hesaplanır ve normalize edilir.",
+                        "Crisp: single value per criterion. Fuzzy TFN: enter lower (l), middle (m), upper (u); centroid (l+2m+u)/4 is computed and normalized.",
+                    ),
                 )
+                _is_tfn_weight_mode = "TFN" in _manual_w_mode or "Fuzzy" in _manual_w_mode
 
-                missing_manual: List[str] = []
-                invalid_manual: List[str] = []
-                parsed_manual: Dict[str, float] = {}
-                for c, raw_val in manual_raw_text.items():
-                    if not raw_val:
-                        missing_manual.append(c)
-                        continue
-                    try:
-                        val = float(raw_val.replace(",", "."))
-                        if not np.isfinite(val) or val <= 0:
-                            raise ValueError
-                        parsed_manual[c] = val
-                    except Exception:
-                        invalid_manual.append(c)
+                if not _is_tfn_weight_mode:
+                    # ── Crisp giriş ──────────────────────────────────────────
+                    _mcols = st.columns(min(3, max(1, len(criteria))))
+                    manual_raw_text: Dict[str, str] = {}
+                    for i, c in enumerate(criteria):
+                        with _mcols[i % len(_mcols)]:
+                            manual_raw_text[c] = st.text_input(
+                                c,
+                                value=str(st.session_state.get(f"manual_w_{c}", "")),
+                                placeholder=tt("örn. 7.5", "e.g. 7.5"),
+                                key=f"manual_w_{c}",
+                            ).strip()
 
-                if missing_manual:
-                    st.info(
-                        tt(
+                    st.caption(tt(
+                        "Ham önem puanı girin. Toplam 1 olmak zorunda değil; sistem normalize eder.",
+                        "Enter raw importance values. Total does not need to be 1; the system normalizes automatically.",
+                    ))
+
+                    missing_manual: List[str] = []
+                    invalid_manual: List[str] = []
+                    parsed_manual: Dict[str, float] = {}
+                    for c, raw_val in manual_raw_text.items():
+                        if not raw_val:
+                            missing_manual.append(c)
+                            continue
+                        try:
+                            val = float(raw_val.replace(",", "."))
+                            if not np.isfinite(val) or val <= 0:
+                                raise ValueError
+                            parsed_manual[c] = val
+                        except Exception:
+                            invalid_manual.append(c)
+
+                    if missing_manual:
+                        st.info(tt(
                             "Analize geçmeden önce tüm seçili kriterler için değer girin.",
                             "Enter values for all selected criteria before running the analysis.",
-                        )
-                    )
-                    manual_weights_valid = False
-                if invalid_manual:
-                    st.warning(
-                        tt(
+                        ))
+                        manual_weights_valid = False
+                    if invalid_manual:
+                        st.warning(tt(
                             f"Geçerli pozitif sayı beklenen kriterler: {', '.join(invalid_manual)}.",
                             f"Valid positive numbers are required for: {', '.join(invalid_manual)}.",
-                        )
-                    )
-                    manual_weights_valid = False
+                        ))
+                        manual_weights_valid = False
 
-                if parsed_manual:
-                    _manual_total = float(sum(parsed_manual.values()))
-                    manual_weights = {c: parsed_manual[c] for c in criteria if c in parsed_manual}
-                    _manual_preview = pd.DataFrame(
-                        {
+                    if parsed_manual:
+                        _manual_total = float(sum(parsed_manual.values()))
+                        manual_weights = {c: parsed_manual[c] for c in criteria if c in parsed_manual}
+                        render_table(pd.DataFrame({
                             "Kriter": criteria,
                             tt("Girilen Değer", "Entered Value"): [parsed_manual.get(c, np.nan) for c in criteria],
                             tt("Normalize Ağırlık", "Normalized Weight"): [
                                 (parsed_manual[c] / _manual_total) if c in parsed_manual and _manual_total > 0 else np.nan
                                 for c in criteria
                             ],
-                        }
-                    )
-                    render_table(_manual_preview)
+                        }))
+                    else:
+                        manual_weights = None
+                        manual_weights_valid = False
+
                 else:
-                    manual_weights = None
-                    manual_weights_valid = False
+                    # ── Fuzzy TFN giriş ──────────────────────────────────────
+                    st.caption(tt(
+                        "Her kriter için alt (l), orta (m), üst (u) değer girin. **Kural: l ≤ m ≤ u, tüm değerler > 0.** "
+                        "Ağırlık merkezi `(l + 2m + u) / 4` hesaplanır ve normalize edilir.",
+                        "Enter lower (l), middle (m), upper (u) for each criterion. **Rule: l ≤ m ≤ u, all values > 0.** "
+                        "Centroid `(l + 2m + u) / 4` is computed and normalized.",
+                    ))
+                    _tfn_w_ss_key = f"manual_tfn_w_{len(criteria)}"
+                    _criteria_sig = "_".join(criteria)
+                    if (
+                        _tfn_w_ss_key not in st.session_state
+                        or st.session_state.get(f"{_tfn_w_ss_key}_sig") != _criteria_sig
+                    ):
+                        st.session_state[_tfn_w_ss_key] = pd.DataFrame({
+                            "Kriter": criteria,
+                            "l (alt)": [1.0] * len(criteria),
+                            "m (orta)": [2.0] * len(criteria),
+                            "u (üst)": [3.0] * len(criteria),
+                        })
+                        st.session_state[f"{_tfn_w_ss_key}_sig"] = _criteria_sig
+
+                    _tfn_w_edited = st.data_editor(
+                        st.session_state[_tfn_w_ss_key],
+                        num_rows="fixed",
+                        use_container_width=True,
+                        key=f"editor_{_tfn_w_ss_key}",
+                        column_config={
+                            "Kriter": st.column_config.TextColumn(
+                                tt("Kriter", "Criterion"), disabled=True
+                            ),
+                            "l (alt)": st.column_config.NumberColumn(
+                                tt("l — alt sınır (kötümser)", "l — lower bound (pessimistic)"),
+                                min_value=0.0001, format="%.4f",
+                                help=tt("En küçük olası değer. l ≤ m olmalı.", "Smallest possible value. Must satisfy l ≤ m."),
+                            ),
+                            "m (orta)": st.column_config.NumberColumn(
+                                tt("m — en olası değer", "m — most likely value"),
+                                min_value=0.0001, format="%.4f",
+                                help=tt("En olası (modal) değer.", "Most likely (modal) value."),
+                            ),
+                            "u (üst)": st.column_config.NumberColumn(
+                                tt("u — üst sınır (iyimser)", "u — upper bound (optimistic)"),
+                                min_value=0.0001, format="%.4f",
+                                help=tt("En büyük olası değer. u ≥ m olmalı.", "Largest possible value. Must satisfy u ≥ m."),
+                            ),
+                        },
+                        hide_index=True,
+                    )
+                    st.session_state[_tfn_w_ss_key] = _tfn_w_edited
+
+                    _tfn_w_errors: List[str] = []
+                    _tfn_w_centroids: Dict[str, float] = {}
+                    _tfn_w_preview: List[Dict] = []
+                    for _, _row in _tfn_w_edited.iterrows():
+                        _c = str(_row["Kriter"])
+                        try:
+                            _lv = float(_row["l (alt)"])
+                            _mv = float(_row["m (orta)"])
+                            _uv = float(_row["u (üst)"])
+                        except Exception:
+                            _tfn_w_errors.append(_c)
+                            continue
+                        if not (_lv > 0 and _mv > 0 and _uv > 0):
+                            _tfn_w_errors.append(f"{_c} (>0 gerekli / must be >0)")
+                            continue
+                        if not (_lv <= _mv <= _uv):
+                            _tfn_w_errors.append(f"{_c} (l ≤ m ≤ u)")
+                            continue
+                        _centroid = (_lv + 2 * _mv + _uv) / 4.0
+                        _tfn_w_centroids[_c] = _centroid
+                        _tfn_w_preview.append({
+                            "Kriter": _c,
+                            "l": round(_lv, 4), "m": round(_mv, 4), "u": round(_uv, 4),
+                            tt("Ağırlık Merkezi", "Centroid"): round(_centroid, 5),
+                        })
+
+                    if _tfn_w_errors:
+                        st.warning(tt(
+                            f"Hatalı satır(lar) — l ≤ m ≤ u ve tüm değerler > 0 olmalı: {', '.join(_tfn_w_errors)}",
+                            f"Invalid row(s) — l ≤ m ≤ u and all values must be > 0: {', '.join(_tfn_w_errors)}",
+                        ))
+                        manual_weights = None
+                        manual_weights_valid = False
+                    elif len(_tfn_w_centroids) == len(criteria):
+                        _total_c = sum(_tfn_w_centroids.values())
+                        manual_weights = {
+                            _c: _tfn_w_centroids[_c] / _total_c
+                            for _c in criteria if _c in _tfn_w_centroids
+                        }
+                        for _r in _tfn_w_preview:
+                            _r[tt("Normalize Ağırlık", "Normalized Weight")] = round(
+                                manual_weights.get(_r["Kriter"], np.nan), 5
+                            )
+                        render_table(pd.DataFrame(_tfn_w_preview))
+                    else:
+                        manual_weights = None
+                        manual_weights_valid = False
 
         ranking_methods_selected = []
         primary_rank_method: str | None = None

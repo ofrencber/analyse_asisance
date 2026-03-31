@@ -234,19 +234,35 @@ def render_subjective_component(criteria: list[str]):
         "Calculations made here are automatically transferred to the 'Manual Weight' system. "
         "Maximum number of experts is **100**.",
     ))
-    fuzzy_spread = st.slider(
-        tt("Bulanık Belirsizlik Genişliği", "Fuzzy Uncertainty Spread"),
-        min_value=0.05,
-        max_value=0.40,
-        value=0.15,
-        step=0.01,
+
+    # ── Global Klasik / Fuzzy seçimi ──────────────────────────────────────────
+    _calc_mode = st.radio(
+        tt("Hesaplama Modu", "Calculation Mode"),
+        [tt("🟦 Klasik", "🟦 Classical"), tt("🟪 Fuzzy", "🟪 Fuzzy")],
+        horizontal=True,
+        key="subjective_calc_mode",
         help=tt(
-            "Fuzzy yöntemlerde modal uzman değerinin etrafında oluşturulacak alt-orta-üst belirsizlik bandını belirler.",
-            "Defines the lower-middle-upper uncertainty band around the modal expert value in fuzzy methods.",
+            "Klasik: kesin sayısal değerlerle hesaplama. Fuzzy: belirsizlik spread'i ile üçgen bulanık sayı (TFN) senaryoları üretilir.",
+            "Classical: calculation with crisp values. Fuzzy: triangular fuzzy number (TFN) scenarios generated from uncertainty spread.",
         ),
     )
-    st.session_state["fuzzy_spread"] = float(fuzzy_spread)
-    
+    _is_fuzzy_sub = "Fuzzy" in _calc_mode or "🟪" in _calc_mode
+
+    fuzzy_spread = float(st.session_state.get("fuzzy_spread", 0.15))
+    if _is_fuzzy_sub:
+        fuzzy_spread = st.slider(
+            tt("Bulanık Belirsizlik Genişliği", "Fuzzy Uncertainty Spread"),
+            min_value=0.05,
+            max_value=0.40,
+            value=fuzzy_spread,
+            step=0.01,
+            help=tt(
+                "Fuzzy yöntemlerde modal uzman değerinin etrafında oluşturulacak alt-orta-üst belirsizlik bandını belirler.",
+                "Defines the lower-middle-upper uncertainty band around the modal expert value in fuzzy methods.",
+            ),
+        )
+        st.session_state["fuzzy_spread"] = float(fuzzy_spread)
+
     tabs = st.tabs(["AHP", "BWM", "SWARA", "DEMATEL", "SMART"])
     
     def apply_weights(weights_list, method_name):
@@ -340,15 +356,15 @@ def render_subjective_component(criteria: list[str]):
 
         st.write(tt("İkili Karşılaştırma Matrisi (Üst üçgeni doldurmanız yeterlidir, alt üçgen otomatik hesaplanır):", 
                     "Pairwise Comparison Matrix (Fill upper triangle, lower is auto calculated):"))
-        st.caption(tt(
-            f"Fuzzy AHP aynı matrisi kullanır; {fuzzy_spread:.2f} belirsizlik genişliği ile alt-orta-üst senaryolar oluşturur.",
-            f"Fuzzy AHP uses the same matrix and builds lower-middle-upper scenarios with uncertainty spread {fuzzy_spread:.2f}.",
-        ))
-        
+        if _is_fuzzy_sub:
+            st.caption(tt(
+                f"Fuzzy AHP aynı matrisi kullanır; {fuzzy_spread:.2f} belirsizlik genişliği ile alt-orta-üst senaryolar oluşturur.",
+                f"Fuzzy AHP uses the same matrix and builds lower-middle-upper scenarios with uncertainty spread {fuzzy_spread:.2f}.",
+            ))
+
         dfs_ahp = build_expert_tabs("ahp", lambda: pd.DataFrame(np.ones((n_crit, n_crit)), columns=criteria, index=criteria))
-        
-        _ahp_classic_tab, _ahp_fuzzy_tab = st.tabs([tt("🟦 Klasik", "🟦 Classical"), tt("🟪 Fuzzy", "🟪 Fuzzy")])
-        with _ahp_classic_tab:
+
+        if not _is_fuzzy_sub:
             if st.button(tt("AHP Hesapla & Uygula", "Calculate & Apply AHP"), key="ahp_btn"):
                 try:
                     all_weights = []
@@ -358,19 +374,18 @@ def render_subjective_component(criteria: list[str]):
                         for r in range(n_crit):
                             for c in range(r+1, n_crit):
                                 val = m_copy[r, c]
-                                if val == 0: val = 1.0 # prevent div by zero
+                                if val == 0: val = 1.0
                                 m_copy[r, c] = val
                                 m_copy[c, r] = 1.0 / val
                         res = sub_engine.calc_ahp(m_copy)
                         all_weights.append(res['weights'])
                         all_res.append(res)
-                    
                     final_w = aggregate_weights(all_weights)
                     render_consistency(all_res, "AHP")
                     apply_weights(final_w.tolist(), "AHP")
                 except Exception as e:
                     st.error(f"Hata: {e}")
-        with _ahp_fuzzy_tab:
+        else:
             if st.button(tt("Fuzzy AHP Hesapla & Uygula", "Calculate & Apply Fuzzy AHP"), key="fuzzy_ahp_btn"):
                 try:
                     all_weights = []
@@ -380,14 +395,12 @@ def render_subjective_component(criteria: list[str]):
                         for r in range(n_crit):
                             for c in range(r+1, n_crit):
                                 val = m_copy[r, c]
-                                if val == 0:
-                                    val = 1.0
+                                if val == 0: val = 1.0
                                 m_copy[r, c] = val
                                 m_copy[c, r] = 1.0 / val
                         res = sub_engine.calc_fuzzy_ahp(m_copy, spread=fuzzy_spread)
                         all_weights.append(res["weights"])
                         all_res.append(res)
-
                     final_w = aggregate_weights(all_weights)
                     render_consistency(all_res, "Fuzzy AHP")
                     apply_weights(final_w.tolist(), "Fuzzy AHP")
@@ -418,18 +431,18 @@ def render_subjective_component(criteria: list[str]):
             """))
 
         st.markdown(tt("1. **En iyi** ve **en kötü** kriteri belirleyin.\n2. 1-9 arası puanlayın.", "1. Best/Worst criteria.\n2. Score 1-9."))
-        st.caption(tt(
-            f"Fuzzy BWM, aynı modal puanlardan {fuzzy_spread:.2f} genişliğinde alt-orta-üst üstünlük senaryoları üretir.",
-            f"Fuzzy BWM derives lower-middle-upper dominance scenarios from the same modal scores using spread {fuzzy_spread:.2f}.",
-        ))
-        
+        if _is_fuzzy_sub:
+            st.caption(tt(
+                f"Fuzzy BWM, aynı modal puanlardan {fuzzy_spread:.2f} genişliğinde alt-orta-üst üstünlük senaryoları üretir.",
+                f"Fuzzy BWM derives lower-middle-upper dominance scenarios from the same modal scores using spread {fuzzy_spread:.2f}.",
+            ))
+
         dfs_bwm = build_expert_tabs("bwm", lambda: pd.DataFrame({
                 "Best-to-Others (1-9)": [1.0 for _ in range(n_crit)],
                 "Others-to-Worst (1-9)": [3.0 for _ in range(n_crit)]
             }, index=criteria))
-        
-        _bwm_classic_tab, _bwm_fuzzy_tab = st.tabs([tt("🟦 Klasik", "🟦 Classical"), tt("🟪 Fuzzy", "🟪 Fuzzy")])
-        with _bwm_classic_tab:
+
+        if not _is_fuzzy_sub:
             if st.button(tt("BWM Hesapla & Uygula", "Calculate & Apply BWM"), key="bwm_btn"):
                 try:
                     all_weights = []
@@ -440,13 +453,12 @@ def render_subjective_component(criteria: list[str]):
                         res = sub_engine.calc_bwm(bto, otw)
                         all_weights.append(res['weights'])
                         all_res.append(res)
-                    
                     final_w = aggregate_weights(all_weights)
                     render_consistency(all_res, "BWM")
                     apply_weights(final_w.tolist(), "BWM")
                 except Exception as e:
                     st.error(f"Hata: {e}")
-        with _bwm_fuzzy_tab:
+        else:
             if st.button(tt("Fuzzy BWM Hesapla & Uygula", "Calculate & Apply Fuzzy BWM"), key="fuzzy_bwm_btn"):
                 try:
                     all_weights = []
@@ -457,7 +469,6 @@ def render_subjective_component(criteria: list[str]):
                         res = sub_engine.calc_fuzzy_bwm(bto, otw, spread=fuzzy_spread)
                         all_weights.append(res["weights"])
                         all_res.append(res)
-
                     final_w = aggregate_weights(all_weights)
                     render_consistency(all_res, "Fuzzy BWM")
                     apply_weights(final_w.tolist(), "Fuzzy BWM")
@@ -491,17 +502,17 @@ def render_subjective_component(criteria: list[str]):
 
         st.info(tt("Her bir kriterin, bir üstündeki kritere kıyasla yüzde kaç daha az önemli olduğunu ondalık değer (örn: 0.15) olarak giriniz. İlk kriter her zaman 0 olmalıdır.",
                    "Enter how much less important each criterion is compared to the one above it as a decimal (e.g. 0.15). The first value must be 0."))
-        st.caption(tt(
-            f"Fuzzy SWARA, bu azalış oranlarını {fuzzy_spread:.2f} bandında bulanıklaştırarak senaryo ortalaması alır.",
-            f"Fuzzy SWARA fuzzifies these reduction ratios with spread {fuzzy_spread:.2f} and averages the scenario weights.",
-        ))
-        
+        if _is_fuzzy_sub:
+            st.caption(tt(
+                f"Fuzzy SWARA, bu azalış oranlarını {fuzzy_spread:.2f} bandında bulanıklaştırarak senaryo ortalaması alır.",
+                f"Fuzzy SWARA fuzzifies these reduction ratios with spread {fuzzy_spread:.2f} and averages the scenario weights.",
+            ))
+
         dfs_swara = build_expert_tabs("swara", lambda: pd.DataFrame({
                 "s_j (İlk değer 0)": [0.0] + [0.2 for _ in range(n_crit-1)]
             }, index=criteria))
-        
-        _swara_classic_tab, _swara_fuzzy_tab = st.tabs([tt("🟦 Klasik", "🟦 Classical"), tt("🟪 Fuzzy", "🟪 Fuzzy")])
-        with _swara_classic_tab:
+
+        if not _is_fuzzy_sub:
             if st.button(tt("SWARA Hesapla & Uygula", "Calculate & Apply SWARA"), key="swara_btn"):
                 try:
                     all_weights = []
@@ -509,12 +520,11 @@ def render_subjective_component(criteria: list[str]):
                         sj = df["s_j (İlk değer 0)"].to_numpy(dtype=float)
                         res = sub_engine.calc_swara(sj)
                         all_weights.append(res['weights'])
-                    
                     final_w = aggregate_weights(all_weights)
                     apply_weights(final_w.tolist(), "SWARA")
                 except Exception as e:
                     st.error(f"Hata: {e}")
-        with _swara_fuzzy_tab:
+        else:
             if st.button(tt("Fuzzy SWARA Hesapla & Uygula", "Calculate & Apply Fuzzy SWARA"), key="fuzzy_swara_btn"):
                 try:
                     all_weights = []
@@ -522,7 +532,6 @@ def render_subjective_component(criteria: list[str]):
                         sj = df["s_j (İlk değer 0)"].to_numpy(dtype=float)
                         res = sub_engine.calc_fuzzy_swara(sj, spread=fuzzy_spread)
                         all_weights.append(res["weights"])
-
                     final_w = aggregate_weights(all_weights)
                     apply_weights(final_w.tolist(), "Fuzzy SWARA")
                 except Exception as e:
@@ -558,10 +567,11 @@ def render_subjective_component(criteria: list[str]):
             "Manuel girişte 0-4 ölçeğini kullanın. CSV/XLSX yüklemede kare DEMATEL matrisleri ve l-m-u sütunlu bulanık DEMATEL dosyaları da desteklenir.",
             "Use the 0-4 scale for manual entry. CSV/XLSX upload also supports square DEMATEL matrices and fuzzy DEMATEL files with l-m-u columns."
         ))
-        st.caption(tt(
-            f"Fuzzy DEMATEL, girilen modal etki değerlerinden {fuzzy_spread:.2f} genişliğinde alt-orta-üst etki senaryoları kurar.",
-            f"Fuzzy DEMATEL builds lower-middle-upper influence scenarios with spread {fuzzy_spread:.2f} from the entered modal influence values.",
-        ))
+        if _is_fuzzy_sub:
+            st.caption(tt(
+                f"Fuzzy DEMATEL, girilen modal etki değerlerinden {fuzzy_spread:.2f} genişliğinde alt-orta-üst etki senaryoları kurar.",
+                f"Fuzzy DEMATEL builds lower-middle-upper influence scenarios with spread {fuzzy_spread:.2f} from the entered modal influence values.",
+            ))
         
         def dem_def():
             dmat = np.ones((n_crit, n_crit)) * 2 # Varsayılan olarak Orta etki
@@ -605,8 +615,7 @@ def render_subjective_component(criteria: list[str]):
 
                 dfs_dem.append(st.data_editor(st.session_state[dem_key], key=f"edit_{dem_key}", use_container_width=True))
         
-        _dem_classic_tab, _dem_fuzzy_tab = st.tabs([tt("🟦 Klasik", "🟦 Classical"), tt("🟪 Fuzzy", "🟪 Fuzzy")])
-        with _dem_classic_tab:
+        if not _is_fuzzy_sub:
             if st.button(tt("DEMATEL Hesapla & Uygula", "Calculate & Apply DEMATEL"), key="dem_btn"):
                 try:
                     all_weights = []
@@ -617,21 +626,16 @@ def render_subjective_component(criteria: list[str]):
                         all_weights.append(res['weights'])
                         if res.get('singular_warning'):
                             any_singular = True
-
                     final_w = aggregate_weights(all_weights)
                     apply_weights(final_w.tolist(), "DEMATEL")
                     if any_singular:
                         st.warning(tt(
-                            "⚠️ Etki matrisi tekil (singular) — (I–X) tersi alınamadı. "
-                            "Ağırlıklar sıfır matrisinden hesaplandı; sonuçlar güvenilir olmayabilir. "
-                            "Lütfen matris değerlerini kontrol edin.",
-                            "⚠️ Influence matrix is singular — (I–X) could not be inverted. "
-                            "Weights were computed from a zero matrix; results may be unreliable. "
-                            "Please review your matrix values."
+                            "⚠️ Etki matrisi tekil (singular) — (I–X) tersi alınamadı. Sonuçlar güvenilir olmayabilir.",
+                            "⚠️ Influence matrix is singular — (I–X) could not be inverted. Results may be unreliable.",
                         ))
                 except Exception as e:
                     st.error(f"Hata: {e}")
-        with _dem_fuzzy_tab:
+        else:
             if st.button(tt("Fuzzy DEMATEL Hesapla & Uygula", "Calculate & Apply Fuzzy DEMATEL"), key="fuzzy_dem_btn"):
                 try:
                     all_weights = []
@@ -642,13 +646,12 @@ def render_subjective_component(criteria: list[str]):
                         all_weights.append(res["weights"])
                         if res.get("singular_warning"):
                             any_singular = True
-
                     final_w = aggregate_weights(all_weights)
                     apply_weights(final_w.tolist(), "Fuzzy DEMATEL")
                     if any_singular:
                         st.warning(tt(
                             "⚠️ En az bir bulanık DEMATEL senaryosunda matris tekil bulundu; sonuçları dikkatle yorumlayın.",
-                            "⚠️ At least one fuzzy DEMATEL scenario produced a singular matrix; interpret the results with caution.",
+                            "⚠️ At least one fuzzy DEMATEL scenario produced a singular matrix; interpret results with caution.",
                         ))
                 except Exception as e:
                     st.error(f"Hata: {e}")
@@ -674,30 +677,29 @@ def render_subjective_component(criteria: list[str]):
             Directly score your criteria by assigning points between 10 and 100 (e.g., rate your most important as 100).
             """))
         st.info(tt("Kriterlere direkt olarak (10 ile 100 vb.) önem puanları verin.", "Assign direct importance points (e.g., 10 to 100)."))
-        st.caption(tt(
-            f"Fuzzy SMART, bu doğrudan puanları {fuzzy_spread:.2f} belirsizlik bandıyla alt-orta-üst puan senaryolarına dönüştürür.",
-            f"Fuzzy SMART converts these direct scores into lower-middle-upper scoring scenarios using spread {fuzzy_spread:.2f}.",
-        ))
-        
+        if _is_fuzzy_sub:
+            st.caption(tt(
+                f"Fuzzy SMART, bu doğrudan puanları {fuzzy_spread:.2f} belirsizlik bandıyla alt-orta-üst puan senaryolarına dönüştürür.",
+                f"Fuzzy SMART converts these direct scores into lower-middle-upper scoring scenarios using spread {fuzzy_spread:.2f}.",
+            ))
+
         dfs_smart = build_expert_tabs("smart", lambda: pd.DataFrame({
                 "Puan (10-100 vb.)": [50.0 for _ in range(n_crit)]
             }, index=criteria))
-        
-        _smart_classic_tab, _smart_fuzzy_tab = st.tabs([tt("🟦 Klasik", "🟦 Classical"), tt("🟪 Fuzzy", "🟪 Fuzzy")])
-        with _smart_classic_tab:
-            if st.button(tt("SMART Hesapla & Uygula", "Calculate & Apply SMART")):
+
+        if not _is_fuzzy_sub:
+            if st.button(tt("SMART Hesapla & Uygula", "Calculate & Apply SMART"), key="smart_btn"):
                 try:
                     all_weights = []
                     for df in dfs_smart:
                         pts = df["Puan (10-100 vb.)"].to_numpy(dtype=float)
                         res = sub_engine.calc_smart(pts)
                         all_weights.append(res['weights'])
-                    
                     final_w = aggregate_weights(all_weights)
                     apply_weights(final_w.tolist(), "SMART")
                 except Exception as e:
                     st.error(f"Hata: {e}")
-        with _smart_fuzzy_tab:
+        else:
             if st.button(tt("Fuzzy SMART Hesapla & Uygula", "Calculate & Apply Fuzzy SMART"), key="fuzzy_smart_btn"):
                 try:
                     all_weights = []
@@ -705,7 +707,6 @@ def render_subjective_component(criteria: list[str]):
                         pts = df["Puan (10-100 vb.)"].to_numpy(dtype=float)
                         res = sub_engine.calc_fuzzy_smart(pts, spread=fuzzy_spread)
                         all_weights.append(res["weights"])
-
                     final_w = aggregate_weights(all_weights)
                     apply_weights(final_w.tolist(), "Fuzzy SMART")
                 except Exception as e:
