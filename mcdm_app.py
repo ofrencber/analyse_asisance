@@ -2139,20 +2139,22 @@ def _render_upload_data_source_section(lang: str) -> None:
             else (sample_dataset_en() if lang == "EN" else sample_dataset())
         )
         _sample_dl_name = (
-            tt("ornek_fuzzy_veri.csv", "sample_fuzzy_data.csv")
+            tt("ornek_fuzzy_veri.xlsx", "sample_fuzzy_data.xlsx")
             if _is_tfn_input
-            else tt("ornek_veri.csv", "sample_data.csv")
+            else tt("ornek_veri.xlsx", "sample_data.xlsx")
         )
+        _sample_dl_buf = io.BytesIO()
+        _sample_dl_df.to_excel(_sample_dl_buf, index=False)
         st.download_button(
-            label=tt("📥 Örnek", "📥 Sample"),
-            data=_sample_dl_df.to_csv(index=False).encode("utf-8"),
+            label=tt("📥 Fuzzy", "📥 Fuzzy"),
+            data=_sample_dl_buf.getvalue(),
             file_name=_sample_dl_name,
-            mime="text/csv",
-            key="dl_main_sample_csv",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="dl_main_sample_xlsx",
             use_container_width=True,
             help=tt(
-                "Doğru format için örnek CSV indir, doldurup yeniden yükle.",
-                "Download a sample CSV showing the correct format, fill it in, and re-upload.",
+                "Doğru format için örnek XLSX indir, doldurup yeniden yükle.",
+                "Download a sample XLSX showing the correct format, fill it in, and re-upload.",
             ),
         )
     sample_col_1, sample_col_2, sample_col_3 = st.columns(3)

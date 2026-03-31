@@ -87,6 +87,11 @@ def _parse_smart_upload(uploaded_file, criteria: list[str]) -> pd.DataFrame:
     return pd.DataFrame({"Puan (10-100 vb.)": pts}, index=criteria)
 
 # ── Örnek dosya üreticileri ──────────────────────────────────────────────────
+def _df_to_xlsx(df: pd.DataFrame) -> bytes:
+    buf = io.BytesIO()
+    df.to_excel(buf, index=False)
+    return buf.getvalue()
+
 def _sample_ahp_csv(criteria: list[str]) -> bytes:
     n = len(criteria)
     rng = np.random.default_rng(42)
@@ -98,7 +103,7 @@ def _sample_ahp_csv(criteria: list[str]) -> bytes:
             mat[j, i] = round(1 / v, 4)
     df = pd.DataFrame(mat, index=criteria, columns=criteria).round(4)
     df.insert(0, tt("Kriter", "Criterion"), criteria)
-    return df.to_csv(index=False).encode("utf-8")
+    return _df_to_xlsx(df)
 
 def _sample_bwm_csv(criteria: list[str]) -> bytes:
     n = len(criteria)
@@ -110,21 +115,21 @@ def _sample_bwm_csv(criteria: list[str]) -> bytes:
         "Best-to-Others (1-9)": bto,
         "Others-to-Worst (1-9)": otw,
     })
-    return df.to_csv(index=False).encode("utf-8")
+    return _df_to_xlsx(df)
 
 def _sample_swara_csv(criteria: list[str]) -> bytes:
     n = len(criteria)
     rng = np.random.default_rng(42)
     sj = [0.0] + list(np.round(rng.uniform(0.1, 0.4, n - 1), 2))
     df = pd.DataFrame({tt("Kriter", "Criterion"): criteria, "s_j (İlk değer 0)": sj})
-    return df.to_csv(index=False).encode("utf-8")
+    return _df_to_xlsx(df)
 
 def _sample_smart_csv(criteria: list[str]) -> bytes:
     n = len(criteria)
     rng = np.random.default_rng(42)
     pts = np.round(rng.uniform(20, 100, n), 0).astype(int)
     df = pd.DataFrame({tt("Kriter", "Criterion"): criteria, "Puan (10-100 vb.)": pts})
-    return df.to_csv(index=False).encode("utf-8")
+    return _df_to_xlsx(df)
 
 def _sample_dematel_csv(criteria: list[str]) -> bytes:
     """Fuzzy DEMATEL örnek: l-m-u sütunlu kare matris."""
@@ -147,7 +152,7 @@ def _sample_dematel_csv(criteria: list[str]) -> bytes:
                 row[f"{cj}_m"] = m
                 row[f"{cj}_u"] = u
         rows.append(row)
-    return pd.DataFrame(rows).to_csv(index=False).encode("utf-8")
+    return _df_to_xlsx(pd.DataFrame(rows))
 
 def _render_upload_and_sample(
     method_key: str,
@@ -174,11 +179,11 @@ def _render_upload_and_sample(
             label=tt("📥 Örnek", "📥 Sample"),
             data=sample_fn(criteria),
             file_name=sample_filename,
-            mime="text/csv",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key=f"dl_sample_{method_key}_{len(criteria)}_{expert_idx}",
             help=tt(
-                "Doğru format için örnek CSV dosyasını indir, doldurup yeniden yükle.",
-                "Download a sample CSV showing the correct format, fill it in, and re-upload.",
+                "Doğru format için örnek XLSX dosyasını indir, doldurup yeniden yükle.",
+                "Download a sample XLSX showing the correct format, fill it in, and re-upload.",
             ),
         )
 
@@ -559,7 +564,7 @@ def render_subjective_component(criteria: list[str]):
                 _render_upload_and_sample(
                     method_key="ahp", ss_key=_ahp_key,
                     parse_fn=_parse_ahp_upload, sample_fn=_sample_ahp_csv,
-                    sample_filename="sample_ahp.csv",
+                    sample_filename="sample_ahp.xlsx",
                     upload_label="AHP matrisi yükle (CSV/XLSX)",
                     upload_label_en="Upload AHP matrix (CSV/XLSX)",
                     criteria=criteria, expert_idx=_ei,
@@ -652,7 +657,7 @@ def render_subjective_component(criteria: list[str]):
                 _render_upload_and_sample(
                     method_key="bwm", ss_key=_bwm_key,
                     parse_fn=_parse_bwm_upload, sample_fn=_sample_bwm_csv,
-                    sample_filename="sample_bwm.csv",
+                    sample_filename="sample_bwm.xlsx",
                     upload_label="BWM vektörleri yükle (CSV/XLSX)",
                     upload_label_en="Upload BWM vectors (CSV/XLSX)",
                     criteria=criteria, expert_idx=_ei,
@@ -737,7 +742,7 @@ def render_subjective_component(criteria: list[str]):
                 _render_upload_and_sample(
                     method_key="swara", ss_key=_swara_key,
                     parse_fn=_parse_swara_upload, sample_fn=_sample_swara_csv,
-                    sample_filename="sample_swara.csv",
+                    sample_filename="sample_swara.xlsx",
                     upload_label="SWARA s_j değerleri yükle (CSV/XLSX)",
                     upload_label_en="Upload SWARA s_j values (CSV/XLSX)",
                     criteria=criteria, expert_idx=_ei,
@@ -826,7 +831,7 @@ def render_subjective_component(criteria: list[str]):
                     ss_key=dem_key,
                     parse_fn=lambda f, c: _parse_dematel_upload(f, c)[0],
                     sample_fn=_sample_dematel_csv,
-                    sample_filename="sample_fuzzy_dematel.csv",
+                    sample_filename="sample_fuzzy_dematel.xlsx",
                     upload_label="DEMATEL matrisi yükle (CSV/XLSX)",
                     upload_label_en="Upload DEMATEL matrix (CSV/XLSX)",
                     criteria=criteria,
@@ -915,7 +920,7 @@ def render_subjective_component(criteria: list[str]):
                 _render_upload_and_sample(
                     method_key="smart", ss_key=_smart_key,
                     parse_fn=_parse_smart_upload, sample_fn=_sample_smart_csv,
-                    sample_filename="sample_smart.csv",
+                    sample_filename="sample_smart.xlsx",
                     upload_label="SMART puanları yükle (CSV/XLSX)",
                     upload_label_en="Upload SMART scores (CSV/XLSX)",
                     criteria=criteria, expert_idx=_ei,
