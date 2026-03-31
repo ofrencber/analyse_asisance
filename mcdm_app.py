@@ -2234,8 +2234,14 @@ def _render_manual_entry_workspace(lang: str) -> None:
         if _is_tfn_input:
             st.info(
                 tt(
-                    "Manuel giriş TFN modunda. Her kriter için `_l`, `_m`, `_u` kolonları oluşturulacak ve analizden önce ağırlık merkezi ile durulaştırılacaktır.",
-                    "Manual entry is in TFN mode. Each criterion will create `_l`, `_m`, `_u` columns and will be defuzzified by centroid before analysis.",
+                    "**TFN modu aktif.** Her kriter için 3 kolon oluşturulur: "
+                    "`KriterAdi_l` (alt sınır / kötümser), `KriterAdi_m` (en olası değer), `KriterAdi_u` (üst sınır / iyimser). "
+                    "**Kural: l ≤ m ≤ u.** "
+                    "Fuzzy yöntemler bu üçgeni doğrudan kullanır; klasik yöntemler ağırlık merkezi `(l + 2m + u) / 4` ile çalışır.",
+                    "**TFN mode active.** Each criterion creates 3 columns: "
+                    "`CriterionName_l` (lower / pessimistic), `CriterionName_m` (most likely), `CriterionName_u` (upper / optimistic). "
+                    "**Rule: l ≤ m ≤ u.** "
+                    "Fuzzy methods use the triangle directly; classical methods use centroid `(l + 2m + u) / 4`.",
                 )
             )
         _controls_col, _editor_col = st.columns([0.95, 1.8], gap="large")
@@ -2617,8 +2623,10 @@ def _input_format_notes(lang: str, panel: bool = False, fuzzy_tfn: bool = False)
     criterion_note = (
         _xl_text(
             lang,
-            "Her kriter için `_l`, `_m`, `_u` sütun üçlüsü gerekir. Sistem ağırlık merkezi ile durulaştırır.",
-            "Each criterion needs an `_l`, `_m`, `_u` column triplet. The app defuzzifies them by centroid.",
+            "Her kriter için `KriterAdi_l`, `KriterAdi_m`, `KriterAdi_u` sütun üçlüsü gerekir (l ≤ m ≤ u). "
+            "Fuzzy yöntemler üçgeni doğrudan kullanır; klasik yöntemler ağırlık merkezi (l+2m+u)/4 ile çalışır.",
+            "Each criterion needs a `CriterionName_l`, `CriterionName_m`, `CriterionName_u` column triplet (l ≤ m ≤ u). "
+            "Fuzzy methods use the triangle directly; classical methods use centroid (l+2m+u)/4.",
         )
         if fuzzy_tfn
         else _xl_text(lang, "Analizde kullanılacak kriter sütunları sayısal olmalıdır.", "Criterion columns used in the analysis must be numeric.")
@@ -9530,7 +9538,30 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                             "TFN data loaded — fuzzy weights are derived directly from the (l, m, u) triangle values.",
                         ))
                     else:
-                        st.caption(tt("Belirsizlik bandı ve bulanık mantık ile ağırlık üretir.", "Derives weights using uncertainty bands and fuzzy logic."))
+                        st.caption(tt(
+                            "Belirsizlik bandı ve bulanık mantık ile ağırlık üretir. "
+                            "TFN veri yüklerseniz (l, m, u) üçgenleri doğrudan kullanılır — daha gerçekçi belirsizlik modeli.",
+                            "Derives weights using uncertainty bands and fuzzy logic. "
+                            "If you load TFN data, the (l, m, u) triangles are used directly — more realistic uncertainty model.",
+                        ))
+                        with st.expander(tt("📋 TFN veri ile fuzzy ağırlık: örnek ve şablon", "📋 Fuzzy weights with TFN data: sample & template"), expanded=False):
+                            st.markdown(tt(
+                                "Fuzzy ağırlık yöntemleri TFN verisi yüklendiğinde her senaryoyu (alt/orta/üst) ayrı ayrı değerlendirir. "
+                                "Veri bölümünde **🔺 Üçgensel bulanık (TFN)** modunu seçin; "
+                                "her kriter için `KriterAdi_l`, `KriterAdi_m`, `KriterAdi_u` sütunları ekleyin.",
+                                "Fuzzy weight methods evaluate each scenario (lower/middle/upper) separately when TFN data is loaded. "
+                                "Select **🔺 Triangular fuzzy (TFN)** mode in the Data section; "
+                                "add `CriterionName_l`, `CriterionName_m`, `CriterionName_u` columns for each criterion.",
+                            ))
+                            st.markdown(f"**{tt('Örnek TFN verisi (ilk 5 satır):', 'Sample TFN data (first 5 rows):')}**")
+                            render_table(sample_fuzzy_dataset_en().iloc[:5, :7])
+                            st.download_button(
+                                label=tt("⬇️ Örnek TFN veri seti indir (CSV)", "⬇️ Download sample TFN dataset (CSV)"),
+                                data=sample_fuzzy_dataset_en().to_csv(index=False).encode("utf-8"),
+                                file_name="sample_tfn_dataset.csv",
+                                mime="text/csv",
+                                key="dl_tfn_sample_from_obj_fuzzy_tab",
+                            )
                     _render_weight_method_selector(weight_method_groups("fuzzy"), methods_internal)
                 # Seçili yöntemi güncelle
                 _all_weight_checked = [m for m in methods_internal if st.session_state.get(f"weight_cb_{m}", False)]
@@ -9725,6 +9756,74 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                 else:
                     all_ranks = me.FUZZY_MCDM_METHODS
                     _layer_key = "fuzzy"
+
+                # ── Fuzzy katman seçildi: TFN veri durumuna göre bilgi / örnek ──
+                if _layer_key == "fuzzy":
+                    _has_tfn_now = bool(st.session_state.get("tfn_raw"))
+                    if _has_tfn_now:
+                        st.success(tt(
+                            "✅ TFN veri yüklü — Fuzzy yöntemler (l, m, u) üçgenlerini doğrudan kullanacak.",
+                            "✅ TFN data loaded — Fuzzy methods will use (l, m, u) triangles directly.",
+                        ))
+                    else:
+                        st.warning(tt(
+                            "⚠️ Şu an crisp veri yüklü. Fuzzy yöntemler spread parametresiyle TFN üretecek. "
+                            "Daha gerçekçi belirsizlik modellemesi için veri bölümünde **TFN modunu** seçin ve "
+                            "(l, m, u) sütunlu verinizi yükleyin veya manuel tabloya girin.",
+                            "⚠️ Crisp data is loaded. Fuzzy methods will generate TFN from the spread parameter. "
+                            "For more realistic uncertainty modelling, select **TFN mode** in the Data section and "
+                            "upload or enter your data with (l, m, u) columns.",
+                        ))
+                        with st.expander(tt("📋 TFN veri formatı nedir? Örnek ve şablon", "📋 What is TFN data format? Sample & template"), expanded=False):
+                            st.markdown(tt(
+                                """
+**Üçgensel Bulanık Sayı (TFN) formatı:**
+
+Her kriter için üç sütun gerekir:
+
+| Sütun | Anlam | Örnek |
+|-------|-------|-------|
+| `KriterAdi_l` | Alt sınır (kötümser) | `Maliyet_l` |
+| `KriterAdi_m` | En olası değer | `Maliyet_m` |
+| `KriterAdi_u` | Üst sınır (iyimser) | `Maliyet_u` |
+
+**Kural:** `l ≤ m ≤ u` — alt sınır her zaman en küçük olmalıdır.
+
+**Nasıl kullanılır?**
+1. Veri bölümünde **🔺 Üçgensel bulanık (TFN)** modunu seçin
+2. Dosyanızı yükleyin VEYA manuel tabloya girin
+3. Ağırlık ve sıralama adımlarına geçin
+""",
+                                """
+**Triangular Fuzzy Number (TFN) format:**
+
+Each criterion requires three columns:
+
+| Column | Meaning | Example |
+|--------|---------|---------|
+| `CriterionName_l` | Lower bound (pessimistic) | `Cost_l` |
+| `CriterionName_m` | Most likely value | `Cost_m` |
+| `CriterionName_u` | Upper bound (optimistic) | `Cost_u` |
+
+**Rule:** `l ≤ m ≤ u` — lower bound must always be the smallest.
+
+**How to use?**
+1. Select **🔺 Triangular fuzzy (TFN)** mode in the Data section
+2. Upload your file OR enter data in the manual grid
+3. Proceed to Weighting and Ranking steps
+""",
+                            ))
+                            st.markdown(f"**{tt('Örnek TFN verisi (ilk 5 satır):', 'Sample TFN data (first 5 rows):')}**")
+                            _tfn_preview = sample_fuzzy_dataset_en().iloc[:5, :7]
+                            render_table(_tfn_preview)
+                            _tfn_csv_bytes = sample_fuzzy_dataset_en().to_csv(index=False).encode("utf-8")
+                            st.download_button(
+                                label=tt("⬇️ Örnek TFN veri seti indir (CSV)", "⬇️ Download sample TFN dataset (CSV)"),
+                                data=_tfn_csv_bytes,
+                                file_name="sample_tfn_dataset.csv",
+                                mime="text/csv",
+                                key="dl_tfn_sample_from_fuzzy_layer",
+                            )
 
                 _sugg_rank_raw = st.session_state.get("_sugg_rank", "TOPSIS, VIKOR, EDAS")
                 _sugg_rank_list = st.session_state.get("_sugg_rank_methods") or ["TOPSIS", "VIKOR", "EDAS"]

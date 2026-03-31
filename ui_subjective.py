@@ -222,14 +222,18 @@ def render_subjective_component(criteria: list[str]):
     st.markdown(f"#### {tt('Uzman Görüşü Hesaplama Paneli', 'Expert Judgment Panel')}")
     
     num_experts = st.number_input(
-        tt("Değerlendirme Yapacak Uzman Sayısı", "Number of Experts"), 
-        min_value=1, max_value=50, value=1, step=1,
-        help=tt("Maksimum 50 uzmana kadar desteklenir. Değerler Geometrik Ortalama ile (AIP yöntemi) birleştirilip Normalize edilir.",
-                "Up to 50 experts supported. Weights are aggregated via Geometric Mean (AIP method) and Normalized.")
+        tt("Değerlendirme Yapacak Uzman Sayısı", "Number of Experts"),
+        min_value=1, max_value=100, value=1, step=1,
+        help=tt("Maksimum 100 uzmana kadar desteklenir. Değerler Geometrik Ortalama ile (AIP yöntemi) birleştirilip Normalize edilir.",
+                "Up to 100 experts supported. Weights are aggregated via Geometric Mean (AIP method) and Normalized.")
     )
     
-    st.info(tt("Bu alanda yapacağınız hesaplamalar otomatik olarak 'Manuel Ağırlık' sistemine aktarılır.",
-               "Calculations made here are automatically transferred to the 'Manual Weight' system."))
+    st.info(tt(
+        "Bu alanda yapacağınız hesaplamalar otomatik olarak 'Manuel Ağırlık' sistemine aktarılır. "
+        "Uzman sayısı en fazla **100** olabilir.",
+        "Calculations made here are automatically transferred to the 'Manual Weight' system. "
+        "Maximum number of experts is **100**.",
+    ))
     fuzzy_spread = st.slider(
         tt("Bulanık Belirsizlik Genişliği", "Fuzzy Uncertainty Spread"),
         min_value=0.05,
