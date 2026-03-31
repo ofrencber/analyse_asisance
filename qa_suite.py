@@ -50,6 +50,17 @@ def assert_no_streamlit_exceptions(at: AppTest, context: str) -> None:
         raise AssertionError(f"{context}: Streamlit exception detected: {errors[0]}")
 
 
+def make_app_test(timeout: int = 120) -> AppTest:
+    at = AppTest.from_file(str(ROOT / "mcdm_app.py"), default_timeout=timeout)
+    # Bare-mode testlerde auth duvarını kapatıp asıl analiz akışını doğruluyoruz.
+    at.secrets["mcdm_auth"] = {"require_login": False}
+    return at
+
+
+def session_state_value(at: AppTest, key: str, default=None):
+    return at.session_state.filtered_state.get(key, default)
+
+
 def click_button_by_key(at: AppTest, key: str) -> None:
     at.button(key=key).click().run()
     assert_no_streamlit_exceptions(at, f"button:{key}")
@@ -69,6 +80,17 @@ def click_button_by_label(at: AppTest, *needles: str) -> None:
 def set_checkbox(at: AppTest, key: str, value: bool = True) -> None:
     at.checkbox(key=key).set_value(value).run()
     assert_no_streamlit_exceptions(at, f"checkbox:{key}")
+
+
+def set_radio_by_label(at: AppTest, label_needles: list[str], value: str) -> None:
+    wanted = [needle.lower() for needle in label_needles]
+    for radio in at.radio:
+        label = str(getattr(radio, "label", "") or "").lower()
+        if any(needle in label for needle in wanted):
+            radio.set_value(value).run()
+            assert_no_streamlit_exceptions(at, f"radio:{label}")
+            return
+    raise AssertionError(f"Radio not found for labels: {label_needles}")
 
 
 def get_download_workbook(at: AppTest) -> tuple[bytes, list[str]]:
@@ -173,7 +195,7 @@ def test_analysis_bundles() -> None:
 
 
 def run_single_sample_flow() -> None:
-    at = AppTest.from_file(str(ROOT / "mcdm_app.py"), default_timeout=120)
+    at = make_app_test(120)
     at.run()
     assert_no_streamlit_exceptions(at, "single:init")
     click_button_by_key(at, "btn_sample_tr_main")
@@ -198,13 +220,13 @@ def run_single_sample_flow() -> None:
 
 
 def run_manual_flow() -> None:
-    at = AppTest.from_file(str(ROOT / "mcdm_app.py"), default_timeout=120)
+    at = make_app_test(120)
     at.run()
     assert_no_streamlit_exceptions(at, "manual:init")
     at.radio(key="data_entry_mode").set_value("✍️ Manuel Giriş").run()
     assert_no_streamlit_exceptions(at, "manual:mode")
     click_button_by_key(at, "btn_fill_manual_sample_main")
-    click_button_by_key(at, "btn_use_manual_data_main")
+    click_button_by_key(at, "btn_use_manual_data_from_paste_main")
     require(at.session_state["data_source_id"] == "manual_entry", "Manual flow: data source did not switch to manual.")
     click_button_by_key(at, "step1_continue_btn")
     click_button_by_label(at, "Veri Ön İşleme Bitti", "Preprocessing Complete")
@@ -218,7 +240,7 @@ def run_manual_flow() -> None:
 
 
 def run_panel_flow() -> None:
-    at = AppTest.from_file(str(ROOT / "mcdm_app.py"), default_timeout=150)
+    at = make_app_test(150)
     at.run()
     assert_no_streamlit_exceptions(at, "panel:init")
     click_button_by_key(at, "btn_sample_panel_en_main")
@@ -242,6 +264,57 @@ def run_panel_flow() -> None:
     )
 
 
+def run_fuzzy_single_flow() -> None:
+    at = make_app_test(150)
+    at.run()
+    assert_no_streamlit_exceptions(at, "fuzzy_single:init")
+    at.radio(key="data_value_mode").set_value("🔺 Üçgensel bulanık (TFN)").run()
+    assert_no_streamlit_exceptions(at, "fuzzy_single:value_mode")
+    click_button_by_key(at, "btn_sample_en_main")
+    click_button_by_key(at, "btn_use_upload_data_main")
+    require(
+        (session_state_value(at, "input_data_profile", {}) or {}).get("value_mode") == "tfn",
+        "Fuzzy single flow: TFN profile not preserved.",
+    )
+    click_button_by_key(at, "step1_continue_btn")
+    click_button_by_label(at, "Veri Ön İşleme Bitti", "Preprocessing Complete")
+    set_checkbox(at, "weight_cb_Fuzzy Entropy", True)
+    set_radio_by_label(at, ["Analiz Katmanı", "Analysis Layer"], "İleri Düzey Yöntemler (Fuzzy)")
+    set_checkbox(at, "rank_cb_Fuzzy TOPSIS", True)
+    click_button_by_label(at, "Analiz Zamanı", "Run Analysis")
+    result = at.session_state["analysis_result"]
+    require(isinstance(result, dict), "Fuzzy single flow: analysis result missing.")
+    require(result["weights"]["method"] == "Fuzzy Entropy", "Fuzzy single flow: fuzzy weight method not preserved.")
+    require(result["ranking"]["method"] == "Fuzzy TOPSIS", "Fuzzy single flow: fuzzy ranking method not preserved.")
+    require((session_state_value(at, "input_data_profile", {}) or {}).get("value_mode") == "tfn", "Fuzzy single flow: input profile lost after run.")
+
+
+def run_fuzzy_panel_flow() -> None:
+    at = make_app_test(180)
+    at.run()
+    assert_no_streamlit_exceptions(at, "fuzzy_panel:init")
+    at.radio(key="data_value_mode").set_value("🔺 Üçgensel bulanık (TFN)").run()
+    assert_no_streamlit_exceptions(at, "fuzzy_panel:value_mode")
+    click_button_by_key(at, "btn_sample_panel_en_main")
+    click_button_by_key(at, "btn_use_upload_data_main")
+    require(
+        (session_state_value(at, "input_data_profile", {}) or {}).get("value_mode") == "tfn",
+        "Fuzzy panel flow: TFN profile not preserved.",
+    )
+    click_button_by_key(at, "panel_years_select_all")
+    click_button_by_key(at, "step1_continue_btn")
+    click_button_by_label(at, "Preprocessing Complete", "Veri Ön İşleme Bitti")
+    set_checkbox(at, "weight_cb_Fuzzy CRITIC", True)
+    set_radio_by_label(at, ["Analiz Katmanı", "Analysis Layer"], "İleri Düzey Yöntemler (Fuzzy)")
+    set_checkbox(at, "rank_cb_Fuzzy TOPSIS", True)
+    click_button_by_label(at, "Run Analysis", "Analiz Zamanı")
+    panel_results = at.session_state["panel_results"]
+    require(isinstance(panel_results, dict) and panel_results, "Fuzzy panel flow: panel results missing.")
+    first_result = next(iter(panel_results.values()))
+    require(first_result["weights"]["method"] == "Fuzzy CRITIC", "Fuzzy panel flow: fuzzy weight method not preserved.")
+    require(first_result["ranking"]["method"] == "Fuzzy TOPSIS", "Fuzzy panel flow: fuzzy ranking method not preserved.")
+
+
 def run_test(name: str, fn: Callable[[], None]) -> tuple[str, bool, str]:
     try:
         fn()
@@ -259,6 +332,8 @@ def main() -> int:
         ("app_single_flow", run_single_sample_flow),
         ("app_manual_flow", run_manual_flow),
         ("app_panel_flow", run_panel_flow),
+        ("app_fuzzy_single_flow", run_fuzzy_single_flow),
+        ("app_fuzzy_panel_flow", run_fuzzy_panel_flow),
     ]
 
     failures: list[tuple[str, str]] = []

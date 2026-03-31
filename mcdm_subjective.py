@@ -4,6 +4,71 @@ from typing import Dict, Any
 
 EPS = 1e-12
 
+
+def _normalize_weights(values: np.ndarray) -> np.ndarray:
+    arr = np.asarray(values, dtype=float)
+    arr = np.where(np.isfinite(arr), arr, 0.0)
+    arr = np.clip(arr, 0.0, None)
+    total = float(arr.sum())
+    if total <= EPS:
+        return np.ones(len(arr), dtype=float) / max(len(arr), 1)
+    return arr / total
+
+
+def _scenario_triplets(values: np.ndarray, spread: float, *, low: float | None = None, high: float | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    middle = np.asarray(values, dtype=float).copy()
+    delta = np.abs(middle) * max(float(spread), 0.0)
+    lower = middle - delta
+    upper = middle + delta
+    if low is not None:
+        lower = np.maximum(lower, low)
+        middle = np.maximum(middle, low)
+        upper = np.maximum(upper, low)
+    if high is not None:
+        lower = np.minimum(lower, high)
+        middle = np.minimum(middle, high)
+        upper = np.minimum(upper, high)
+    return lower, middle, upper
+
+
+def _aggregate_scenario_weights(results: list[Dict[str, Any]]) -> np.ndarray:
+    weight_mat = np.asarray([res["weights"] for res in results], dtype=float)
+    return _normalize_weights(weight_mat.mean(axis=0))
+
+
+def _build_fuzzy_ahp_scenarios(matrix: np.ndarray, spread: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    n = matrix.shape[0]
+    lower = np.ones((n, n), dtype=float)
+    middle = np.ones((n, n), dtype=float)
+    upper = np.ones((n, n), dtype=float)
+
+    for r in range(n):
+        lower[r, r] = 1.0
+        middle[r, r] = 1.0
+        upper[r, r] = 1.0
+        for c in range(r + 1, n):
+            modal = float(matrix[r, c]) if np.isfinite(matrix[r, c]) else 1.0
+            if modal <= EPS:
+                modal = 1.0
+            if modal >= 1.0:
+                l_val = max(1.0 / 9.0, modal * (1.0 - spread))
+                u_val = min(9.0, modal * (1.0 + spread))
+            else:
+                inv_modal = 1.0 / modal
+                inv_lower = max(1.0 / 9.0, inv_modal * (1.0 - spread))
+                inv_upper = min(9.0, inv_modal * (1.0 + spread))
+                l_val = 1.0 / inv_upper
+                u_val = 1.0 / inv_lower
+
+            lower[r, c] = l_val
+            middle[r, c] = modal
+            upper[r, c] = u_val
+            lower[c, r] = 1.0 / u_val
+            middle[c, r] = 1.0 / modal
+            upper[c, r] = 1.0 / l_val
+
+    return lower, middle, upper
+
 def calc_ahp(matrix: np.ndarray) -> Dict[str, Any]:
     """
     Analytic Hierarchy Process (AHP)
@@ -34,6 +99,43 @@ def calc_ahp(matrix: np.ndarray) -> Dict[str, Any]:
             "ci": float(ci),
             "ri": float(ri)
         }
+    }
+
+
+def calc_fuzzy_ahp(matrix: np.ndarray, spread: float = 0.15) -> Dict[str, Any]:
+    """
+    Fuzzy AHP
+    matrix: n x n ikili karşılaştırma matrisi (modal değerler)
+    spread: modal değerin alt/üst bulanık sapması
+    """
+    lower, middle, upper = _build_fuzzy_ahp_scenarios(np.asarray(matrix, dtype=float), spread)
+    scenario_defs = [("Lower", lower), ("Middle", middle), ("Upper", upper)]
+    scenario_results = []
+    for scenario_name, scenario_matrix in scenario_defs:
+        res = calc_ahp(scenario_matrix)
+        scenario_results.append(
+            {
+                "scenario": scenario_name,
+                "weights": res["weights"],
+                "cr": res["cr"],
+                "lambda_max": res["lambda_max"],
+                "is_consistent": res["is_consistent"],
+            }
+        )
+
+    weights = _aggregate_scenario_weights(scenario_results)
+    cr_vals = np.asarray([r["cr"] for r in scenario_results], dtype=float)
+    lambda_vals = np.asarray([r["lambda_max"] for r in scenario_results], dtype=float)
+    return {
+        "weights": weights.tolist(),
+        "cr": float(cr_vals.mean()),
+        "lambda_max": float(lambda_vals.mean()),
+        "is_consistent": bool(all(r["is_consistent"] for r in scenario_results)),
+        "details": {
+            "spread": float(spread),
+            "scenario_results": scenario_results,
+            "ci_proxy": float(cr_vals.mean()),
+        },
     }
 
 def calc_bwm(best_to_others: np.ndarray, others_to_worst: np.ndarray) -> Dict[str, Any]:
@@ -95,6 +197,55 @@ def calc_bwm(best_to_others: np.ndarray, others_to_worst: np.ndarray) -> Dict[st
         }
     }
 
+
+def calc_fuzzy_bwm(best_to_others: np.ndarray, others_to_worst: np.ndarray, spread: float = 0.15) -> Dict[str, Any]:
+    """
+    Fuzzy BWM
+    best_to_others / others_to_worst: modal 1-9 vektörleri
+    """
+    bto = np.asarray(best_to_others, dtype=float)
+    otw = np.asarray(others_to_worst, dtype=float)
+    lower_bto, middle_bto, upper_bto = _scenario_triplets(bto, spread, low=1.0, high=9.0)
+    lower_otw, middle_otw, upper_otw = _scenario_triplets(otw, spread, low=1.0, high=9.0)
+    lower_bto = np.where(np.isclose(bto, 1.0), 1.0, lower_bto)
+    middle_bto = np.where(np.isclose(bto, 1.0), 1.0, middle_bto)
+    upper_bto = np.where(np.isclose(bto, 1.0), 1.0, upper_bto)
+    lower_otw = np.where(np.isclose(otw, 1.0), 1.0, lower_otw)
+    middle_otw = np.where(np.isclose(otw, 1.0), 1.0, middle_otw)
+    upper_otw = np.where(np.isclose(otw, 1.0), 1.0, upper_otw)
+
+    scenario_defs = [
+        ("Lower", lower_bto, lower_otw),
+        ("Middle", middle_bto, middle_otw),
+        ("Upper", upper_bto, upper_otw),
+    ]
+    scenario_results = []
+    for scenario_name, s_bto, s_otw in scenario_defs:
+        res = calc_bwm(s_bto, s_otw)
+        scenario_results.append(
+            {
+                "scenario": scenario_name,
+                "weights": res["weights"],
+                "xi": res["xi"],
+                "cr": res["cr"],
+                "is_consistent": res["is_consistent"],
+            }
+        )
+
+    weights = _aggregate_scenario_weights(scenario_results)
+    xi_vals = np.asarray([r["xi"] for r in scenario_results], dtype=float)
+    cr_vals = np.asarray([r["cr"] for r in scenario_results], dtype=float)
+    return {
+        "weights": weights.tolist(),
+        "xi": float(xi_vals.mean()),
+        "cr": float(cr_vals.mean()),
+        "is_consistent": bool(all(r["is_consistent"] for r in scenario_results)),
+        "details": {
+            "spread": float(spread),
+            "scenario_results": scenario_results,
+        },
+    }
+
 def calc_swara(s_j: np.ndarray) -> Dict[str, Any]:
     """
     SWARA (Step-wise Weight Assessment Ratio Analysis)
@@ -124,6 +275,31 @@ def calc_swara(s_j: np.ndarray) -> Dict[str, Any]:
         }
     }
 
+
+def calc_fuzzy_swara(s_j: np.ndarray, spread: float = 0.15) -> Dict[str, Any]:
+    """
+    Fuzzy SWARA
+    s_j: modal göreli önem azaltım değerleri
+    """
+    modal = np.asarray(s_j, dtype=float)
+    lower, middle, upper = _scenario_triplets(modal, spread, low=0.0)
+    if len(modal) > 0:
+        lower[0] = middle[0] = upper[0] = 0.0
+    scenario_defs = [("Lower", lower), ("Middle", middle), ("Upper", upper)]
+    scenario_results = []
+    for scenario_name, scenario_values in scenario_defs:
+        res = calc_swara(scenario_values)
+        scenario_results.append({"scenario": scenario_name, "weights": res["weights"], "details": res["details"]})
+
+    weights = _aggregate_scenario_weights(scenario_results)
+    return {
+        "weights": weights.tolist(),
+        "details": {
+            "spread": float(spread),
+            "scenario_results": scenario_results,
+        },
+    }
+
 def calc_dematel(matrix: np.ndarray) -> Dict[str, Any]:
     """
     DEMATEL (Decision Making Trial and Evaluation Laboratory)
@@ -141,10 +317,12 @@ def calc_dematel(matrix: np.ndarray) -> Dict[str, Any]:
     
     # Toplam İlişki Matrisi (T = X * (I - X)^-1)
     I = np.eye(n)
+    _singular_matrix = False
     try:
         T = np.dot(X, np.linalg.inv(I - X))
     except np.linalg.LinAlgError:
         T = np.zeros_like(X)
+        _singular_matrix = True
     
     R = np.sum(T, axis=1) # Row sums (Etkileyen)
     C = np.sum(T, axis=0) # Col sums (Etkilenen)
@@ -159,11 +337,54 @@ def calc_dematel(matrix: np.ndarray) -> Dict[str, Any]:
         "weights": weights.tolist(),
         "prominence": D_plus_R.tolist(),
         "relation": D_minus_R.tolist(),
+        "singular_warning": _singular_matrix,
         "details": {
             "R": R.tolist(),
             "C": C.tolist(),
             "T": T.tolist()
         }
+    }
+
+
+def calc_fuzzy_dematel(matrix: np.ndarray, spread: float = 0.15) -> Dict[str, Any]:
+    """
+    Fuzzy DEMATEL
+    matrix: modal etki matrisi (0-4 arası)
+    """
+    modal = np.asarray(matrix, dtype=float)
+    lower, middle, upper = _scenario_triplets(modal, spread, low=0.0, high=4.0)
+    np.fill_diagonal(lower, 0.0)
+    np.fill_diagonal(middle, 0.0)
+    np.fill_diagonal(upper, 0.0)
+
+    scenario_defs = [("Lower", lower), ("Middle", middle), ("Upper", upper)]
+    scenario_results = []
+    any_singular = False
+    for scenario_name, scenario_matrix in scenario_defs:
+        res = calc_dematel(scenario_matrix)
+        any_singular = any_singular or bool(res.get("singular_warning"))
+        scenario_results.append(
+            {
+                "scenario": scenario_name,
+                "weights": res["weights"],
+                "prominence": res["prominence"],
+                "relation": res["relation"],
+                "singular_warning": res.get("singular_warning", False),
+            }
+        )
+
+    weights = _aggregate_scenario_weights(scenario_results)
+    prominence = np.mean(np.asarray([r["prominence"] for r in scenario_results], dtype=float), axis=0)
+    relation = np.mean(np.asarray([r["relation"] for r in scenario_results], dtype=float), axis=0)
+    return {
+        "weights": weights.tolist(),
+        "prominence": prominence.tolist(),
+        "relation": relation.tolist(),
+        "singular_warning": any_singular,
+        "details": {
+            "spread": float(spread),
+            "scenario_results": scenario_results,
+        },
     }
 
 def calc_smart(points: np.ndarray) -> Dict[str, Any]:
@@ -177,4 +398,33 @@ def calc_smart(points: np.ndarray) -> Dict[str, Any]:
         "details": {
             "points": points.tolist()
         }
+    }
+
+
+def calc_fuzzy_smart(points: np.ndarray, spread: float = 0.15) -> Dict[str, Any]:
+    """
+    Fuzzy SMART
+    points: modal doğrudan uzman puanları
+    """
+    modal = np.asarray(points, dtype=float)
+    lower, middle, upper = _scenario_triplets(modal, spread, low=0.0)
+    scenario_defs = [("Lower", lower), ("Middle", middle), ("Upper", upper)]
+    scenario_results = []
+    for scenario_name, scenario_points in scenario_defs:
+        res = calc_smart(scenario_points)
+        scenario_results.append(
+            {
+                "scenario": scenario_name,
+                "weights": res["weights"],
+                "points": scenario_points.tolist(),
+            }
+        )
+
+    weights = _aggregate_scenario_weights(scenario_results)
+    return {
+        "weights": weights.tolist(),
+        "details": {
+            "spread": float(spread),
+            "scenario_results": scenario_results,
+        },
     }
