@@ -141,12 +141,10 @@ def calc_dematel(matrix: np.ndarray) -> Dict[str, Any]:
     
     # Toplam İlişki Matrisi (T = X * (I - X)^-1)
     I = np.eye(n)
-    _singular_matrix = False
     try:
         T = np.dot(X, np.linalg.inv(I - X))
     except np.linalg.LinAlgError:
         T = np.zeros_like(X)
-        _singular_matrix = True
     
     R = np.sum(T, axis=1) # Row sums (Etkileyen)
     C = np.sum(T, axis=0) # Col sums (Etkilenen)
@@ -161,7 +159,6 @@ def calc_dematel(matrix: np.ndarray) -> Dict[str, Any]:
         "weights": weights.tolist(),
         "prominence": D_plus_R.tolist(),
         "relation": D_minus_R.tolist(),
-        "singular_warning": _singular_matrix,
         "details": {
             "R": R.tolist(),
             "C": C.tolist(),

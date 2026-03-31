@@ -6,6 +6,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
+from scipy.stats import spearmanr
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 EPS = 1e-12
 
@@ -19,9 +22,7 @@ OBJECTIVE_WEIGHT_METHODS = [
     "PCA",
     "CILOS",
     "IDOCRIW",
-    "Fuzzy CILOS",
     "Fuzzy IDOCRIW",
-    "SPC",
 ]
 
 CLASSICAL_MCDM_METHODS = [
@@ -49,8 +50,6 @@ CLASSICAL_MCDM_METHODS = [
     "ROV",
     "AROMAN",
     "DNMA",
-    "PSI",
-    "WISP",
 ]
 
 FUZZY_MCDM_METHODS = [
@@ -78,8 +77,6 @@ FUZZY_MCDM_METHODS = [
     "Fuzzy ROV",
     "Fuzzy AROMAN",
     "Fuzzy DNMA",
-    "Fuzzy PSI",
-    "Fuzzy WISP",
 ]
 
 METHOD_PHILOSOPHY: Dict[str, Dict[str, str]] = {
@@ -110,10 +107,6 @@ METHOD_PHILOSOPHY: Dict[str, Dict[str, str]] = {
     "IDOCRIW": {
         "simple": "IDOCRIW, Entropi ile CILOS mantığını birleştirerek hem bilgi çeşitliliğini hem de kriter kayıp etkisini birlikte okur.",
         "academic": "IDOCRIW, entropi temelli bilgi içeriğini CILOS tabanlı göreli etki kaybı yapısıyla bütünleştirerek kriter ağırlıklarını hibrit ve objektif biçimde üretir.",
-    },
-    "Fuzzy CILOS": {
-        "simple": "Fuzzy CILOS, kriter etki kaybı mantığını belirsizlik altında üç senaryolu bulanık çerçevede uygular.",
-        "academic": "Fuzzy CILOS, CILOS yönteminin göreli etki kayıpları matrisini bulanıklaştırılmış alt-orta-üst performans senaryoları üzerinde ayrı ayrı hesaplayarak belirsizlik duyarlı kriter ağırlıkları üretir.",
     },
     "Fuzzy IDOCRIW": {
         "simple": "Fuzzy IDOCRIW, IDOCRIW mantığını belirsizlik altında üç senaryolu bulanık bir çerçevede uygular.",
@@ -178,26 +171,6 @@ METHOD_PHILOSOPHY: Dict[str, Dict[str, str]] = {
     "Fuzzy DNMA": {
         "simple": "Fuzzy DNMA, çift normalleştirme yaklaşımını bulanık belirsizlik altında eşit ağırlıkla harmanlayarak skor üretir.",
         "academic": "Fuzzy DNMA, DNMA'nın min-max ve sum normalleştirme bileşenlerini üçgensel bulanık değer senaryoları üzerinde eşit ağırlıklı toplulaştırmayla bütünleştirir.",
-    },
-    "SPC": {
-        "simple": "SPC, her kriterin simetri (denge) noktasından alternatiflerin sapmasını ölçerek ayırt edici kriterlere yüksek ağırlık verir.",
-        "academic": "SPC (Symmetry Point of Criterion), normalize edilmiş karar matrisinde her kriterin denge noktasından alternatiflerin toplam mutlak sapmasını hesaplayarak kriter ayırt ediciliğini mesafe temelli olarak ölçen objektif bir ağırlıklandırma yöntemidir.",
-    },
-    "PSI": {
-        "simple": "PSI, kullanıcıdan ağırlık almadan kriter önemini istatistiksel sapmadan hesaplayarak sıralama üretir.",
-        "academic": "PSI (Preference Selection Index), karar vericiden bağımsız olarak kriter önemini normalize edilmiş değerlerin standart sapmasından türeterek OPV (Overall Preference Value) vektörü oluşturur ve ağırlıklı toplamsal modelle sıralama yapar.",
-    },
-    "Fuzzy PSI": {
-        "simple": "Fuzzy PSI, PSI'nın kendi kendine ağırlık hesaplama mantığını belirsizlik altında üçgensel bulanık senaryolarla uygular.",
-        "academic": "Fuzzy PSI, PSI'nın istatistiksel sapma temelli kendi kendine ağırlık üretimini üçgensel bulanık sayı senaryoları üzerinde gerçekleştirerek belirsizlik duyarlı bir ağırlıksız sıralama sunar.",
-    },
-    "WISP": {
-        "simple": "WISP, toplamsal ve çarpımsal yaklaşımları dört farklı fayda ölçüsüyle birleştirerek tek bir toplulaştırma stratejisine bağımlılığı azaltır.",
-        "academic": "WISP (Weighted Integrated Sum Product), ağırlıklı toplam (Q1), ağırlıklı çarpım (Q2), fark (Q3) ve oran (Q4) olmak üzere dört bağımsız fayda ölçüsünü bütünleştirerek normalize edilmiş genel fayda skoru üreten, WASPAS'ın genişletilmiş ve daha kapsamlı bir versiyonudur.",
-    },
-    "Fuzzy WISP": {
-        "simple": "Fuzzy WISP, WISP'in dört bileşenli fayda ölçümünü bulanık belirsizlik altında üçgensel senaryolarla uygular.",
-        "academic": "Fuzzy WISP, WISP'in toplam-çarpım-fark-oran bileşenlerini üçgensel bulanık değer senaryoları üzerinde hesaplayarak belirsizlik duyarlı çok bileşenli sıralama sunar.",
     },
     "TOPSIS": {
         "simple": "TOPSIS, en iyi hayali seçeneğe yakın ve en kötü hayali seçeneğe uzak olan alternatifi daha iyi sayar.",
@@ -389,11 +362,6 @@ REFERENCE_LIBRARY: Dict[str, str] = {
     "ROV": "Yakowitz, D. S., Lane, L. J., & Szidarovszky, F. (1993). Multi-attribute decision making: Dominance with respect to an importance order of the attributes. Applied Mathematics and Computation, 54(2–3), 167–181. https://doi.org/10.1016/0096-3003(93)90057-L",
     "AROMAN": "Dimitrijević, B., Trpković, A., Atanasković, M., & Grbović, A. (2022). Application of AROMAN Method for Determination of Stability Level for Slope Failures. Civil Engineering Journal, 8(8), 1447–1462. https://doi.org/10.28991/CEJ-2022-08-08-012",
     "DNMA": "Liu, P., & Zhu, B. (2021). A novel psychophysical decision-making model with heterogeneous information and its application in the evaluation of unmanned aerial vehicle selection. Expert Systems with Applications, 166, 114091. https://doi.org/10.1016/j.eswa.2020.114091",
-    "SPC": "Gligorić, M., Gligorić, Z., Beljić, Č., Torbica, S., Savić Šurlan, G., & Beljić, Č. (2023). Novel Hybrid MPSI–MARA Decision-Making Model for Support System Selection in a Viscose Fiber Plant. Sustainability, 15(3), 2422. https://doi.org/10.3390/su15032422",
-    "PSI": "Maniya, K. D., & Bhatt, M. G. (2010). A selection of material using a novel type decision-making method: Preference selection index method. Materials & Design, 31(4), 1785–1789. https://doi.org/10.1016/j.matdes.2009.11.020",
-    "WISP": "Stanujkic, D., Karabasevic, D., Popovic, G., Pamučar, D., Stević, Ž., Zavadskas, E. K., & Smarandache, F. (2021). A New Fuzzy Extension of the WISP Method. Axioms, 10(4), 347. https://doi.org/10.3390/axioms10040347",
-    "Fuzzy PSI": "Maniya, K. D., & Bhatt, M. G. (2010). A selection of material using a novel type decision-making method: Preference selection index method. Materials & Design, 31(4), 1785–1789.",
-    "Fuzzy WISP": "Stanujkic, D., Karabasevic, D., Popovic, G., et al. (2021). A New Fuzzy Extension of the WISP Method. Axioms, 10(4), 347.",
     "Fuzzy SPOTIS": "Shekhovtsov, A., & Sałabun, W. (2021). A comparative case study of the VIKOR and TOPSIS ranking methods in a novel approach for solving the fuzzy MCDM problem. Applied Soft Computing, 111, 107637. https://doi.org/10.1016/j.asoc.2021.107637",
     "Fuzzy MULTIMOORA": "Brauers, W. K. M., & Zavadskas, E. K. (2012). Robustness of MULTIMOORA: A method for multi-objective optimization. Informatica, 23(1), 1–25.",
     "Fuzzy RAWEC": "Sotoudeh-Anvari, A. (2023). A novel multi-attribute decision-making method based on the weight of each criterion (RAWEC). Journal of Soft Computing and Decision Analytics, 1(1), 192–207.",
@@ -559,72 +527,6 @@ def _benefit_cost_summary(criteria_types: Dict[str, str]) -> Dict[str, List[str]
     return {"benefit": benefit, "cost": cost}
 
 
-def apply_threshold_filter(
-    data: pd.DataFrame,
-    criteria: Sequence[str],
-    criteria_types: Dict[str, str],
-    thresholds: Dict[str, Dict[str, float]],
-) -> Tuple[pd.DataFrame, List[Dict[str, Any]]]:
-    """Pre-screen alternatives by minimum/maximum thresholds.
-
-    Parameters
-    ----------
-    thresholds : dict
-        ``{criterion: {"min": float, "max": float}}``.
-        For benefit criteria: alternatives below ``min`` are eliminated.
-        For cost criteria: alternatives above ``max`` are eliminated.
-        Keys are optional — omit ``min``/``max`` to skip that bound.
-
-    Returns
-    -------
-    filtered_data : pd.DataFrame
-        Data with eliminated rows removed.
-    eliminated : list of dict
-        Each entry: ``{"alternative": str, "criterion": str, "value": float,
-        "threshold": float, "direction": str}``.
-    """
-    if not thresholds:
-        return data, []
-
-    eliminated: List[Dict[str, Any]] = []
-    keep_mask = pd.Series(True, index=data.index)
-    df = _as_numeric_df(data, criteria)
-
-    for crit, bounds in thresholds.items():
-        if crit not in df.columns:
-            continue
-        col = df[crit]
-        ctype = criteria_types.get(crit, "max")
-        min_val = bounds.get("min")
-        max_val = bounds.get("max")
-
-        if min_val is not None:
-            fail = col < float(min_val)
-            for idx in df.index[fail & keep_mask]:
-                eliminated.append({
-                    "alternative": str(idx),
-                    "criterion": crit,
-                    "value": float(col.loc[idx]),
-                    "threshold": float(min_val),
-                    "direction": f"< min ({min_val})",
-                })
-            keep_mask &= ~fail
-
-        if max_val is not None:
-            fail = col > float(max_val)
-            for idx in df.index[fail & keep_mask]:
-                eliminated.append({
-                    "alternative": str(idx),
-                    "criterion": crit,
-                    "value": float(col.loc[idx]),
-                    "threshold": float(max_val),
-                    "direction": f"> max ({max_val})",
-                })
-            keep_mask &= ~fail
-
-    return data.loc[keep_mask].copy(), eliminated
-
-
 def validate_problem(data: pd.DataFrame, criteria: Sequence[str], criteria_types: Dict[str, str]) -> Dict[str, Any]:
     df = _as_numeric_df(data, criteria)
     issues: List[str] = []
@@ -678,8 +580,6 @@ def descriptive_statistics(data: pd.DataFrame, criteria: Sequence[str]) -> pd.Da
 
 
 def pca_diagnostics(data: pd.DataFrame, criteria: Sequence[str], criteria_types: Dict[str, str]) -> Dict[str, Any]:
-    from sklearn.decomposition import PCA
-    from sklearn.preprocessing import StandardScaler
     df = _as_numeric_df(data, criteria)
     oriented = _normalize_minmax(df, criteria_types)
     scaler = StandardScaler()
@@ -840,10 +740,12 @@ def _weights_cilos(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tuple[
         dtype=float,
     )
 
-    a_vals = a_matrix.to_numpy(dtype=float)
-    diag_vals = np.diag(a_vals)
-    p_vals = np.maximum(0.0, (diag_vals[np.newaxis, :] - a_vals) / (diag_vals[np.newaxis, :] + EPS))
-    p_matrix = pd.DataFrame(p_vals, index=cols, columns=cols, dtype=float)
+    p_matrix = pd.DataFrame(0.0, index=cols, columns=cols, dtype=float)
+    for row_criterion in cols:
+        for col_criterion in cols:
+            diag_val = float(a_matrix.loc[col_criterion, col_criterion])
+            current = float(a_matrix.loc[row_criterion, col_criterion])
+            p_matrix.loc[row_criterion, col_criterion] = max(0.0, (diag_val - current) / (diag_val + EPS))
 
     f_matrix = p_matrix.T.copy()
     for crit in cols:
@@ -890,38 +792,6 @@ def _weights_idocriw(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tupl
         ),
     }
     return w, det
-
-def _weights_fuzzy_cilos(
-    data: pd.DataFrame,
-    criteria_types: Dict[str, str],
-    spread: float = 0.10,
-) -> Tuple[Dict[str, float], Dict[str, Any]]:
-    """Fuzzy CILOS — 3 senaryo (alt-orta-üst) üzerinde CILOS çalıştırılır, ortalaması alınır."""
-    pos, _ = _shift_positive(data)
-    lower = pos * max(0.0, 1.0 - spread)
-    middle = pos.copy()
-    upper = pos * (1.0 + spread)
-    cols = list(pos.columns)
-    stack: List[np.ndarray] = []
-    rows: List[Dict[str, Any]] = []
-
-    for scenario_name, scenario_df in [("Lower", lower), ("Middle", middle), ("Upper", upper)]:
-        w, _ = _weights_cilos(scenario_df, criteria_types)
-        vec = np.asarray([float(w[c]) for c in cols], dtype=float)
-        stack.append(vec)
-        for crit, val in zip(cols, vec):
-            rows.append({"Senaryo": scenario_name, "Kriter": crit, "CILOSAğırlığı": val})
-
-    avg = np.mean(stack, axis=0)
-    weights = _normalize_weights(avg)
-    w = dict(zip(cols, weights))
-    det = {
-        "scenario_details": pd.DataFrame(rows),
-        "fuzzy_cilos": pd.DataFrame({"Kriter": cols, "OrtalamaAğırlık": avg, "Ağırlık": weights}),
-        "parameters": {"spread": float(spread)},
-    }
-    return w, det
-
 
 def _weights_fuzzy_idocriw(
     data: pd.DataFrame,
@@ -976,35 +846,6 @@ def _weights_fuzzy_idocriw(
     return w, det
 
 
-def _weights_spc(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tuple[Dict[str, float], Dict[str, Any]]:
-    """SPC — Symmetry Point of Criterion (Gligorić et al., 2023).
-
-    Her kriterin simetri noktasından (denge noktası) alternatiflerin
-    ortalama sapmasını ölçer. Sapma büyük olan kriter daha ayırt edicidir.
-    """
-    norm = _normalize_minmax(data, criteria_types)
-    cols = list(norm.columns)
-    arr = norm.to_numpy(dtype=float)
-
-    # Simetri noktası: her kriterin normalize aralığının ortası
-    spv = (arr.min(axis=0) + arr.max(axis=0)) / 2.0
-
-    # Her kriter için alternatiflerin simetri noktasına toplam mesafesi
-    distances = np.abs(arr - spv[np.newaxis, :]).sum(axis=0)
-
-    # Ağırlık: mesafe büyük → kriter daha ayırt edici → daha yüksek ağırlık
-    raw = distances / (distances.sum() + EPS)
-    weights = _normalize_weights(raw)
-    w = dict(zip(cols, weights))
-    det = {
-        "normalized_matrix": norm,
-        "symmetry_points": pd.DataFrame({"Kriter": cols, "SimetriNoktası": spv}),
-        "distances": pd.DataFrame({"Kriter": cols, "ToplamMesafe": distances}),
-        "spc": pd.DataFrame({"Kriter": cols, "HamAğırlık": raw, "Ağırlık": weights}),
-    }
-    return w, det
-
-
 def compute_objective_weights(
     data: pd.DataFrame,
     criteria: Sequence[str],
@@ -1022,9 +863,7 @@ def compute_objective_weights(
         "PCA": _weights_pca,
         "CILOS": _weights_cilos,
         "IDOCRIW": _weights_idocriw,
-        "Fuzzy CILOS": lambda d, ct: _weights_fuzzy_cilos(d, ct, spread=fuzzy_spread),
         "Fuzzy IDOCRIW": lambda d, ct: _weights_fuzzy_idocriw(d, ct, spread=fuzzy_spread),
-        "SPC": _weights_spc,
     }
     if method not in dispatch:
         raise ValueError(f"Desteklenmeyen ağırlıklandırma yöntemi: {method}")
@@ -1512,7 +1351,6 @@ def _rank_promethee(
     gaia_decision_df = pd.DataFrame()
     try:
         if m >= 2 and n >= 1 and np.isfinite(phi_criterion).any():
-            from sklearn.decomposition import PCA
             n_comp = min(2, m, n)
             pca = PCA(n_components=n_comp)
             alt_coords = pca.fit_transform(phi_criterion)
@@ -2104,80 +1942,6 @@ def _rank_dnma(
     return score, det
 
 
-def _rank_psi(
-    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float] | None = None,
-) -> Tuple[np.ndarray, Dict[str, Any]]:
-    """PSI — Preference Selection Index (Maniya & Bhatt, 2010).
-
-    Ağırlık gerektirmez; kriter önemini istatistiksel sapma ile kendi hesaplar.
-    Kullanıcı ağırlık verse bile PSI kendi OPV'sini üretir.
-    Yüksek skor = iyi.
-    """
-    norm = _normalize_minmax(data, criteria_types)
-    arr = norm.to_numpy(dtype=float)
-
-    # Ortalama performans ve tercih sapması
-    mean_vals = arr.mean(axis=0)
-    pv = np.sum((arr - mean_vals[np.newaxis, :]) ** 2, axis=0)
-    deviation = np.sqrt(pv + EPS)
-
-    # OPV — kendi ürettiği ağırlık vektörü
-    opv = deviation / (deviation.sum() + EPS)
-
-    # PSI skoru
-    score = (arr * opv[np.newaxis, :]).sum(axis=1)
-
-    det = {
-        "normalized_matrix": norm,
-        "psi_table": pd.DataFrame({
-            "Alternatif": data.index.astype(str),
-            "Skor": score,
-        }),
-        "opv_weights": pd.DataFrame({
-            "Kriter": list(data.columns),
-            "OPV": opv,
-        }),
-    }
-    return score, det
-
-
-def _rank_wisp(
-    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float],
-) -> Tuple[np.ndarray, Dict[str, Any]]:
-    """WISP — Weighted Integrated Sum Product (Stanujkic et al., 2021).
-
-    SAW ve WPM'yi 4 fayda ölçüsüyle (toplam, çarpım, fark, oran) bütünleştirir.
-    Yüksek skor = iyi.
-    """
-    norm = _normalize_minmax(data, criteria_types)
-    arr = norm.to_numpy(dtype=float)
-    wvec = np.asarray([weights[c] for c in data.columns], dtype=float)
-
-    # 4 bileşen
-    q1 = (arr * wvec[np.newaxis, :]).sum(axis=1)                       # Weighted Sum
-    q2 = np.prod(np.power(arr + EPS, wvec[np.newaxis, :]), axis=1)     # Weighted Product
-    q3 = q1 - q2                                                       # Difference
-    q4 = q1 / (q2 + EPS)                                               # Ratio
-
-    # Normalize
-    q1n = q1 / (np.max(q1) + EPS)
-    q2n = q2 / (np.max(q2) + EPS)
-    q3n = q3 / (np.max(np.abs(q3)) + EPS)
-    q4n = q4 / (np.max(q4) + EPS)
-
-    score = (q1n + q2n + q3n + q4n) / 4.0
-
-    det = {
-        "normalized_matrix": norm,
-        "wisp_table": pd.DataFrame({
-            "Alternatif": data.index.astype(str),
-            "Q1_Sum": q1, "Q2_Product": q2, "Q3_Diff": q3, "Q4_Ratio": q4,
-            "Skor": score,
-        }),
-    }
-    return score, det
-
-
 # Bulanık sarmalayıcılar (üçgensel BDS senaryoları üzerinden)
 
 def _rank_fuzzy_spotis(
@@ -2222,18 +1986,6 @@ def _rank_fuzzy_dnma(
     return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_dnma)
 
 
-def _rank_fuzzy_psi(
-    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10,
-) -> Tuple[np.ndarray, Dict[str, Any]]:
-    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_psi)
-
-
-def _rank_fuzzy_wisp(
-    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10,
-) -> Tuple[np.ndarray, Dict[str, Any]]:
-    return _rank_fuzzy_by_scenarios(data, criteria_types, weights, spread, _rank_wisp)
-
-
 def rank_alternatives(
     data: pd.DataFrame,
     criteria: Sequence[str],
@@ -2253,17 +2005,6 @@ def rank_alternatives(
     fuzzy_spread: float = 0.10,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     df = _as_numeric_df(data, criteria)
-    # Input weight validation
-    w_vec = np.asarray([float(weights.get(c, 0.0)) for c in criteria], dtype=float)
-    if np.any(w_vec < 0):
-        w_vec = np.clip(w_vec, 0.0, None)
-        w_sum = w_vec.sum()
-        if w_sum > EPS:
-            w_vec /= w_sum
-        weights = dict(zip(criteria, w_vec))
-    w_sum = sum(weights.get(c, 0.0) for c in criteria)
-    if w_sum > EPS and not np.isclose(w_sum, 1.0, atol=1e-4):
-        weights = {c: weights.get(c, 0.0) / w_sum for c in criteria}
     dispatch = {
         "TOPSIS": lambda: _rank_topsis(df, criteria_types, weights),
         "VIKOR": lambda: _rank_vikor(df, criteria_types, weights, v_param=vikor_v),
@@ -2321,10 +2062,6 @@ def rank_alternatives(
         "Fuzzy ROV": lambda: _rank_fuzzy_rov(df, criteria_types, weights, spread=fuzzy_spread),
         "Fuzzy AROMAN": lambda: _rank_fuzzy_aroman(df, criteria_types, weights, spread=fuzzy_spread),
         "Fuzzy DNMA": lambda: _rank_fuzzy_dnma(df, criteria_types, weights, spread=fuzzy_spread),
-        "PSI": lambda: _rank_psi(df, criteria_types, weights),
-        "WISP": lambda: _rank_wisp(df, criteria_types, weights),
-        "Fuzzy PSI": lambda: _rank_fuzzy_psi(df, criteria_types, weights, spread=fuzzy_spread),
-        "Fuzzy WISP": lambda: _rank_fuzzy_wisp(df, criteria_types, weights, spread=fuzzy_spread),
     }
     if method not in dispatch:
         raise ValueError(f"Desteklenmeyen sıralama yöntemi: {method}")
@@ -2362,7 +2099,6 @@ def compare_methods(
     base_table: Optional[pd.DataFrame] = None,
     base_details: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    from scipy.stats import spearmanr
     if not methods:
         return {}
     score_frames: List[pd.DataFrame] = []
@@ -2412,11 +2148,8 @@ def compare_methods(
     corr = pd.DataFrame(index=method_names, columns=method_names, dtype=float)
     for m1 in method_names:
         for m2 in method_names:
-            try:
-                rho, _ = spearmanr(rank_table[m1], rank_table[m2])
-                corr.loc[m1, m2] = rho if np.isfinite(rho) else 1.0 if m1 == m2 else np.nan
-            except (ValueError, TypeError):
-                corr.loc[m1, m2] = 1.0 if m1 == m2 else np.nan
+            rho, _ = spearmanr(rank_table[m1], rank_table[m2])
+            corr.loc[m1, m2] = rho
     best_counts = []
     for method in method_names:
         top_alt = rank_table.sort_values(method).iloc[0]["Alternatif"]
@@ -2452,7 +2185,6 @@ def sensitivity_analysis(
     sigma: float = 0.12,
     seed: int = 42,
 ) -> Dict[str, Any]:
-    from scipy.stats import spearmanr
     base_res, _ = rank_alternatives(
         data,
         criteria,
@@ -2499,11 +2231,7 @@ def sensitivity_analysis(
                 promethee_s=promethee_s,
                 fuzzy_spread=fuzzy_spread,
             )
-            try:
-                rho, _ = spearmanr(base_rank.sort_index(), res.set_index("Alternatif")["Sıra"].sort_index())
-                rho = rho if np.isfinite(rho) else 1.0
-            except (ValueError, TypeError):
-                rho = 1.0
+            rho, _ = spearmanr(base_rank.sort_index(), res.set_index("Alternatif")["Sıra"].sort_index())
             scenario_rows.append(
                 {
                     "Kriter": crit,
@@ -2517,10 +2245,8 @@ def sensitivity_analysis(
     mc_rows = []
     top_counter: Dict[str, int] = {}
     mean_rank_tracker: Dict[str, List[int]] = {str(idx): [] for idx in data.index}
-    _safe_sigma = min(float(sigma), 1.0)
     for _ in range(max(iterations, 1)):
-        noise = rng.normal(0.0, _safe_sigma, size=len(criteria))
-        noise = np.clip(noise, -5.0, 5.0)
+        noise = rng.normal(0.0, sigma, size=len(criteria))
         draw = weight_vec * np.exp(noise)
         draw = _normalize_weights(draw)
         wd = dict(zip(criteria, draw))
@@ -3021,107 +2747,6 @@ def run_full_analysis(data: pd.DataFrame, config: AnalysisConfig) -> Dict[str, A
         },
     }
     return result
-
-
-def run_scenario_analysis(
-    data: pd.DataFrame,
-    criteria: Sequence[str],
-    criteria_types: Dict[str, str],
-    scenarios: Dict[str, Dict[str, float]],
-    ranking_method: str,
-    *,
-    vikor_v: float = 0.5,
-    waspas_lambda: float = 0.5,
-    codas_tau: float = 0.02,
-    cocoso_lambda: float = 0.5,
-    gra_rho: float = 0.5,
-    promethee_pref_func: str = "linear",
-    promethee_q: float = 0.05,
-    promethee_p: float = 0.30,
-    promethee_s: float = 0.20,
-    fuzzy_spread: float = 0.10,
-) -> Dict[str, Any]:
-    """Run the same ranking method with multiple weight scenarios.
-
-    Parameters
-    ----------
-    scenarios : dict
-        ``{"Scenario Name": {"C1": 0.3, "C2": 0.7, ...}, ...}``
-        Each value is a weight dict (will be auto-normalized).
-
-    Returns
-    -------
-    dict with keys:
-        - ``rank_comparison``: DataFrame (alternatives × scenarios → ranks)
-        - ``score_comparison``: DataFrame (alternatives × scenarios → scores)
-        - ``leader_summary``: DataFrame (scenario, leader, score)
-        - ``agreement_matrix``: DataFrame (Spearman ρ between scenarios)
-        - ``all_same_leader``: bool
-        - ``per_scenario``: dict of full ranking tables
-    """
-    from scipy.stats import spearmanr as _sp
-
-    per_scenario: Dict[str, pd.DataFrame] = {}
-    rank_kwargs = dict(
-        vikor_v=vikor_v, waspas_lambda=waspas_lambda, codas_tau=codas_tau,
-        cocoso_lambda=cocoso_lambda, gra_rho=gra_rho,
-        promethee_pref_func=promethee_pref_func, promethee_q=promethee_q,
-        promethee_p=promethee_p, promethee_s=promethee_s, fuzzy_spread=fuzzy_spread,
-    )
-
-    for sc_name, sc_weights in scenarios.items():
-        rt, _ = rank_alternatives(data, criteria, criteria_types, sc_weights, ranking_method, **rank_kwargs)
-        per_scenario[sc_name] = rt
-
-    # Build comparison tables
-    alt_col = "Alternatif"
-    r_col = "Sıra"
-    s_col = "Skor"
-    alts = list(per_scenario[next(iter(per_scenario))][alt_col])
-
-    rank_rows = []
-    score_rows = []
-    for alt in alts:
-        r_row: Dict[str, Any] = {alt_col: alt}
-        s_row: Dict[str, Any] = {alt_col: alt}
-        for sc_name, rt in per_scenario.items():
-            match = rt[rt[alt_col] == alt]
-            r_row[sc_name] = int(match[r_col].iloc[0]) if not match.empty else None
-            s_row[sc_name] = float(match[s_col].iloc[0]) if not match.empty else None
-        rank_rows.append(r_row)
-        score_rows.append(s_row)
-
-    rank_df = pd.DataFrame(rank_rows)
-    score_df = pd.DataFrame(score_rows)
-
-    # Leader summary
-    sc_names = list(scenarios.keys())
-    leaders = []
-    for sc_name in sc_names:
-        rt = per_scenario[sc_name]
-        top = rt.sort_values(r_col).iloc[0]
-        leaders.append({"Senaryo": sc_name, "Lider": str(top[alt_col]), "Skor": float(top[s_col])})
-    leader_df = pd.DataFrame(leaders)
-    all_same = len(set(l["Lider"] for l in leaders)) == 1
-
-    # Spearman agreement between scenarios
-    corr = pd.DataFrame(index=sc_names, columns=sc_names, dtype=float)
-    for s1 in sc_names:
-        for s2 in sc_names:
-            try:
-                rho, _ = _sp(rank_df[s1], rank_df[s2])
-                corr.loc[s1, s2] = rho if np.isfinite(rho) else 1.0 if s1 == s2 else np.nan
-            except (ValueError, TypeError):
-                corr.loc[s1, s2] = 1.0 if s1 == s2 else np.nan
-
-    return {
-        "rank_comparison": rank_df,
-        "score_comparison": score_df,
-        "leader_summary": leader_df,
-        "agreement_matrix": corr,
-        "all_same_leader": all_same,
-        "per_scenario": per_scenario,
-    }
 
 
 def available_methods() -> Dict[str, List[str]]:
