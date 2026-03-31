@@ -2096,12 +2096,65 @@ def _render_upload_data_source_section(lang: str) -> None:
                     {"template_type": "panel", "lang": "EN"},
                 )
 
-    uploaded = st.file_uploader(
-        tt("CSV, XLSX veya SAV yükleyin", "Upload CSV, XLSX, or SAV"),
-        type=["csv", "xlsx", "sav"],
-        label_visibility="collapsed",
-        key="main_data_file_uploader",
-    )
+    # ── TFN format rehberi ───────────────────────────────────────────────────
+    if _is_tfn_input:
+        with st.expander(tt("📋 Fuzzy TFN veri formatı nasıl olmalı?", "📋 How should the fuzzy TFN data format look?"), expanded=False):
+            st.markdown(tt(
+                "**TFN (Triangular Fuzzy Number) formatında** her kriter için üç sütun gereklidir:\n\n"
+                "| Sütun | Açıklama |\n|---|---|\n"
+                "| `KriterAdi_l` | Alt sınır (kötümser tahmin) |\n"
+                "| `KriterAdi_m` | En olası değer |\n"
+                "| `KriterAdi_u` | Üst sınır (iyimser tahmin) |\n\n"
+                "**Kural:** `l ≤ m ≤ u` — her satır için bu koşul sağlanmalıdır.\n\n"
+                "Örnek görünüm (ilk 5 satır):",
+                "**TFN (Triangular Fuzzy Number) format** requires three columns per criterion:\n\n"
+                "| Column | Description |\n|---|---|\n"
+                "| `CriterionName_l` | Lower bound (pessimistic estimate) |\n"
+                "| `CriterionName_m` | Most likely value |\n"
+                "| `CriterionName_u` | Upper bound (optimistic estimate) |\n\n"
+                "**Rule:** `l ≤ m ≤ u` — this must hold for every row.\n\n"
+                "Example preview (first 5 rows):",
+            ))
+            _tfn_preview_df = sample_fuzzy_dataset_en().head(5) if lang == "EN" else sample_fuzzy_dataset().head(5)
+            render_table(_tfn_preview_df)
+            st.caption(tt(
+                "Fuzzy yöntemler bu üçgeni doğrudan kullanır; klasik yöntemler ağırlık merkezi `(l + 2m + u) / 4` ile çalışır.",
+                "Fuzzy methods use the triangle directly; classical methods use the centroid `(l + 2m + u) / 4`.",
+            ))
+
+    # ── Dosya yükleyici + örnek indir ───────────────────────────────────────
+    _upl_col, _dl_col = st.columns([3, 1], gap="small")
+    with _upl_col:
+        uploaded = st.file_uploader(
+            tt("CSV, XLSX veya SAV yükleyin", "Upload CSV, XLSX, or SAV"),
+            type=["csv", "xlsx", "sav"],
+            label_visibility="collapsed",
+            key="main_data_file_uploader",
+        )
+    with _dl_col:
+        st.markdown("&nbsp;", unsafe_allow_html=True)
+        _sample_dl_df = (
+            (sample_fuzzy_dataset_en() if lang == "EN" else sample_fuzzy_dataset())
+            if _is_tfn_input
+            else (sample_dataset_en() if lang == "EN" else sample_dataset())
+        )
+        _sample_dl_name = (
+            tt("ornek_fuzzy_veri.csv", "sample_fuzzy_data.csv")
+            if _is_tfn_input
+            else tt("ornek_veri.csv", "sample_data.csv")
+        )
+        st.download_button(
+            label=tt("📥 Örnek", "📥 Sample"),
+            data=_sample_dl_df.to_csv(index=False).encode("utf-8"),
+            file_name=_sample_dl_name,
+            mime="text/csv",
+            key="dl_main_sample_csv",
+            use_container_width=True,
+            help=tt(
+                "Doğru format için örnek CSV indir, doldurup yeniden yükle.",
+                "Download a sample CSV showing the correct format, fill it in, and re-upload.",
+            ),
+        )
     sample_col_1, sample_col_2, sample_col_3 = st.columns(3)
     with sample_col_1:
         _sample_tr_label = tt("📘 Örnek Fuzzy Veri (TR)", "📘 Sample Fuzzy Data (TR)") if _is_tfn_input else tt("📘 Örnek Veri (TR)", "📘 Sample Data (TR)")
