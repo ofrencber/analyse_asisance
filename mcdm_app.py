@@ -2163,19 +2163,19 @@ def _render_upload_data_source_section(lang: str) -> None:
         )
     sample_col_1, sample_col_2, sample_col_3 = st.columns(3)
     with sample_col_1:
-        if st.button(tt("📘 Fuzzy Örnek (TR)", "📘 Fuzzy Sample (TR)"), use_container_width=True, key="btn_sample_tr_main"):
-            st.session_state["data_value_mode"] = "tfn"
-            _stage_data_source(sample_fuzzy_dataset(), "sample_data_tr")
+        _lbl_tr = tt("📘 Fuzzy Örnek (TR)", "📘 Fuzzy Sample (TR)") if _is_tfn_input else tt("📘 Örnek Veri (TR)", "📘 Sample Data (TR)")
+        if st.button(_lbl_tr, use_container_width=True, key="btn_sample_tr_main"):
+            _stage_data_source(sample_fuzzy_dataset() if _is_tfn_input else sample_dataset(), "sample_data_tr")
             st.rerun()
     with sample_col_2:
-        if st.button(tt("📗 Fuzzy Örnek (EN)", "📗 Fuzzy Sample (EN)"), use_container_width=True, key="btn_sample_en_main"):
-            st.session_state["data_value_mode"] = "tfn"
-            _stage_data_source(sample_fuzzy_dataset_en(), "sample_data_en")
+        _lbl_en = tt("📗 Fuzzy Örnek (EN)", "📗 Fuzzy Sample (EN)") if _is_tfn_input else tt("📗 Örnek Veri (EN)", "📗 Sample Data (EN)")
+        if st.button(_lbl_en, use_container_width=True, key="btn_sample_en_main"):
+            _stage_data_source(sample_fuzzy_dataset_en() if _is_tfn_input else sample_dataset_en(), "sample_data_en")
             st.rerun()
     with sample_col_3:
-        if st.button(tt("📙 Fuzzy Panel (EN)", "📙 Fuzzy Panel (EN)"), use_container_width=True, key="btn_sample_panel_en_main"):
-            st.session_state["data_value_mode"] = "tfn"
-            _stage_data_source(sample_panel_fuzzy_dataset_en(), "sample_panel_en")
+        _lbl_panel = tt("📙 Fuzzy Panel (EN)", "📙 Fuzzy Panel (EN)") if _is_tfn_input else tt("📙 Panel Veri (EN)", "📙 Panel Data (EN)")
+        if st.button(_lbl_panel, use_container_width=True, key="btn_sample_panel_en_main"):
+            _stage_data_source(sample_panel_fuzzy_dataset_en() if _is_tfn_input else sample_panel_dataset_en(), "sample_panel_en")
             st.rerun()
 
     if uploaded is not None:
