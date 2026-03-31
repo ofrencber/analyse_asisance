@@ -1,3 +1,4 @@
+import io
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6,6 +7,169 @@ import mcdm_subjective as sub_engine
 
 def tt(tr, en):
     return en if st.session_state.get("ui_lang", "TR") == "EN" else tr
+
+# ── Genel dosya okuyucu ─────────────────────────────────────────────────────
+def _read_upload_file(uploaded_file) -> pd.DataFrame:
+    name = str(getattr(uploaded_file, "name", "") or "").lower()
+    try:
+        uploaded_file.seek(0)
+    except Exception:
+        pass
+    if name.endswith(".csv"):
+        return pd.read_csv(uploaded_file)
+    elif name.endswith(".xlsx"):
+        return pd.read_excel(uploaded_file)
+    raise ValueError(tt("Yalnızca CSV veya XLSX desteklenir.", "Only CSV or XLSX is supported."))
+
+# ── AHP n×n matris parse ─────────────────────────────────────────────────────
+def _parse_ahp_upload(uploaded_file, criteria: list[str]) -> pd.DataFrame:
+    n = len(criteria)
+    raw = _read_upload_file(uploaded_file)
+    raw = raw.dropna(how="all").dropna(axis=1, how="all")
+    # İlk sütun etiket olabilir → numeric gövde bul
+    body = raw.apply(pd.to_numeric, errors="coerce")
+    if body.iloc[:, 0].isna().all():          # ilk sütun etiket
+        body = body.iloc[:, 1:]
+    if body.iloc[0, :].isna().all():          # ilk satır etiket
+        body = body.iloc[1:, :]
+    body = body.dropna(how="all").dropna(axis=1, how="all")
+    if body.shape != (n, n):
+        raise ValueError(tt(
+            f"AHP matrisi {n}×{n} boyutunda olmalı; yüklenen dosya {body.shape[0]}×{body.shape[1]}.",
+            f"AHP matrix must be {n}×{n}; uploaded file is {body.shape[0]}×{body.shape[1]}.",
+        ))
+    mat = body.to_numpy(dtype=float)
+    # Sıfır değerleri koru — sadece NaN'ları 1 yap
+    mat[np.isnan(mat)] = 1.0
+    return pd.DataFrame(mat, index=criteria, columns=criteria)
+
+# ── BWM vektör parse ─────────────────────────────────────────────────────────
+def _parse_bwm_upload(uploaded_file, criteria: list[str]) -> pd.DataFrame:
+    n = len(criteria)
+    raw = _read_upload_file(uploaded_file).dropna(how="all")
+    num = raw.select_dtypes(include="number")
+    if num.shape[1] < 2:
+        raise ValueError(tt(
+            "BWM dosyası en az 2 sayısal sütun içermeli (Best-to-Others, Others-to-Worst).",
+            "BWM file must have at least 2 numeric columns (Best-to-Others, Others-to-Worst).",
+        ))
+    bto = num.iloc[:n, 0].to_numpy(dtype=float)
+    otw = num.iloc[:n, 1].to_numpy(dtype=float)
+    if len(bto) != n:
+        raise ValueError(tt(f"{n} satır beklendi, {len(bto)} bulundu.", f"Expected {n} rows, found {len(bto)}."))
+    return pd.DataFrame({
+        "Best-to-Others (1-9)": bto,
+        "Others-to-Worst (1-9)": otw,
+    }, index=criteria)
+
+# ── SWARA vektör parse ───────────────────────────────────────────────────────
+def _parse_swara_upload(uploaded_file, criteria: list[str]) -> pd.DataFrame:
+    n = len(criteria)
+    raw = _read_upload_file(uploaded_file).dropna(how="all")
+    num = raw.select_dtypes(include="number")
+    if num.shape[1] < 1:
+        raise ValueError(tt("SWARA dosyası en az 1 sayısal sütun içermeli.", "SWARA file must have at least 1 numeric column."))
+    sj = num.iloc[:n, 0].to_numpy(dtype=float)
+    if len(sj) != n:
+        raise ValueError(tt(f"{n} satır beklendi, {len(sj)} bulundu.", f"Expected {n} rows, found {len(sj)}."))
+    return pd.DataFrame({"s_j (İlk değer 0)": sj}, index=criteria)
+
+# ── SMART vektör parse ───────────────────────────────────────────────────────
+def _parse_smart_upload(uploaded_file, criteria: list[str]) -> pd.DataFrame:
+    n = len(criteria)
+    raw = _read_upload_file(uploaded_file).dropna(how="all")
+    num = raw.select_dtypes(include="number")
+    if num.shape[1] < 1:
+        raise ValueError(tt("SMART dosyası en az 1 sayısal sütun içermeli.", "SMART file must have at least 1 numeric column."))
+    pts = num.iloc[:n, 0].to_numpy(dtype=float)
+    if len(pts) != n:
+        raise ValueError(tt(f"{n} satır beklendi, {len(pts)} bulundu.", f"Expected {n} rows, found {len(pts)}."))
+    return pd.DataFrame({"Puan (10-100 vb.)": pts}, index=criteria)
+
+# ── Örnek dosya üreticileri ──────────────────────────────────────────────────
+def _sample_ahp_csv(criteria: list[str]) -> bytes:
+    n = len(criteria)
+    rng = np.random.default_rng(42)
+    mat = np.ones((n, n))
+    for i in range(n):
+        for j in range(i + 1, n):
+            v = float(rng.choice([1, 2, 3, 5, 7]))
+            mat[i, j] = v
+            mat[j, i] = round(1 / v, 4)
+    df = pd.DataFrame(mat, index=criteria, columns=criteria).round(4)
+    df.insert(0, tt("Kriter", "Criterion"), criteria)
+    return df.to_csv(index=False).encode("utf-8")
+
+def _sample_bwm_csv(criteria: list[str]) -> bytes:
+    n = len(criteria)
+    rng = np.random.default_rng(42)
+    bto = [1.0] + list(rng.integers(2, 8, n - 1).astype(float))
+    otw = list(rng.integers(2, 8, n - 1).astype(float)) + [1.0]
+    df = pd.DataFrame({
+        tt("Kriter", "Criterion"): criteria,
+        "Best-to-Others (1-9)": bto,
+        "Others-to-Worst (1-9)": otw,
+    })
+    return df.to_csv(index=False).encode("utf-8")
+
+def _sample_swara_csv(criteria: list[str]) -> bytes:
+    n = len(criteria)
+    rng = np.random.default_rng(42)
+    sj = [0.0] + list(np.round(rng.uniform(0.1, 0.4, n - 1), 2))
+    df = pd.DataFrame({tt("Kriter", "Criterion"): criteria, "s_j (İlk değer 0)": sj})
+    return df.to_csv(index=False).encode("utf-8")
+
+def _sample_smart_csv(criteria: list[str]) -> bytes:
+    n = len(criteria)
+    rng = np.random.default_rng(42)
+    pts = np.round(rng.uniform(20, 100, n), 0).astype(int)
+    df = pd.DataFrame({tt("Kriter", "Criterion"): criteria, "Puan (10-100 vb.)": pts})
+    return df.to_csv(index=False).encode("utf-8")
+
+def _render_upload_and_sample(
+    method_key: str,
+    ss_key: str,
+    parse_fn,
+    sample_fn,
+    sample_filename: str,
+    upload_label: str,
+    upload_label_en: str,
+    criteria: list[str],
+    expert_idx: int,
+):
+    """Her yöntem için yükle + örnek indir satırı render eder."""
+    _up_col, _dl_col = st.columns([3, 1], gap="small")
+    with _up_col:
+        upl = st.file_uploader(
+            tt(upload_label, upload_label_en),
+            type=["csv", "xlsx"],
+            key=f"upload_{method_key}_{len(criteria)}_{expert_idx}",
+        )
+    with _dl_col:
+        st.markdown("&nbsp;", unsafe_allow_html=True)  # dikey hizalama boşluğu
+        st.download_button(
+            label=tt("📥 Örnek", "📥 Sample"),
+            data=sample_fn(criteria),
+            file_name=sample_filename,
+            mime="text/csv",
+            key=f"dl_sample_{method_key}_{len(criteria)}_{expert_idx}",
+            help=tt(
+                "Doğru format için örnek CSV dosyasını indir, doldurup yeniden yükle.",
+                "Download a sample CSV showing the correct format, fill it in, and re-upload.",
+            ),
+        )
+
+    sig_key = f"upload_sig_{method_key}_{len(criteria)}_{expert_idx}"
+    if upl is not None:
+        sig = hashlib.sha1(upl.getvalue()).hexdigest()
+        if st.session_state.get(sig_key) != sig:
+            try:
+                parsed = parse_fn(upl, criteria)
+                st.session_state[ss_key] = parsed
+                st.session_state[sig_key] = sig
+                st.success(tt("Dosya yüklendi ve tabloya aktarıldı.", "File loaded into the table."))
+            except Exception as exc:
+                st.error(str(exc))
 
 def _normalize_dematel_label(value: object) -> str:
     if value is None or pd.isna(value):
@@ -362,7 +526,22 @@ def render_subjective_component(criteria: list[str]):
                 f"Fuzzy AHP uses the same matrix and builds lower-middle-upper scenarios with uncertainty spread {fuzzy_spread:.2f}.",
             ))
 
-        dfs_ahp = build_expert_tabs("ahp", lambda: pd.DataFrame(np.ones((n_crit, n_crit)), columns=criteria, index=criteria))
+        dfs_ahp = []
+        _ahp_exp_tabs = [st.container()] if num_experts == 1 else st.tabs([f"{tt('Uzman', 'Expert')} {i}" for i in range(1, num_experts + 1)])
+        for _ei in range(num_experts):
+            with _ahp_exp_tabs[_ei]:
+                _ahp_key = f"ahp_{n_crit}_exp_{_ei}"
+                if _ahp_key not in st.session_state:
+                    st.session_state[_ahp_key] = pd.DataFrame(np.ones((n_crit, n_crit)), columns=criteria, index=criteria)
+                _render_upload_and_sample(
+                    method_key="ahp", ss_key=_ahp_key,
+                    parse_fn=_parse_ahp_upload, sample_fn=_sample_ahp_csv,
+                    sample_filename="sample_ahp.csv",
+                    upload_label="AHP matrisi yükle (CSV/XLSX)",
+                    upload_label_en="Upload AHP matrix (CSV/XLSX)",
+                    criteria=criteria, expert_idx=_ei,
+                )
+                dfs_ahp.append(st.data_editor(st.session_state[_ahp_key], key=f"edit_{_ahp_key}", use_container_width=True))
 
         if not _is_fuzzy_sub:
             if st.button(tt("AHP Hesapla & Uygula", "Calculate & Apply AHP"), key="ahp_btn"):
@@ -437,10 +616,25 @@ def render_subjective_component(criteria: list[str]):
                 f"Fuzzy BWM derives lower-middle-upper dominance scenarios from the same modal scores using spread {fuzzy_spread:.2f}.",
             ))
 
-        dfs_bwm = build_expert_tabs("bwm", lambda: pd.DataFrame({
-                "Best-to-Others (1-9)": [1.0 for _ in range(n_crit)],
-                "Others-to-Worst (1-9)": [3.0 for _ in range(n_crit)]
-            }, index=criteria))
+        dfs_bwm = []
+        _bwm_exp_tabs = [st.container()] if num_experts == 1 else st.tabs([f"{tt('Uzman', 'Expert')} {i}" for i in range(1, num_experts + 1)])
+        for _ei in range(num_experts):
+            with _bwm_exp_tabs[_ei]:
+                _bwm_key = f"bwm_{n_crit}_exp_{_ei}"
+                if _bwm_key not in st.session_state:
+                    st.session_state[_bwm_key] = pd.DataFrame({
+                        "Best-to-Others (1-9)": [1.0] * n_crit,
+                        "Others-to-Worst (1-9)": [3.0] * n_crit,
+                    }, index=criteria)
+                _render_upload_and_sample(
+                    method_key="bwm", ss_key=_bwm_key,
+                    parse_fn=_parse_bwm_upload, sample_fn=_sample_bwm_csv,
+                    sample_filename="sample_bwm.csv",
+                    upload_label="BWM vektörleri yükle (CSV/XLSX)",
+                    upload_label_en="Upload BWM vectors (CSV/XLSX)",
+                    criteria=criteria, expert_idx=_ei,
+                )
+                dfs_bwm.append(st.data_editor(st.session_state[_bwm_key], key=f"edit_{_bwm_key}", use_container_width=True))
 
         if not _is_fuzzy_sub:
             if st.button(tt("BWM Hesapla & Uygula", "Calculate & Apply BWM"), key="bwm_btn"):
@@ -508,9 +702,24 @@ def render_subjective_component(criteria: list[str]):
                 f"Fuzzy SWARA fuzzifies these reduction ratios with spread {fuzzy_spread:.2f} and averages the scenario weights.",
             ))
 
-        dfs_swara = build_expert_tabs("swara", lambda: pd.DataFrame({
-                "s_j (İlk değer 0)": [0.0] + [0.2 for _ in range(n_crit-1)]
-            }, index=criteria))
+        dfs_swara = []
+        _swara_exp_tabs = [st.container()] if num_experts == 1 else st.tabs([f"{tt('Uzman', 'Expert')} {i}" for i in range(1, num_experts + 1)])
+        for _ei in range(num_experts):
+            with _swara_exp_tabs[_ei]:
+                _swara_key = f"swara_{n_crit}_exp_{_ei}"
+                if _swara_key not in st.session_state:
+                    st.session_state[_swara_key] = pd.DataFrame(
+                        {"s_j (İlk değer 0)": [0.0] + [0.2] * (n_crit - 1)}, index=criteria
+                    )
+                _render_upload_and_sample(
+                    method_key="swara", ss_key=_swara_key,
+                    parse_fn=_parse_swara_upload, sample_fn=_sample_swara_csv,
+                    sample_filename="sample_swara.csv",
+                    upload_label="SWARA s_j değerleri yükle (CSV/XLSX)",
+                    upload_label_en="Upload SWARA s_j values (CSV/XLSX)",
+                    criteria=criteria, expert_idx=_ei,
+                )
+                dfs_swara.append(st.data_editor(st.session_state[_swara_key], key=f"edit_{_swara_key}", use_container_width=True))
 
         if not _is_fuzzy_sub:
             if st.button(tt("SWARA Hesapla & Uygula", "Calculate & Apply SWARA"), key="swara_btn"):
@@ -683,9 +892,24 @@ def render_subjective_component(criteria: list[str]):
                 f"Fuzzy SMART converts these direct scores into lower-middle-upper scoring scenarios using spread {fuzzy_spread:.2f}.",
             ))
 
-        dfs_smart = build_expert_tabs("smart", lambda: pd.DataFrame({
-                "Puan (10-100 vb.)": [50.0 for _ in range(n_crit)]
-            }, index=criteria))
+        dfs_smart = []
+        _smart_exp_tabs = [st.container()] if num_experts == 1 else st.tabs([f"{tt('Uzman', 'Expert')} {i}" for i in range(1, num_experts + 1)])
+        for _ei in range(num_experts):
+            with _smart_exp_tabs[_ei]:
+                _smart_key = f"smart_{n_crit}_exp_{_ei}"
+                if _smart_key not in st.session_state:
+                    st.session_state[_smart_key] = pd.DataFrame(
+                        {"Puan (10-100 vb.)": [50.0] * n_crit}, index=criteria
+                    )
+                _render_upload_and_sample(
+                    method_key="smart", ss_key=_smart_key,
+                    parse_fn=_parse_smart_upload, sample_fn=_sample_smart_csv,
+                    sample_filename="sample_smart.csv",
+                    upload_label="SMART puanları yükle (CSV/XLSX)",
+                    upload_label_en="Upload SMART scores (CSV/XLSX)",
+                    criteria=criteria, expert_idx=_ei,
+                )
+                dfs_smart.append(st.data_editor(st.session_state[_smart_key], key=f"edit_{_smart_key}", use_container_width=True))
 
         if not _is_fuzzy_sub:
             if st.button(tt("SMART Hesapla & Uygula", "Calculate & Apply SMART"), key="smart_btn"):
