@@ -917,10 +917,11 @@ def _weights_cilos(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tuple[
 
     a_vals = a_matrix.to_numpy(dtype=float)
     diag_vals = np.diag(a_vals)
-    p_vals = np.maximum(0.0, (diag_vals[np.newaxis, :] - a_vals) / (diag_vals[np.newaxis, :] + EPS))
+    # P[j,k] = (A[j,j] - A[j,k]) / A[j,j]: satır tabanlı kayıp (sütun değil)
+    p_vals = np.maximum(0.0, (diag_vals[:, np.newaxis] - a_vals) / (diag_vals[:, np.newaxis] + EPS))
     p_matrix = pd.DataFrame(p_vals, index=cols, columns=cols, dtype=float)
 
-    f_matrix = p_matrix.T.copy()
+    f_matrix = p_matrix.copy()
     for crit in cols:
         f_matrix.loc[crit, crit] = -float(p_matrix.loc[:, crit].sum())
 
@@ -983,13 +984,23 @@ def _weights_fuzzy_generic(
     spread: float,
     runner,
     detail_key: str,
+    tfn_input: Optional[np.ndarray] = None,
 ) -> Tuple[Dict[str, float], Dict[str, Any]]:
     cols = list(data.columns)
     stack: List[np.ndarray] = []
     rows: List[Dict[str, Any]] = []
     detail_frames: Dict[str, List[pd.DataFrame]] = {}
 
-    for scenario_name, scenario_df in _build_fuzzy_data_scenarios(data, spread):
+    if tfn_input is not None:
+        scenarios = [
+            ("Lower",  pd.DataFrame(tfn_input[:, :, 0], index=data.index, columns=cols).astype(float)),
+            ("Middle", pd.DataFrame(tfn_input[:, :, 1], index=data.index, columns=cols).astype(float)),
+            ("Upper",  pd.DataFrame(tfn_input[:, :, 2], index=data.index, columns=cols).astype(float)),
+        ]
+    else:
+        scenarios = _build_fuzzy_data_scenarios(data, spread)
+
+    for scenario_name, scenario_df in scenarios:
         w, det = runner(scenario_df, criteria_types)
         vec = np.asarray([float(w[c]) for c in cols], dtype=float)
         stack.append(vec)
@@ -1015,103 +1026,79 @@ def _weights_fuzzy_generic(
 
 
 def _weights_fuzzy_entropy(
-    data: pd.DataFrame,
-    criteria_types: Dict[str, str],
-    spread: float = 0.10,
+    data: pd.DataFrame, criteria_types: Dict[str, str],
+    spread: float = 0.10, *, tfn_input: Optional[np.ndarray] = None,
 ) -> Tuple[Dict[str, float], Dict[str, Any]]:
-    return _weights_fuzzy_generic(
-        data,
-        criteria_types,
-        spread=spread,
-        runner=_weights_entropy,
-        detail_key="fuzzy_entropy",
-    )
+    return _weights_fuzzy_generic(data, criteria_types, spread=spread,
+                                  runner=_weights_entropy, detail_key="fuzzy_entropy", tfn_input=tfn_input)
 
 
 def _weights_fuzzy_critic(
-    data: pd.DataFrame,
-    criteria_types: Dict[str, str],
-    spread: float = 0.10,
+    data: pd.DataFrame, criteria_types: Dict[str, str],
+    spread: float = 0.10, *, tfn_input: Optional[np.ndarray] = None,
 ) -> Tuple[Dict[str, float], Dict[str, Any]]:
-    return _weights_fuzzy_generic(
-        data,
-        criteria_types,
-        spread=spread,
-        runner=_weights_critic,
-        detail_key="fuzzy_critic",
-    )
+    return _weights_fuzzy_generic(data, criteria_types, spread=spread,
+                                  runner=_weights_critic, detail_key="fuzzy_critic", tfn_input=tfn_input)
 
 
 def _weights_fuzzy_sd(
-    data: pd.DataFrame,
-    criteria_types: Dict[str, str],
-    spread: float = 0.10,
+    data: pd.DataFrame, criteria_types: Dict[str, str],
+    spread: float = 0.10, *, tfn_input: Optional[np.ndarray] = None,
 ) -> Tuple[Dict[str, float], Dict[str, Any]]:
-    return _weights_fuzzy_generic(
-        data,
-        criteria_types,
-        spread=spread,
-        runner=_weights_sd,
-        detail_key="fuzzy_sd",
-    )
+    return _weights_fuzzy_generic(data, criteria_types, spread=spread,
+                                  runner=_weights_sd, detail_key="fuzzy_sd", tfn_input=tfn_input)
 
 
 def _weights_fuzzy_merec(
-    data: pd.DataFrame,
-    criteria_types: Dict[str, str],
-    spread: float = 0.10,
+    data: pd.DataFrame, criteria_types: Dict[str, str],
+    spread: float = 0.10, *, tfn_input: Optional[np.ndarray] = None,
 ) -> Tuple[Dict[str, float], Dict[str, Any]]:
-    return _weights_fuzzy_generic(
-        data,
-        criteria_types,
-        spread=spread,
-        runner=_weights_merec,
-        detail_key="fuzzy_merec",
-    )
+    return _weights_fuzzy_generic(data, criteria_types, spread=spread,
+                                  runner=_weights_merec, detail_key="fuzzy_merec", tfn_input=tfn_input)
 
 
 def _weights_fuzzy_lopcow(
-    data: pd.DataFrame,
-    criteria_types: Dict[str, str],
-    spread: float = 0.10,
+    data: pd.DataFrame, criteria_types: Dict[str, str],
+    spread: float = 0.10, *, tfn_input: Optional[np.ndarray] = None,
 ) -> Tuple[Dict[str, float], Dict[str, Any]]:
-    return _weights_fuzzy_generic(
-        data,
-        criteria_types,
-        spread=spread,
-        runner=_weights_lopcow,
-        detail_key="fuzzy_lopcow",
-    )
+    return _weights_fuzzy_generic(data, criteria_types, spread=spread,
+                                  runner=_weights_lopcow, detail_key="fuzzy_lopcow", tfn_input=tfn_input)
 
 
 def _weights_fuzzy_pca(
-    data: pd.DataFrame,
-    criteria_types: Dict[str, str],
-    spread: float = 0.10,
+    data: pd.DataFrame, criteria_types: Dict[str, str],
+    spread: float = 0.10, *, tfn_input: Optional[np.ndarray] = None,
 ) -> Tuple[Dict[str, float], Dict[str, Any]]:
-    return _weights_fuzzy_generic(
-        data,
-        criteria_types,
-        spread=spread,
-        runner=_weights_pca,
-        detail_key="fuzzy_pca",
-    )
+    return _weights_fuzzy_generic(data, criteria_types, spread=spread,
+                                  runner=_weights_pca, detail_key="fuzzy_pca", tfn_input=tfn_input)
 
 def _weights_fuzzy_cilos(
     data: pd.DataFrame,
     criteria_types: Dict[str, str],
     spread: float = 0.10,
+    *,
+    tfn_input: Optional[np.ndarray] = None,
 ) -> Tuple[Dict[str, float], Dict[str, Any]]:
     """Fuzzy CILOS — 3 senaryo (alt-orta-üst) üzerinde CILOS çalıştırılır, ortalaması alınır."""
-    pos, _ = _shift_positive(data)
-    lower = pos * max(0.0, 1.0 - spread)
-    middle = pos.copy()
-    upper = pos * (1.0 + spread)
-    cols = list(pos.columns)
+    cols = list(data.columns)
     stack: List[np.ndarray] = []
     rows: List[Dict[str, Any]] = []
 
-    for scenario_name, scenario_df in [("Lower", lower), ("Middle", middle), ("Upper", upper)]:
+    if tfn_input is not None:
+        scenarios = [
+            ("Lower",  pd.DataFrame(tfn_input[:, :, 0], index=data.index, columns=cols).astype(float)),
+            ("Middle", pd.DataFrame(tfn_input[:, :, 1], index=data.index, columns=cols).astype(float)),
+            ("Upper",  pd.DataFrame(tfn_input[:, :, 2], index=data.index, columns=cols).astype(float)),
+        ]
+    else:
+        pos, _ = _shift_positive(data)
+        scenarios = [
+            ("Lower",  pos * max(0.0, 1.0 - spread)),
+            ("Middle", pos.copy()),
+            ("Upper",  pos * (1.0 + spread)),
+        ]
+
+    for scenario_name, scenario_df in scenarios:
         w, _ = _weights_cilos(scenario_df, criteria_types)
         vec = np.asarray([float(w[c]) for c in cols], dtype=float)
         stack.append(vec)
@@ -1133,19 +1120,29 @@ def _weights_fuzzy_idocriw(
     data: pd.DataFrame,
     criteria_types: Dict[str, str],
     spread: float = 0.10,
+    *,
+    tfn_input: Optional[np.ndarray] = None,
 ) -> Tuple[Dict[str, float], Dict[str, Any]]:
-    pos, _ = _shift_positive(data)
-    lower = pos * max(0.0, 1.0 - spread)
-    middle = pos.copy()
-    upper = pos * (1.0 + spread)
-    scenario_defs = [("Lower", lower), ("Middle", middle), ("Upper", upper)]
+    cols = list(data.columns)
+    if tfn_input is not None:
+        scenario_defs = [
+            ("Lower",  pd.DataFrame(tfn_input[:, :, 0], index=data.index, columns=cols).astype(float)),
+            ("Middle", pd.DataFrame(tfn_input[:, :, 1], index=data.index, columns=cols).astype(float)),
+            ("Upper",  pd.DataFrame(tfn_input[:, :, 2], index=data.index, columns=cols).astype(float)),
+        ]
+    else:
+        pos, _ = _shift_positive(data)
+        scenario_defs = [
+            ("Lower",  pos * max(0.0, 1.0 - spread)),
+            ("Middle", pos.copy()),
+            ("Upper",  pos * (1.0 + spread)),
+        ]
     entropy_rows: List[Dict[str, Any]] = []
     cilos_rows: List[Dict[str, Any]] = []
     idocriw_rows: List[Dict[str, Any]] = []
     entropy_stack: List[np.ndarray] = []
     cilos_stack: List[np.ndarray] = []
     idocriw_stack: List[np.ndarray] = []
-    cols = list(pos.columns)
 
     for scenario_name, scenario_df in scenario_defs:
         entropy_w, _ = _weights_entropy(scenario_df, criteria_types)
@@ -1212,17 +1209,11 @@ def _weights_spc(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tuple[Di
 
 
 def _weights_fuzzy_spc(
-    data: pd.DataFrame,
-    criteria_types: Dict[str, str],
-    spread: float = 0.10,
+    data: pd.DataFrame, criteria_types: Dict[str, str],
+    spread: float = 0.10, *, tfn_input: Optional[np.ndarray] = None,
 ) -> Tuple[Dict[str, float], Dict[str, Any]]:
-    return _weights_fuzzy_generic(
-        data,
-        criteria_types,
-        spread=spread,
-        runner=_weights_spc,
-        detail_key="fuzzy_spc",
-    )
+    return _weights_fuzzy_generic(data, criteria_types, spread=spread,
+                                  runner=_weights_spc, detail_key="fuzzy_spc", tfn_input=tfn_input)
 
 
 def compute_objective_weights(
@@ -1231,27 +1222,29 @@ def compute_objective_weights(
     criteria_types: Dict[str, str],
     method: str,
     fuzzy_spread: float = 0.10,
+    *,
+    tfn_input: Optional[np.ndarray] = None,
 ) -> Tuple[Dict[str, float], Dict[str, Any]]:
     df = _as_numeric_df(data, criteria)
     dispatch = {
         "Entropy": _weights_entropy,
-        "Fuzzy Entropy": lambda d, ct: _weights_fuzzy_entropy(d, ct, spread=fuzzy_spread),
+        "Fuzzy Entropy": lambda d, ct: _weights_fuzzy_entropy(d, ct, spread=fuzzy_spread, tfn_input=tfn_input),
         "CRITIC": _weights_critic,
-        "Fuzzy CRITIC": lambda d, ct: _weights_fuzzy_critic(d, ct, spread=fuzzy_spread),
+        "Fuzzy CRITIC": lambda d, ct: _weights_fuzzy_critic(d, ct, spread=fuzzy_spread, tfn_input=tfn_input),
         "Standart Sapma": _weights_sd,
-        "Fuzzy Standart Sapma": lambda d, ct: _weights_fuzzy_sd(d, ct, spread=fuzzy_spread),
+        "Fuzzy Standart Sapma": lambda d, ct: _weights_fuzzy_sd(d, ct, spread=fuzzy_spread, tfn_input=tfn_input),
         "MEREC": _weights_merec,
-        "Fuzzy MEREC": lambda d, ct: _weights_fuzzy_merec(d, ct, spread=fuzzy_spread),
+        "Fuzzy MEREC": lambda d, ct: _weights_fuzzy_merec(d, ct, spread=fuzzy_spread, tfn_input=tfn_input),
         "LOPCOW": _weights_lopcow,
-        "Fuzzy LOPCOW": lambda d, ct: _weights_fuzzy_lopcow(d, ct, spread=fuzzy_spread),
+        "Fuzzy LOPCOW": lambda d, ct: _weights_fuzzy_lopcow(d, ct, spread=fuzzy_spread, tfn_input=tfn_input),
         "PCA": _weights_pca,
-        "Fuzzy PCA": lambda d, ct: _weights_fuzzy_pca(d, ct, spread=fuzzy_spread),
+        "Fuzzy PCA": lambda d, ct: _weights_fuzzy_pca(d, ct, spread=fuzzy_spread, tfn_input=tfn_input),
         "CILOS": _weights_cilos,
         "IDOCRIW": _weights_idocriw,
-        "Fuzzy CILOS": lambda d, ct: _weights_fuzzy_cilos(d, ct, spread=fuzzy_spread),
-        "Fuzzy IDOCRIW": lambda d, ct: _weights_fuzzy_idocriw(d, ct, spread=fuzzy_spread),
+        "Fuzzy CILOS": lambda d, ct: _weights_fuzzy_cilos(d, ct, spread=fuzzy_spread, tfn_input=tfn_input),
+        "Fuzzy IDOCRIW": lambda d, ct: _weights_fuzzy_idocriw(d, ct, spread=fuzzy_spread, tfn_input=tfn_input),
         "SPC": _weights_spc,
-        "Fuzzy SPC": lambda d, ct: _weights_fuzzy_spc(d, ct, spread=fuzzy_spread),
+        "Fuzzy SPC": lambda d, ct: _weights_fuzzy_spc(d, ct, spread=fuzzy_spread, tfn_input=tfn_input),
     }
     if method not in dispatch:
         raise ValueError(f"Desteklenmeyen ağırlıklandırma yöntemi: {method}")
@@ -1882,9 +1875,10 @@ def _fuzzy_distance(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 
 def _rank_fuzzy_topsis(
-    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float], spread: float = 0.10
+    data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float],
+    spread: float = 0.10, *, tfn_input: Optional[np.ndarray] = None,
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    if float(spread) <= 0.0:
+    if float(spread) <= 0.0 and tfn_input is None:
         score, det = _rank_topsis(data, criteria_types, weights)
         det = dict(det)
         params = dict(det.get("parameters", {}) if isinstance(det.get("parameters"), dict) else {})
@@ -1892,7 +1886,7 @@ def _rank_fuzzy_topsis(
         det["parameters"] = params
         return score, det
     criteria = list(data.columns)
-    tfn = _triangular_fuzzy_from_crisp(data, spread)
+    tfn = tfn_input if tfn_input is not None else _triangular_fuzzy_from_crisp(data, spread)
     norm = _normalize_fuzzy_tfn(tfn, criteria, criteria_types)
     wvec = np.asarray([weights[c] for c in criteria], dtype=float)
     weighted = norm * wvec.reshape(1, -1, 1)
@@ -1919,8 +1913,9 @@ def _rank_fuzzy_by_scenarios(
     ranker,
     *,
     extra_params: Optional[Dict[str, float]] = None,
+    tfn_input: Optional[np.ndarray] = None,
 ) -> Tuple[np.ndarray, Dict[str, Any]]:
-    if float(spread) <= 0.0:
+    if float(spread) <= 0.0 and tfn_input is None:
         score, det = ranker(data, criteria_types, weights)
         det = dict(det) if isinstance(det, dict) else {}
         merged_params = dict(det.get("parameters", {}) if isinstance(det.get("parameters"), dict) else {})
@@ -1930,7 +1925,7 @@ def _rank_fuzzy_by_scenarios(
         det["parameters"] = merged_params
         return score, det
     criteria = list(data.columns)
-    tfn = _triangular_fuzzy_from_crisp(data, spread)
+    tfn = tfn_input if tfn_input is not None else _triangular_fuzzy_from_crisp(data, spread)
     labels = ("Lower", "Middle", "Upper")
     scenario_scores: Dict[str, np.ndarray] = {}
     scenario_details: Dict[str, Dict[str, Any]] = {}
@@ -2478,6 +2473,7 @@ def rank_alternatives(
     promethee_p: float = 0.30,
     promethee_s: float = 0.20,
     fuzzy_spread: float = 0.10,
+    tfn_input: Optional[np.ndarray] = None,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     df = _as_numeric_df(data, criteria)
     # Input weight validation
@@ -2512,26 +2508,36 @@ def rank_alternatives(
             pref_func=promethee_pref_func, q=promethee_q, p=promethee_p, s=promethee_s,
         ),
         "GRA": lambda: _rank_gra(df, criteria_types, weights, rho=gra_rho),
-        "Fuzzy TOPSIS": lambda: _rank_fuzzy_topsis(df, criteria_types, weights, spread=fuzzy_spread),
-        "Fuzzy VIKOR": lambda: _rank_fuzzy_vikor(df, criteria_types, weights, spread=fuzzy_spread, v_param=vikor_v),
-        "Fuzzy ARAS": lambda: _rank_fuzzy_aras(df, criteria_types, weights, spread=fuzzy_spread),
-        "Fuzzy SAW": lambda: _rank_fuzzy_saw(df, criteria_types, weights, spread=fuzzy_spread),
-        "Fuzzy WPM": lambda: _rank_fuzzy_wpm(df, criteria_types, weights, spread=fuzzy_spread),
-        "Fuzzy MAUT": lambda: _rank_fuzzy_maut(df, criteria_types, weights, spread=fuzzy_spread),
-        "Fuzzy WASPAS": lambda: _rank_fuzzy_waspas(df, criteria_types, weights, spread=fuzzy_spread, lambda_param=waspas_lambda),
-        "Fuzzy EDAS": lambda: _rank_fuzzy_edas(df, criteria_types, weights, spread=fuzzy_spread),
-        "Fuzzy CODAS": lambda: _rank_fuzzy_codas(df, criteria_types, weights, spread=fuzzy_spread, tau=codas_tau),
-        "Fuzzy COPRAS": lambda: _rank_fuzzy_copras(df, criteria_types, weights, spread=fuzzy_spread),
-        "Fuzzy OCRA": lambda: _rank_fuzzy_ocra(df, criteria_types, weights, spread=fuzzy_spread),
-        "Fuzzy MOORA": lambda: _rank_fuzzy_moora(df, criteria_types, weights, spread=fuzzy_spread),
-        "Fuzzy MABAC": lambda: _rank_fuzzy_mabac(df, criteria_types, weights, spread=fuzzy_spread),
-        "Fuzzy MARCOS": lambda: _rank_fuzzy_marcos(df, criteria_types, weights, spread=fuzzy_spread),
-        "Fuzzy CoCoSo": lambda: _rank_fuzzy_cocoso(df, criteria_types, weights, spread=fuzzy_spread, lambda_param=cocoso_lambda),
-        "Fuzzy GRA": lambda: _rank_fuzzy_gra(df, criteria_types, weights, spread=fuzzy_spread, rho=gra_rho),
-        "Fuzzy PROMETHEE": lambda: _rank_fuzzy_promethee(
-            df, criteria_types, weights, spread=fuzzy_spread,
-            pref_func=promethee_pref_func, q=promethee_q, p=promethee_p, s=promethee_s,
-        ),
+        "Fuzzy TOPSIS": lambda: _rank_fuzzy_topsis(df, criteria_types, weights, spread=fuzzy_spread, tfn_input=tfn_input),
+        "Fuzzy VIKOR": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread,
+            lambda d, ct, w: _rank_vikor(d, ct, w, v_param=vikor_v),
+            extra_params={"v_param": vikor_v}, tfn_input=tfn_input),
+        "Fuzzy ARAS": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread, _rank_aras, tfn_input=tfn_input),
+        "Fuzzy SAW": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread, _rank_saw, tfn_input=tfn_input),
+        "Fuzzy WPM": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread, _rank_wpm, tfn_input=tfn_input),
+        "Fuzzy MAUT": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread, _rank_maut, tfn_input=tfn_input),
+        "Fuzzy WASPAS": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread,
+            lambda d, ct, w: _rank_waspas(d, ct, w, lambda_param=waspas_lambda),
+            extra_params={"lambda": waspas_lambda}, tfn_input=tfn_input),
+        "Fuzzy EDAS": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread, _rank_edas, tfn_input=tfn_input),
+        "Fuzzy CODAS": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread,
+            lambda d, ct, w: _rank_codas(d, ct, w, tau=codas_tau),
+            extra_params={"tau": codas_tau}, tfn_input=tfn_input),
+        "Fuzzy COPRAS": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread, _rank_copras, tfn_input=tfn_input),
+        "Fuzzy OCRA": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread, _rank_ocra, tfn_input=tfn_input),
+        "Fuzzy MOORA": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread, _rank_moora, tfn_input=tfn_input),
+        "Fuzzy MABAC": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread, _rank_mabac, tfn_input=tfn_input),
+        "Fuzzy MARCOS": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread, _rank_marcos, tfn_input=tfn_input),
+        "Fuzzy CoCoSo": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread,
+            lambda d, ct, w: _rank_cocoso(d, ct, w, lambda_param=cocoso_lambda),
+            extra_params={"lambda": cocoso_lambda}, tfn_input=tfn_input),
+        "Fuzzy GRA": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread,
+            lambda d, ct, w: _rank_gra(d, ct, w, rho=gra_rho),
+            extra_params={"rho": gra_rho}, tfn_input=tfn_input),
+        "Fuzzy PROMETHEE": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread,
+            lambda d, ct, w: _rank_promethee(d, ct, w, pref_func=promethee_pref_func, q=promethee_q, p=promethee_p, s=promethee_s),
+            extra_params={"pref_func": promethee_pref_func, "q": promethee_q, "p": promethee_p, "s": promethee_s},
+            tfn_input=tfn_input),
         # Yeni klasik yöntemler
         "SPOTIS": lambda: _rank_spotis(df, criteria_types, weights),
         "MULTIMOORA": lambda: _rank_multimoora(df, criteria_types, weights),
@@ -2541,17 +2547,17 @@ def rank_alternatives(
         "AROMAN": lambda: _rank_aroman(df, criteria_types, weights),
         "DNMA": lambda: _rank_dnma(df, criteria_types, weights),
         # Yeni bulanık yöntemler
-        "Fuzzy SPOTIS": lambda: _rank_fuzzy_spotis(df, criteria_types, weights, spread=fuzzy_spread),
-        "Fuzzy MULTIMOORA": lambda: _rank_fuzzy_multimoora(df, criteria_types, weights, spread=fuzzy_spread),
-        "Fuzzy RAWEC": lambda: _rank_fuzzy_rawec(df, criteria_types, weights, spread=fuzzy_spread),
-        "Fuzzy RAFSI": lambda: _rank_fuzzy_rafsi(df, criteria_types, weights, spread=fuzzy_spread),
-        "Fuzzy ROV": lambda: _rank_fuzzy_rov(df, criteria_types, weights, spread=fuzzy_spread),
-        "Fuzzy AROMAN": lambda: _rank_fuzzy_aroman(df, criteria_types, weights, spread=fuzzy_spread),
-        "Fuzzy DNMA": lambda: _rank_fuzzy_dnma(df, criteria_types, weights, spread=fuzzy_spread),
+        "Fuzzy SPOTIS": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread, _rank_spotis, tfn_input=tfn_input),
+        "Fuzzy MULTIMOORA": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread, _rank_multimoora, tfn_input=tfn_input),
+        "Fuzzy RAWEC": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread, _rank_rawec, tfn_input=tfn_input),
+        "Fuzzy RAFSI": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread, _rank_rafsi, tfn_input=tfn_input),
+        "Fuzzy ROV": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread, _rank_rov, tfn_input=tfn_input),
+        "Fuzzy AROMAN": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread, _rank_aroman, tfn_input=tfn_input),
+        "Fuzzy DNMA": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread, _rank_dnma, tfn_input=tfn_input),
         "PSI": lambda: _rank_psi(df, criteria_types, weights),
         "WISP": lambda: _rank_wisp(df, criteria_types, weights),
-        "Fuzzy PSI": lambda: _rank_fuzzy_psi(df, criteria_types, weights, spread=fuzzy_spread),
-        "Fuzzy WISP": lambda: _rank_fuzzy_wisp(df, criteria_types, weights, spread=fuzzy_spread),
+        "Fuzzy PSI": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread, _rank_psi, tfn_input=tfn_input),
+        "Fuzzy WISP": lambda: _rank_fuzzy_by_scenarios(df, criteria_types, weights, fuzzy_spread, _rank_wisp, tfn_input=tfn_input),
     }
     if method not in dispatch:
         raise ValueError(f"Desteklenmeyen sıralama yöntemi: {method}")
@@ -2588,6 +2594,7 @@ def compare_methods(
     base_method: Optional[str] = None,
     base_table: Optional[pd.DataFrame] = None,
     base_details: Optional[Dict[str, Any]] = None,
+    tfn_input: Optional[np.ndarray] = None,
 ) -> Dict[str, Any]:
     from scipy.stats import spearmanr
     if not methods:
@@ -2622,6 +2629,7 @@ def compare_methods(
                 promethee_p=promethee_p,
                 promethee_s=promethee_s,
                 fuzzy_spread=fuzzy_spread,
+                tfn_input=tfn_input,
             )
         method_tables[str(method)] = res.copy()
         method_details[str(method)] = det
@@ -2678,6 +2686,7 @@ def sensitivity_analysis(
     iterations: int = 200,
     sigma: float = 0.12,
     seed: int = 42,
+    tfn_input: Optional[np.ndarray] = None,
 ) -> Dict[str, Any]:
     from scipy.stats import spearmanr
     base_res, _ = rank_alternatives(
@@ -2696,6 +2705,7 @@ def sensitivity_analysis(
         promethee_p=promethee_p,
         promethee_s=promethee_s,
         fuzzy_spread=fuzzy_spread,
+        tfn_input=tfn_input,
     )
     base_rank = base_res.set_index("Alternatif")["Sıra"]
     base_top = base_res.iloc[0]["Alternatif"]
@@ -2725,6 +2735,7 @@ def sensitivity_analysis(
                 promethee_p=promethee_p,
                 promethee_s=promethee_s,
                 fuzzy_spread=fuzzy_spread,
+                tfn_input=tfn_input,
             )
             try:
                 rho, _ = spearmanr(base_rank.sort_index(), res.set_index("Alternatif")["Sıra"].sort_index())
@@ -2767,6 +2778,7 @@ def sensitivity_analysis(
             promethee_p=promethee_p,
             promethee_s=promethee_s,
             fuzzy_spread=fuzzy_spread,
+            tfn_input=tfn_input,
         )
         top_alt = res.iloc[0]["Alternatif"]
         top_counter[top_alt] = top_counter.get(top_alt, 0) + 1
@@ -3091,7 +3103,12 @@ def build_report_sections(
     return sections
 
 
-def run_full_analysis(data: pd.DataFrame, config: AnalysisConfig) -> Dict[str, Any]:
+def run_full_analysis(
+    data: pd.DataFrame,
+    config: AnalysisConfig,
+    *,
+    tfn_input: Optional[np.ndarray] = None,
+) -> Dict[str, Any]:
     criteria = list(config.criteria)
     criteria_types = {c: config.criteria_types.get(c, "max") for c in criteria}
     df = _as_numeric_df(data, criteria)
@@ -3129,6 +3146,7 @@ def run_full_analysis(data: pd.DataFrame, config: AnalysisConfig) -> Dict[str, A
             criteria_types,
             config.weight_method,
             fuzzy_spread=config.fuzzy_spread,
+            tfn_input=tfn_input,
         )
     contribution_df = _contribution_table(df, criteria_types, weights)
 
@@ -3151,6 +3169,7 @@ def run_full_analysis(data: pd.DataFrame, config: AnalysisConfig) -> Dict[str, A
             promethee_p=config.promethee_p,
             promethee_s=config.promethee_s,
             fuzzy_spread=config.fuzzy_spread,
+            tfn_input=tfn_input,
         )
 
     compare = compare_methods(
@@ -3172,6 +3191,7 @@ def run_full_analysis(data: pd.DataFrame, config: AnalysisConfig) -> Dict[str, A
         base_method=config.ranking_method,
         base_table=ranking_table,
         base_details=ranking_details,
+        tfn_input=tfn_input,
     ) if config.compare_methods else {}
 
     sensitivity = None
@@ -3194,6 +3214,7 @@ def run_full_analysis(data: pd.DataFrame, config: AnalysisConfig) -> Dict[str, A
             fuzzy_spread=config.fuzzy_spread,
             iterations=config.sensitivity_iterations,
             sigma=config.sensitivity_sigma,
+            tfn_input=tfn_input,
         )
 
     report_sections = build_report_sections(

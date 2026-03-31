@@ -23,7 +23,7 @@ MAX_UPLOAD_ROWS = 50_000
 MAX_UPLOAD_COLS = 120
 MAX_PANEL_YEAR_SELECTION = 10
 MAX_SENSITIVITY_ITERATIONS = 1500
-SESSION_INACTIVITY_SECONDS = 4 * 3600  # 4 saat hareketsizlikte otomatik çıkış
+SESSION_INACTIVITY_SECONDS = 3 * 3600  # 3 saat hareketsizlikte otomatik çıkış
 
 SPSS_AVAILABLE: bool | None = None
 DOCX_AVAILABLE: bool | None = None
@@ -1014,7 +1014,7 @@ def _method_fallback_lines(method_label: str, lang: str) -> tuple[str, str]:
 
 _SOFTWARE_CITATION = (
     "Rençber, Ö. F. (2026). MCDM Analysis Assistance (Version 1.1) "
-    "[Computer software]. https://mcdm-assistance.streamlit.app/"
+    "[Computer software]. https://ofrencber.com/mdcm/"
 )
 
 def _reference_key(text: Any) -> str:
@@ -1420,11 +1420,19 @@ def _preprocess_tfn_dataset(df: pd.DataFrame) -> tuple[pd.DataFrame, Dict[str, A
         )
 
     spread_estimate = float(np.clip(np.nanmean(spread_vals) if spread_vals else 0.10, 0.01, 0.50))
+    # tfn_raw: {kriter_adı: DataFrame(columns=["l","m","u"], index=orijinal_index)}
+    tfn_raw: Dict[str, Any] = {}
+    for base, parts in groups.items():
+        l_s = pd.to_numeric(df[parts["l"]], errors="coerce").astype(float)
+        m_s = pd.to_numeric(df[parts["m"]], errors="coerce").astype(float)
+        u_s = pd.to_numeric(df[parts["u"]], errors="coerce").astype(float)
+        tfn_raw[base] = pd.DataFrame({"l": l_s.values, "m": m_s.values, "u": u_s.values}, index=df.index)
     meta = {
         "value_mode": "tfn",
         "tfn_criteria": list(groups.keys()),
         "estimated_fuzzy_spread": spread_estimate,
         "tfn_details": pd.DataFrame(detail_rows),
+        "tfn_raw": tfn_raw,
     }
     return out, meta
 
@@ -1435,6 +1443,27 @@ def _preprocess_input_dataset(df: pd.DataFrame, value_mode: str) -> tuple[pd.Dat
         processed, meta = _preprocess_tfn_dataset(df)
         return processed, meta
     return df.copy(), {"value_mode": "crisp"}
+
+
+def _build_tfn_input(criteria: List[str], index=None) -> "np.ndarray | None":
+    """Session state'deki tfn_raw'dan seçili kriterler için (n_alt, n_crit, 3) TFN dizisi üretir.
+    TFN verisi yoksa veya bir kriter eksikse None döner (crisp+spread'e geri düşer).
+    index: isteğe bağlı; working DataFrame'inin index'i verilirse yalnızca o satırlar alınır."""
+    tfn_raw = st.session_state.get("tfn_raw") or {}
+    if not tfn_raw:
+        return None
+    if not all(c in tfn_raw for c in criteria):
+        return None
+    slices = []
+    for c in criteria:
+        df_c = tfn_raw[c]
+        if index is not None:
+            shared = df_c.index.intersection(index)
+            if len(shared) != len(index):
+                return None  # index uyuşmazlığı — crisp+spread'e düş
+            df_c = df_c.loc[index]
+        slices.append(df_c[["l", "m", "u"]].to_numpy(dtype=float))
+    return np.stack(slices, axis=1)  # (n_alt, n_crit, 3)
 
 def _xl_text(lang: str, tr_text: str, en_text: str) -> str:
     return en_text if lang == "EN" else tr_text
@@ -1854,6 +1883,9 @@ def _activate_data_source(df: pd.DataFrame, source_id: str, entry_mode: str) -> 
     st.session_state["input_data_profile"] = input_profile
     if str(input_profile.get("value_mode")) == "tfn":
         st.session_state["fuzzy_spread"] = float(input_profile.get("estimated_fuzzy_spread", st.session_state.get("fuzzy_spread", 0.10)))
+        st.session_state["tfn_raw"] = input_profile.get("tfn_raw", {})
+    else:
+        st.session_state["tfn_raw"] = {}
     st.session_state["data_source_id"] = source_id
     _clear_pending_data_source()
     st.session_state["analysis_result"] = None
@@ -2116,8 +2148,8 @@ def _render_upload_data_source_section(lang: str) -> None:
                 st.warning(str(preview_exc))
             else:
                 _pending_note = tt(
-                    f"TFN veri algılandı. Analizde kriterler ağırlık merkezi ile durulaştırılacak; tahmini fuzzy spread ≈ {_preview_meta.get('estimated_fuzzy_spread', 0.10):.2f}.",
-                    f"TFN data detected. Criteria will be defuzzified by centroid for analysis; estimated fuzzy spread ≈ {_preview_meta.get('estimated_fuzzy_spread', 0.10):.2f}.",
+                    f"TFN veri algılandı. Klasik yöntemler ağırlık merkezi (crisp) ile, Fuzzy yöntemler ise (l, m, u) üçgenleri doğrudan kullanarak çalışır. Tahmini fuzzy spread ≈ {_preview_meta.get('estimated_fuzzy_spread', 0.10):.2f}.",
+                    f"TFN data detected. Classical methods use the centroid (crisp) value; fuzzy methods use the (l, m, u) triangles directly. Estimated fuzzy spread ≈ {_preview_meta.get('estimated_fuzzy_spread', 0.10):.2f}.",
                 )
                 _pending_preview_df = _converted_preview
         st.success(
@@ -6334,9 +6366,13 @@ def _run_single_analysis_bundle(
     weight_mode_key: str,
     weight_method: str,
     main_rank: str | None,
+    tfn_input: "np.ndarray | None" = None,
 ) -> Dict[str, Any]:
     config_payload = dict(config.__dict__)
-    result = run_full_analysis_cached(data_slice, config_payload)
+    if tfn_input is not None:
+        result = me.run_full_analysis(data_slice, me.AnalysisConfig(**config_payload), tfn_input=tfn_input)
+    else:
+        result = run_full_analysis_cached(data_slice, config_payload)
     run_heavy_robustness = bool(getattr(config, "run_heavy_robustness", False))
     if main_rank:
         actual_method = result.get("ranking", {}).get("method")
@@ -9488,7 +9524,13 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                     st.caption(tt("Kesin sayısal verilerden doğrudan ağırlık üretir.", "Derives weights directly from crisp numeric data."))
                     _render_weight_method_selector(weight_method_groups("classical"), methods_internal)
                 with _obj_tab_fuzzy:
-                    st.caption(tt("Belirsizlik bandı ve bulanık mantık ile ağırlık üretir.", "Derives weights using uncertainty bands and fuzzy logic."))
+                    if bool(st.session_state.get("tfn_raw")):
+                        st.caption(tt(
+                            "TFN veri yüklü — (l, m, u) üçgen değerleri doğrudan kullanılarak bulanık ağırlık üretilir.",
+                            "TFN data loaded — fuzzy weights are derived directly from the (l, m, u) triangle values.",
+                        ))
+                    else:
+                        st.caption(tt("Belirsizlik bandı ve bulanık mantık ile ağırlık üretir.", "Derives weights using uncertainty bands and fuzzy logic."))
                     _render_weight_method_selector(weight_method_groups("fuzzy"), methods_internal)
                 # Seçili yöntemi güncelle
                 _all_weight_checked = [m for m in methods_internal if st.session_state.get(f"weight_cb_{m}", False)]
@@ -9672,7 +9714,10 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                     f"**{tt('Analiz Katmanı', 'Analysis Layer')}**",
                     _layer_options,
                     horizontal=True,
-                    help=tt("Klasik katman kesin sayısal değerlerle, Fuzzy katman ise belirsizlik toleransı (spread) ile çalışır.", "Classical uses crisp numeric values; fuzzy uses uncertainty tolerance (spread)."),
+                    help=tt(
+                        "Klasik katman kesin sayısal değerlerle çalışır. Fuzzy katman: TFN veri yüklüyse (l,m,u) üçgenleri doğrudan kullanılır; crisp veri yüklüyse belirsizlik spread'i ile TFN üretilir.",
+                        "Classical layer uses crisp numeric values. Fuzzy layer: if TFN data is loaded (l,m,u) triangles are used directly; with crisp data, TFN is generated from the spread parameter.",
+                    ),
                 )
                 if layer_choice == _layer_options[0]:
                     all_ranks = me.CLASSICAL_MCDM_METHODS
@@ -9800,6 +9845,7 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                     uses_gra = ("GRA" in ranking_methods_selected) or ("Fuzzy GRA" in ranking_methods_selected)
                     uses_promethee = ("PROMETHEE" in ranking_methods_selected) or ("Fuzzy PROMETHEE" in ranking_methods_selected)
                     uses_fuzzy = any(m.startswith("Fuzzy") for m in ranking_methods_selected)
+                    _is_tfn_ranking = bool(st.session_state.get("tfn_raw"))
                     rec = recommend_parameter_defaults(ranking_methods_selected, len(working), len(criteria), uses_fuzzy)
 
                     with st.container():
@@ -9850,12 +9896,21 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                                     {tt("Parametre", "Parameter"): "PROMETHEE s", tt("Değer", "Value"): promethee_s},
                                 ])
                             if uses_fuzzy:
-                                rec_rows.append({tt("Parametre", "Parameter"): "Fuzzy spread", tt("Değer", "Value"): fuzzy_spread})
+                                if _is_tfn_ranking:
+                                    rec_rows.append({tt("Parametre", "Parameter"): "Fuzzy veri", tt("Değer", "Value"): tt("TFN — (l,m,u) doğrudan", "TFN — (l,m,u) direct")})
+                                else:
+                                    rec_rows.append({tt("Parametre", "Parameter"): "Fuzzy spread", tt("Değer", "Value"): fuzzy_spread})
                             rec_df = pd.DataFrame(rec_rows)
                             render_table(rec_df)
                         else:
                             if uses_fuzzy:
-                                fuzzy_spread = st.slider(tt("Fuzzy — spread (belirsizlik bandı)", "Fuzzy — spread (uncertainty band)"), 0.01, 0.50, float(fuzzy_spread), 0.01, help=tt("Crisp değerlerin TFN dönüşüm oranı. 0.10=±%10 belirsizlik.", "TFN conversion ratio. 0.10=±10% uncertainty."))
+                                if _is_tfn_ranking:
+                                    st.info(tt(
+                                        f"TFN veri yüklü — Fuzzy yöntemler (l, m, u) üçgenlerini doğrudan kullanır. Spread ayarı gerekmiyor (tahmini ≈ {fuzzy_spread:.2f}).",
+                                        f"TFN data loaded — Fuzzy methods use (l, m, u) triangles directly. No spread tuning needed (estimated ≈ {fuzzy_spread:.2f}).",
+                                    ))
+                                else:
+                                    fuzzy_spread = st.slider(tt("Fuzzy — spread (belirsizlik bandı)", "Fuzzy — spread (uncertainty band)"), 0.01, 0.50, float(fuzzy_spread), 0.01, help=tt("Crisp değerlerin TFN dönüşüm oranı. 0.10=±%10 belirsizlik.", "TFN conversion ratio. 0.10=±10% uncertainty."))
                             if uses_vikor:
                                 vikor_v = st.slider(tt("VIKOR — v (uzlaşı katsayısı)", "VIKOR — v (compromise factor)"), 0.0, 1.0, float(vikor_v), 0.01, help=tt("v=0.5: denge. v→1: çoğunluk. v→0: azınlık koruması.", "v=0.5: balance. v→1: majority. v→0: minority protection."))
                             if uses_waspas:
@@ -10306,6 +10361,7 @@ if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), use_container_width
                         weight_mode_key=weight_mode_key,
                         weight_method=weight_method,
                         main_rank=main_rank,
+                        tfn_input=_build_tfn_input(criteria, index=working.index),
                     )
                 else:
                     default_year = list(panel_results.keys())[-1]
@@ -10322,6 +10378,7 @@ if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), use_container_width
                     weight_mode_key=weight_mode_key,
                     weight_method=weight_method,
                     main_rank=main_rank,
+                    tfn_input=_build_tfn_input(criteria, index=working.index),
                 )
                 st.session_state["panel_results"] = None
                 st.session_state["panel_years"] = []
