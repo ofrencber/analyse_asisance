@@ -1303,11 +1303,11 @@ def _rank_vikor(
             best[j], worst[j] = col.min(), col.max()
     diff = np.zeros_like(x)
     for j in range(x.shape[1]):
-        denom = abs(best[j] - worst[j])
-        if denom <= EPS:
+        denom = best[j] - worst[j]   # işaretli: max kriter için +, min kriter için -
+        if abs(denom) <= EPS:
             diff[:, j] = 0.0
         else:
-            diff[:, j] = wvec[j] * (best[j] - x[:, j]) / (denom + EPS)
+            diff[:, j] = wvec[j] * (best[j] - x[:, j]) / denom
     s = diff.sum(axis=1)
     r = diff.max(axis=1)
     s_best, s_worst = s.min(), s.max()

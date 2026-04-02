@@ -2172,8 +2172,9 @@ def _render_upload_data_source_section(lang: str) -> None:
         _pending_preview_df = _pending_df
         _pending_crisp_preview_df = None
         _pending_note = ""
-        _pending_has_tfn = _is_tfn_input or bool(_detect_tfn_groups(list(_pending_df.columns)))
-        if _pending_has_tfn:
+        _data_has_tfn = bool(_detect_tfn_groups(list(_pending_df.columns)))
+        _pending_has_tfn = _data_has_tfn  # sadece verinin kendisi TFN sütunu içeriyorsa
+        if _data_has_tfn:
             try:
                 _converted_preview, _preview_meta = _preprocess_input_dataset(_pending_df, "tfn")
             except ValueError as preview_exc:
@@ -2184,6 +2185,15 @@ def _render_upload_data_source_section(lang: str) -> None:
                     f"TFN data detected. Classical methods use the centroid (crisp) value; fuzzy methods use the (l, m, u) triangles directly. Estimated fuzzy spread ≈ {_preview_meta.get('estimated_fuzzy_spread', 0.10):.2f}.",
                 )
                 _pending_crisp_preview_df = _converted_preview
+        elif _is_tfn_input:
+            st.warning(
+                tt(
+                    "TFN modu seçili, ancak yüklenen veri `_l`, `_m`, `_u` sütun üçlüsü içermiyor. "
+                    "Lütfen TFN formatlı veri yükleyin veya sol üstteki **🔹 Kesin sayılar** seçeneğine geçin.",
+                    "TFN mode is selected, but the loaded data does not contain `_l`, `_m`, `_u` column triplets. "
+                    "Please upload TFN-formatted data or switch to **🔹 Crisp values** mode.",
+                )
+            )
         st.success(
             tt(
                 f"Seçilen veri hazır: {_pending_df.shape[0]} satır, {_pending_df.shape[1]} sütun.",
@@ -2194,7 +2204,7 @@ def _render_upload_data_source_section(lang: str) -> None:
             st.caption(_pending_note)
         _show_preview = st.checkbox(tt("👀 Yüklenen veriyi önizle", "👀 Preview selected data"), key="chk_preview_upload")
         if _show_preview:
-            if _pending_has_tfn:
+            if _data_has_tfn:
                 st.caption(
                     tt(
                         "Bu ön izleme yüklediğiniz ham TFN sütunlarını (`_l`, `_m`, `_u`) gösterir.",
@@ -9887,46 +9897,49 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                     "Birden fazla yöntem seçerseniz yöntem uyumu da karşılaştırılır.",
                     "If you choose multiple methods, method agreement is also compared.",
                 )
-                _layer_options = [
-                    tt("Temel Yöntemler (Klasik Mantık)", "Core Methods (Classical Logic)"),
-                    tt("İleri Düzey Yöntemler (Fuzzy)", "Advanced Methods (Fuzzy)"),
-                ]
-                layer_choice = st.radio(
-                    f"**{tt('Analiz Katmanı', 'Analysis Layer')}**",
-                    _layer_options,
-                    horizontal=True,
-                    help=tt(
-                        "Klasik katman kesin sayısal değerlerle çalışır. Fuzzy katman: TFN veri yüklüyse (l,m,u) üçgenleri doğrudan kullanılır; crisp veri yüklüyse belirsizlik spread'i ile TFN üretilir.",
-                        "Classical layer uses crisp numeric values. Fuzzy layer: if TFN data is loaded (l,m,u) triangles are used directly; with crisp data, TFN is generated from the spread parameter.",
-                    ),
-                )
-                if layer_choice == _layer_options[0]:
-                    all_ranks = me.CLASSICAL_MCDM_METHODS
-                    _layer_key = "classical"
-                else:
+                _has_tfn_data = bool(st.session_state.get("tfn_raw"))
+                if _has_tfn_data:
+                    # TFN veri yüklü → klasik yöntemler önerilmez, direkt fuzzy
                     all_ranks = me.FUZZY_MCDM_METHODS
                     _layer_key = "fuzzy"
-
-                # ── Fuzzy katman seçildi: TFN veri durumuna göre bilgi / örnek ──
-                if _layer_key == "fuzzy":
-                    _has_tfn_now = bool(st.session_state.get("tfn_raw"))
-                    if _has_tfn_now:
-                        st.success(tt(
-                            "✅ TFN veri yüklü — Fuzzy yöntemler (l, m, u) üçgenlerini doğrudan kullanacak.",
-                            "✅ TFN data loaded — Fuzzy methods will use (l, m, u) triangles directly.",
-                        ))
+                    st.info(tt(
+                        "🔺 TFN veri yüklü — yalnızca **Fuzzy** yöntemler kullanılabilir.",
+                        "🔺 TFN data loaded — only **Fuzzy** methods are available.",
+                    ))
+                else:
+                    _layer_options = [
+                        tt("Temel Yöntemler (Klasik Mantık)", "Core Methods (Classical Logic)"),
+                        tt("İleri Düzey Yöntemler (Fuzzy)", "Advanced Methods (Fuzzy)"),
+                    ]
+                    layer_choice = st.radio(
+                        f"**{tt('Analiz Katmanı', 'Analysis Layer')}**",
+                        _layer_options,
+                        horizontal=True,
+                        help=tt(
+                            "Klasik katman kesin sayısal değerlerle çalışır. Fuzzy katman: crisp veri yüklüyse belirsizlik spread'i ile TFN üretilir.",
+                            "Classical layer uses crisp numeric values. Fuzzy layer: with crisp data, TFN is generated from the spread parameter.",
+                        ),
+                    )
+                    if layer_choice == _layer_options[0]:
+                        all_ranks = me.CLASSICAL_MCDM_METHODS
+                        _layer_key = "classical"
                     else:
-                        st.warning(tt(
-                            "⚠️ Şu an crisp veri yüklü. Fuzzy yöntemler spread parametresiyle TFN üretecek. "
-                            "Daha gerçekçi belirsizlik modellemesi için veri bölümünde **TFN modunu** seçin ve "
-                            "(l, m, u) sütunlu verinizi yükleyin veya manuel tabloya girin.",
-                            "⚠️ Crisp data is loaded. Fuzzy methods will generate TFN from the spread parameter. "
-                            "For more realistic uncertainty modelling, select **TFN mode** in the Data section and "
-                            "upload or enter your data with (l, m, u) columns.",
-                        ))
-                        with st.expander(tt("📋 TFN veri formatı nedir? Örnek ve şablon", "📋 What is TFN data format? Sample & template"), expanded=False):
-                            st.markdown(tt(
-                                """
+                        all_ranks = me.FUZZY_MCDM_METHODS
+                        _layer_key = "fuzzy"
+
+                # ── Fuzzy katman seçildi (crisp veri): spread ile TFN üretileceği bilgisi ──
+                if _layer_key == "fuzzy" and not _has_tfn_data:
+                    st.warning(tt(
+                        "⚠️ Şu an crisp veri yüklü. Fuzzy yöntemler spread parametresiyle TFN üretecek. "
+                        "Daha gerçekçi belirsizlik modellemesi için veri bölümünde **TFN modunu** seçin ve "
+                        "(l, m, u) sütunlu verinizi yükleyin veya manuel tabloya girin.",
+                        "⚠️ Crisp data is loaded. Fuzzy methods will generate TFN from the spread parameter. "
+                        "For more realistic uncertainty modelling, select **TFN mode** in the Data section and "
+                        "upload or enter your data with (l, m, u) columns.",
+                    ))
+                    with st.expander(tt("📋 TFN veri formatı nedir? Örnek ve şablon", "📋 What is TFN data format? Sample & template"), expanded=False):
+                        st.markdown(tt(
+                            """
 **Üçgensel Bulanık Sayı (TFN) formatı:**
 
 Her kriter için üç sütun gerekir:
@@ -9944,7 +9957,7 @@ Her kriter için üç sütun gerekir:
 2. Dosyanızı yükleyin VEYA manuel tabloya girin
 3. Ağırlık ve sıralama adımlarına geçin
 """,
-                                """
+                            """
 **Triangular Fuzzy Number (TFN) format:**
 
 Each criterion requires three columns:
@@ -9962,18 +9975,18 @@ Each criterion requires three columns:
 2. Upload your file OR enter data in the manual grid
 3. Proceed to Weighting and Ranking steps
 """,
-                            ))
-                            st.markdown(f"**{tt('Örnek TFN verisi (ilk 5 satır):', 'Sample TFN data (first 5 rows):')}**")
-                            _tfn_preview = sample_fuzzy_dataset_en().iloc[:5, :7]
-                            render_table(_tfn_preview)
-                            _tfn_csv_bytes = sample_fuzzy_dataset_en().to_csv(index=False).encode("utf-8")
-                            st.download_button(
-                                label=tt("⬇️ Örnek TFN veri seti indir (CSV)", "⬇️ Download sample TFN dataset (CSV)"),
-                                data=_tfn_csv_bytes,
-                                file_name="sample_tfn_dataset.csv",
-                                mime="text/csv",
-                                key="dl_tfn_sample_from_fuzzy_layer",
-                            )
+                        ))
+                        st.markdown(f"**{tt('Örnek TFN verisi (ilk 5 satır):', 'Sample TFN data (first 5 rows):')}**")
+                        _tfn_preview = sample_fuzzy_dataset_en().iloc[:5, :7]
+                        render_table(_tfn_preview)
+                        _tfn_csv_bytes = sample_fuzzy_dataset_en().to_csv(index=False).encode("utf-8")
+                        st.download_button(
+                            label=tt("⬇️ Örnek TFN veri seti indir (CSV)", "⬇️ Download sample TFN dataset (CSV)"),
+                            data=_tfn_csv_bytes,
+                            file_name="sample_tfn_dataset.csv",
+                            mime="text/csv",
+                            key="dl_tfn_sample_from_fuzzy_layer",
+                        )
 
                 _sugg_rank_raw = st.session_state.get("_sugg_rank", "TOPSIS, VIKOR, EDAS")
                 _sugg_rank_list = st.session_state.get("_sugg_rank_methods") or ["TOPSIS", "VIKOR", "EDAS"]
