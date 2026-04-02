@@ -792,6 +792,8 @@ def init_state() -> None:
         "data_entry_mode": "upload",
         "pending_data": None,
         "pending_data_source_id": None,
+        "subjective_manual_weights": None,
+        "subjective_input_profile": None,
         "shown_step_hints": set(),
         "impute_mode_open": False,
         "missing_strategy_saved": "Sil",
@@ -1565,6 +1567,8 @@ def _activate_data_source(df: pd.DataFrame, source_id: str, entry_mode: str) -> 
     st.session_state["direction_notice"] = None
     st.session_state["download_blob_cache"] = {}
     st.session_state["download_blob_sig"] = None
+    st.session_state["subjective_manual_weights"] = None
+    st.session_state["subjective_input_profile"] = None
     st.session_state["study_title"] = ""
     st.session_state["shown_step_hints"] = set()
     st.session_state["panel_year_column"] = None
@@ -8583,6 +8587,7 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
         weight_mode_key = "objective"
         manual_weights: Dict[str, float] | None = None
         manual_weights_valid = True
+        analysis_input_profile: str | None = None
         _step3_tabs = st.tabs([
             tt("🎯 1. Ağırlık Belirleme", "🎯 1. Weight Determination"),
             tt("📊 2. Sıralama Yöntemi", "📊 2. Ranking Method"),
@@ -8726,6 +8731,8 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
 
                 _sub_weights = st.session_state.get("subjective_manual_weights")
                 if _sub_weights:
+                    _profile_raw = str(st.session_state.get("subjective_input_profile") or "").strip().lower()
+                    analysis_input_profile = _profile_raw if _profile_raw in {"classical", "fuzzy"} else None
                     manual_weights = _sub_weights
                     manual_weights_valid = True
 
@@ -8851,12 +8858,19 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                     tt("Temel Yöntemler (Klasik Mantık)", "Core Methods (Classical Logic)"),
                     tt("İleri Düzey Yöntemler (Fuzzy)", "Advanced Methods (Fuzzy)"),
                 ]
-                layer_choice = st.radio(
-                    f"**{tt('Analiz Katmanı', 'Analysis Layer')}**",
-                    _layer_options,
-                    horizontal=True,
-                    help=tt("Klasik katman kesin sayısal değerlerle, Fuzzy katman ise belirsizlik toleransı (spread) ile çalışır.", "Classical uses crisp numeric values; fuzzy uses uncertainty tolerance (spread)."),
-                )
+                if analysis_input_profile == "fuzzy":
+                    layer_choice = _layer_options[1]
+                    st.info(tt("Fuzzy DEMATEL verisi kullanıldığı için yöntem önerileri fuzzy katmana göre filtrelendi.", "Because a fuzzy DEMATEL dataset is active, method recommendations are filtered to the fuzzy layer."))
+                elif analysis_input_profile == "classical":
+                    layer_choice = _layer_options[0]
+                    st.info(tt("Klasik DEMATEL verisi kullanıldığı için yöntem önerileri klasik katmana göre filtrelendi.", "Because a classical DEMATEL dataset is active, method recommendations are filtered to the classical layer."))
+                else:
+                    layer_choice = st.radio(
+                        f"**{tt('Analiz Katmanı', 'Analysis Layer')}**",
+                        _layer_options,
+                        horizontal=True,
+                        help=tt("Klasik katman kesin sayısal değerlerle, Fuzzy katman ise belirsizlik toleransı (spread) ile çalışır.", "Classical uses crisp numeric values; fuzzy uses uncertainty tolerance (spread)."),
+                    )
                 if layer_choice == _layer_options[0]:
                     all_ranks = me.CLASSICAL_MCDM_METHODS
                     _layer_key = "classical"

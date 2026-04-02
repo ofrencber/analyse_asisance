@@ -1,409 +1,118 @@
-import io
 import streamlit as st
 import pandas as pd
 import numpy as np
-import hashlib
+import re
 import mcdm_subjective as sub_engine
 
 def tt(tr, en):
     return en if st.session_state.get("ui_lang", "TR") == "EN" else tr
 
-# ── Genel dosya okuyucu ─────────────────────────────────────────────────────
-def _read_upload_file(uploaded_file) -> pd.DataFrame:
-    name = str(getattr(uploaded_file, "name", "") or "").lower()
+
+def _is_mostly_numeric(series: pd.Series) -> bool:
+    converted = pd.to_numeric(series, errors="coerce")
+    return bool(len(series)) and float(converted.notna().mean()) >= 0.8
+
+
+def _clean_dematel_upload_frame(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    out = out.dropna(axis=0, how="all").dropna(axis=1, how="all")
+    out = out.reset_index(drop=True)
+    out.columns = [str(col).strip() if col is not None else "" for col in out.columns]
+    return out
+
+
+def _extract_dematel_row_labels(df: pd.DataFrame, expected_data_cols: int):
+    if df.shape[1] != expected_data_cols + 1:
+        return df.copy(), None
+    first_col = df.iloc[:, 0]
+    if _is_mostly_numeric(first_col):
+        return df.copy(), None
+    labels = [str(val).strip() for val in first_col.tolist()]
+    return df.iloc[:, 1:].copy(), labels
+
+
+def _strip_triplet_suffix(label: str) -> str:
+    cleaned = str(label).strip()
+    cleaned = re.sub(r"[\s_]*[lmu]\s*$", "", cleaned, flags=re.IGNORECASE)
+    return cleaned.strip()
+
+
+def _dematel_alignment_indices(row_labels, col_labels, criteria):
+    crit_labels = [str(c).strip() for c in criteria]
+    row_names = [str(val).strip() for val in row_labels] if row_labels else crit_labels
+    col_names = [str(val).strip() for val in col_labels] if col_labels else crit_labels
+
+    row_match = len(row_names) == len(crit_labels) and set(row_names) == set(crit_labels)
+    col_match = len(col_names) == len(crit_labels) and set(col_names) == set(crit_labels)
+    if row_match and col_match:
+        row_pos = [row_names.index(label) for label in crit_labels]
+        col_pos = [col_names.index(label) for label in crit_labels]
+        return row_pos, col_pos, "name"
+    return list(range(len(crit_labels))), list(range(len(crit_labels))), "order"
+
+
+def _load_dematel_upload(uploaded_file, criteria: list[str]) -> dict:
     try:
         uploaded_file.seek(0)
     except Exception:
         pass
-    if name.endswith(".csv"):
-        return pd.read_csv(uploaded_file)
-    elif name.endswith(".xlsx"):
-        return pd.read_excel(uploaded_file)
-    raise ValueError(tt("Yalnızca CSV veya XLSX desteklenir.", "Only CSV or XLSX is supported."))
 
-# ── AHP n×n matris parse ─────────────────────────────────────────────────────
-def _parse_ahp_upload(uploaded_file, criteria: list[str]) -> pd.DataFrame:
-    n = len(criteria)
-    raw = _read_upload_file(uploaded_file)
-    raw = raw.dropna(how="all").dropna(axis=1, how="all")
-    # İlk sütun etiket olabilir → numeric gövde bul
-    body = raw.apply(pd.to_numeric, errors="coerce")
-    if body.iloc[:, 0].isna().all():          # ilk sütun etiket
-        body = body.iloc[:, 1:]
-    if body.iloc[0, :].isna().all():          # ilk satır etiket
-        body = body.iloc[1:, :]
-    body = body.dropna(how="all").dropna(axis=1, how="all")
-    if body.shape != (n, n):
-        raise ValueError(tt(
-            f"AHP matrisi {n}×{n} boyutunda olmalı; yüklenen dosya {body.shape[0]}×{body.shape[1]}.",
-            f"AHP matrix must be {n}×{n}; uploaded file is {body.shape[0]}×{body.shape[1]}.",
-        ))
-    mat = body.to_numpy(dtype=float)
-    # Sıfır değerleri koru — sadece NaN'ları 1 yap
-    mat[np.isnan(mat)] = 1.0
-    return pd.DataFrame(mat, index=criteria, columns=criteria)
-
-# ── BWM vektör parse ─────────────────────────────────────────────────────────
-def _parse_bwm_upload(uploaded_file, criteria: list[str]) -> pd.DataFrame:
-    n = len(criteria)
-    raw = _read_upload_file(uploaded_file).dropna(how="all")
-    num = raw.select_dtypes(include="number")
-    if num.shape[1] < 2:
-        raise ValueError(tt(
-            "BWM dosyası en az 2 sayısal sütun içermeli (Best-to-Others, Others-to-Worst).",
-            "BWM file must have at least 2 numeric columns (Best-to-Others, Others-to-Worst).",
-        ))
-    bto = num.iloc[:n, 0].to_numpy(dtype=float)
-    otw = num.iloc[:n, 1].to_numpy(dtype=float)
-    if len(bto) != n:
-        raise ValueError(tt(f"{n} satır beklendi, {len(bto)} bulundu.", f"Expected {n} rows, found {len(bto)}."))
-    return pd.DataFrame({
-        "Best-to-Others (1-9)": bto,
-        "Others-to-Worst (1-9)": otw,
-    }, index=criteria)
-
-# ── SWARA vektör parse ───────────────────────────────────────────────────────
-def _parse_swara_upload(uploaded_file, criteria: list[str]) -> pd.DataFrame:
-    n = len(criteria)
-    raw = _read_upload_file(uploaded_file).dropna(how="all")
-    num = raw.select_dtypes(include="number")
-    if num.shape[1] < 1:
-        raise ValueError(tt("SWARA dosyası en az 1 sayısal sütun içermeli.", "SWARA file must have at least 1 numeric column."))
-    sj = num.iloc[:n, 0].to_numpy(dtype=float)
-    if len(sj) != n:
-        raise ValueError(tt(f"{n} satır beklendi, {len(sj)} bulundu.", f"Expected {n} rows, found {len(sj)}."))
-    return pd.DataFrame({"s_j (İlk değer 0)": sj}, index=criteria)
-
-# ── SMART vektör parse ───────────────────────────────────────────────────────
-def _parse_smart_upload(uploaded_file, criteria: list[str]) -> pd.DataFrame:
-    n = len(criteria)
-    raw = _read_upload_file(uploaded_file).dropna(how="all")
-    num = raw.select_dtypes(include="number")
-    if num.shape[1] < 1:
-        raise ValueError(tt("SMART dosyası en az 1 sayısal sütun içermeli.", "SMART file must have at least 1 numeric column."))
-    pts = num.iloc[:n, 0].to_numpy(dtype=float)
-    if len(pts) != n:
-        raise ValueError(tt(f"{n} satır beklendi, {len(pts)} bulundu.", f"Expected {n} rows, found {len(pts)}."))
-    return pd.DataFrame({"Puan (10-100 vb.)": pts}, index=criteria)
-
-# ── Örnek dosya üreticileri ──────────────────────────────────────────────────
-def _df_to_xlsx(df: pd.DataFrame) -> bytes:
-    buf = io.BytesIO()
-    df.to_excel(buf, index=False)
-    return buf.getvalue()
-
-def _sample_ahp_csv(criteria: list[str]) -> bytes:
-    n = len(criteria)
-    rng = np.random.default_rng(42)
-    mat = np.ones((n, n))
-    for i in range(n):
-        for j in range(i + 1, n):
-            v = float(rng.choice([1, 2, 3, 5, 7]))
-            mat[i, j] = v
-            mat[j, i] = round(1 / v, 4)
-    df = pd.DataFrame(mat, index=criteria, columns=criteria).round(4)
-    df.insert(0, tt("Kriter", "Criterion"), criteria)
-    return _df_to_xlsx(df)
-
-def _sample_bwm_csv(criteria: list[str]) -> bytes:
-    n = len(criteria)
-    rng = np.random.default_rng(42)
-    bto = [1.0] + list(rng.integers(2, 8, n - 1).astype(float))
-    otw = list(rng.integers(2, 8, n - 1).astype(float)) + [1.0]
-    df = pd.DataFrame({
-        tt("Kriter", "Criterion"): criteria,
-        "Best-to-Others (1-9)": bto,
-        "Others-to-Worst (1-9)": otw,
-    })
-    return _df_to_xlsx(df)
-
-def _sample_swara_csv(criteria: list[str]) -> bytes:
-    n = len(criteria)
-    rng = np.random.default_rng(42)
-    sj = [0.0] + list(np.round(rng.uniform(0.1, 0.4, n - 1), 2))
-    df = pd.DataFrame({tt("Kriter", "Criterion"): criteria, "s_j (İlk değer 0)": sj})
-    return _df_to_xlsx(df)
-
-def _sample_smart_csv(criteria: list[str]) -> bytes:
-    n = len(criteria)
-    rng = np.random.default_rng(42)
-    pts = np.round(rng.uniform(20, 100, n), 0).astype(int)
-    df = pd.DataFrame({tt("Kriter", "Criterion"): criteria, "Puan (10-100 vb.)": pts})
-    return _df_to_xlsx(df)
-
-def _sample_dematel_csv(criteria: list[str]) -> bytes:
-    """Fuzzy DEMATEL örnek: l-m-u sütunlu kare matris."""
-    n = len(criteria)
-    rng = np.random.default_rng(42)
-    rows = []
-    for i, ri in enumerate(criteria):
-        row = {tt("Kriter", "Criterion"): ri}
-        for j, cj in enumerate(criteria):
-            if i == j:
-                row[f"{cj}_l"] = 0.0
-                row[f"{cj}_m"] = 0.0
-                row[f"{cj}_u"] = 0.0
-            else:
-                m = float(rng.choice([1, 2, 3, 4]))
-                l = max(0.0, round(m - rng.uniform(0.3, 0.8), 2))
-                u = round(m + rng.uniform(0.3, 0.8), 2)
-                u = min(u, 4.0)
-                row[f"{cj}_l"] = l
-                row[f"{cj}_m"] = m
-                row[f"{cj}_u"] = u
-        rows.append(row)
-    return _df_to_xlsx(pd.DataFrame(rows))
-
-def _render_upload_and_sample(
-    method_key: str,
-    ss_key: str,
-    parse_fn,
-    sample_fn,
-    sample_filename: str,
-    upload_label: str,
-    upload_label_en: str,
-    criteria: list[str],
-    expert_idx: int,
-):
-    """Her yöntem için yükle + örnek indir satırı render eder."""
-    _up_col, _dl_col = st.columns([3, 1], gap="small")
-    with _up_col:
-        upl = st.file_uploader(
-            tt(upload_label, upload_label_en),
-            type=["csv", "xlsx"],
-            key=f"upload_{method_key}_{len(criteria)}_{expert_idx}",
-        )
-    with _dl_col:
-        st.markdown("&nbsp;", unsafe_allow_html=True)  # dikey hizalama boşluğu
-        st.download_button(
-            label=tt("📥 Örnek", "📥 Sample"),
-            data=sample_fn(criteria),
-            file_name=sample_filename,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key=f"dl_sample_{method_key}_{len(criteria)}_{expert_idx}",
-            help=tt(
-                "Doğru format için örnek XLSX dosyasını indir, doldurup yeniden yükle.",
-                "Download a sample XLSX showing the correct format, fill it in, and re-upload.",
-            ),
-        )
-
-    sig_key = f"upload_sig_{method_key}_{len(criteria)}_{expert_idx}"
-    if upl is not None:
-        sig = hashlib.sha1(upl.getvalue()).hexdigest()
-        if st.session_state.get(sig_key) != sig:
-            try:
-                parsed = parse_fn(upl, criteria)
-                st.session_state[ss_key] = parsed
-                st.session_state[sig_key] = sig
-                st.success(tt("Dosya yüklendi ve tabloya aktarıldı.", "File loaded into the table."))
-            except Exception as exc:
-                st.error(str(exc))
-
-def _normalize_dematel_label(value: object) -> str:
-    if value is None or pd.isna(value):
-        return ""
-    text = " ".join(str(value).strip().split())
-    if not text or text.lower() == "nan":
-        return ""
-    return text.casefold()
-
-def _has_meaningful_dematel_labels(labels) -> bool:
-    for label in labels:
-        norm = _normalize_dematel_label(label)
-        if norm and not norm.replace(".", "", 1).isdigit():
-            return True
-    return False
-
-def _read_dematel_upload(uploaded_file) -> pd.DataFrame:
     file_name = str(getattr(uploaded_file, "name", "") or "").lower()
-    try:
-        uploaded_file.seek(0)
-    except Exception:
-        pass
-
     if file_name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file, header=None)
+        raw_df = pd.read_csv(uploaded_file)
     elif file_name.endswith(".xlsx"):
-        df = pd.read_excel(uploaded_file, header=None)
+        raw_df = pd.read_excel(uploaded_file, sheet_name=0)
     else:
-        raise ValueError(
-            tt(
-                "DEMATEL içe aktarımı için yalnızca CSV veya XLSX desteklenir.",
-                "Only CSV or XLSX files are supported for DEMATEL import.",
-            )
+        raise ValueError(tt("Desteklenen dosya türleri: .xlsx ve .csv", "Supported file types: .xlsx and .csv"))
+
+    expected = len(criteria)
+    cleaned = _clean_dematel_upload_frame(raw_df)
+
+    fuzzy_df, fuzzy_row_labels = _extract_dematel_row_labels(cleaned, expected * 3)
+    if fuzzy_df.shape == (expected, expected * 3):
+        numeric = fuzzy_df.apply(pd.to_numeric, errors="coerce")
+        if numeric.isna().any().any():
+            raise ValueError(tt("Fuzzy DEMATEL dosyasında sayısal olmayan hücreler var.", "The fuzzy DEMATEL file contains non-numeric cells."))
+        triangular = numeric.to_numpy(dtype=float).reshape(expected, expected, 3)
+        col_labels = [_strip_triplet_suffix(col) for col in list(fuzzy_df.columns)[::3]]
+        row_pos, col_pos, mapping_mode = _dematel_alignment_indices(fuzzy_row_labels, col_labels, criteria)
+        triangular = triangular[row_pos][:, col_pos, :]
+        crisp = sub_engine.defuzzify_triangular_matrix(triangular, method="graded_mean")
+        diag_zero = bool(np.allclose(triangular[np.arange(expected), np.arange(expected), :], 0.0))
+        return {
+            "mode": "fuzzy",
+            "matrix": crisp,
+            "triangular_matrix": triangular,
+            "mapping_mode": mapping_mode,
+            "diag_zero": diag_zero,
+            "source_name": getattr(uploaded_file, "name", ""),
+        }
+
+    crisp_df, crisp_row_labels = _extract_dematel_row_labels(cleaned, expected)
+    if crisp_df.shape == (expected, expected):
+        numeric = crisp_df.apply(pd.to_numeric, errors="coerce")
+        if numeric.isna().any().any():
+            raise ValueError(tt("Klasik DEMATEL dosyasında sayısal olmayan hücreler var.", "The classical DEMATEL file contains non-numeric cells."))
+        matrix = numeric.to_numpy(dtype=float)
+        col_labels = [str(col).strip() for col in crisp_df.columns]
+        row_pos, col_pos, mapping_mode = _dematel_alignment_indices(crisp_row_labels, col_labels, criteria)
+        matrix = matrix[np.ix_(row_pos, col_pos)]
+        diag_zero = bool(np.allclose(np.diag(matrix), 0.0))
+        return {
+            "mode": "classical",
+            "matrix": matrix,
+            "triangular_matrix": None,
+            "mapping_mode": mapping_mode,
+            "diag_zero": diag_zero,
+            "source_name": getattr(uploaded_file, "name", ""),
+        }
+
+    raise ValueError(
+        tt(
+            f"DEMATEL yüklemesi için beklenen yapı {expected}x{expected} klasik matris veya {expected} satır ve {expected*3} veri sütunlu fuzzy üçlü matristir.",
+            f"Expected DEMATEL input is either a {expected}x{expected} classical matrix or a fuzzy triplet matrix with {expected} rows and {expected*3} data columns.",
         )
-
-    df = df.dropna(how="all").dropna(axis=1, how="all").reset_index(drop=True)
-    if df.empty:
-        raise ValueError(tt("Yüklenen DEMATEL dosyası boş görünüyor.", "The uploaded DEMATEL file appears to be empty."))
-    return df
-
-def _try_parse_fuzzy_dematel(raw_df: pd.DataFrame) -> pd.DataFrame | None:
-    if raw_df.shape[0] < 3 or raw_df.shape[1] < 4:
-        return None
-
-    subheader = raw_df.iloc[1].fillna("").astype(str).str.strip().str.casefold()
-    triplets: list[tuple[int, object]] = []
-    col = 1
-    while col + 2 < raw_df.shape[1]:
-        trio = subheader.iloc[col:col + 3].tolist()
-        header = raw_df.iloc[0, col]
-        if trio == ["l", "m", "u"] and _normalize_dematel_label(header):
-            triplets.append((col, header))
-            col += 3
-            continue
-        col += 1
-
-    if not triplets:
-        return None
-
-    rows: list[list[float]] = []
-    row_labels: list[object] = []
-    for ridx in range(2, raw_df.shape[0]):
-        row_label = raw_df.iloc[ridx, 0]
-        if not _normalize_dematel_label(row_label):
-            continue
-        parsed_row: list[float] = []
-        for start_col, _header in triplets:
-            vals = pd.to_numeric(raw_df.iloc[ridx, start_col:start_col + 3], errors="coerce")
-            if vals.isna().all():
-                parsed_row = []
-                break
-            if vals.isna().any():
-                raise ValueError(
-                    tt(
-                        f"Satır '{row_label}' için eksik bulanık üçlü bulundu. Her ilişki için l, m ve u değerlerinin tamamı gerekir.",
-                        f"An incomplete fuzzy triplet was found on row '{row_label}'. Each relation needs l, m, and u values.",
-                    )
-                )
-            parsed_row.append(float(vals.mean()))
-        if parsed_row:
-            row_labels.append(row_label)
-            rows.append(parsed_row)
-
-    if not rows:
-        return None
-
-    col_labels = [header for _, header in triplets]
-    return pd.DataFrame(rows, index=row_labels, columns=col_labels, dtype=float)
-
-def _try_parse_crisp_dematel(raw_df: pd.DataFrame) -> pd.DataFrame | None:
-    numeric = raw_df.apply(pd.to_numeric, errors="coerce")
-    if raw_df.shape[0] == raw_df.shape[1] and numeric.notna().all().all():
-        return pd.DataFrame(numeric.to_numpy(dtype=float))
-
-    if raw_df.shape[0] >= 2 and raw_df.shape[1] >= 2:
-        body = raw_df.iloc[1:, 1:]
-        body_num = body.apply(pd.to_numeric, errors="coerce")
-        if body.shape[0] == body.shape[1] and body_num.notna().all().all():
-            return pd.DataFrame(
-                body_num.to_numpy(dtype=float),
-                index=raw_df.iloc[1:, 0].tolist(),
-                columns=raw_df.iloc[0, 1:].tolist(),
-            )
-
-        body = raw_df.iloc[:, 1:]
-        body_num = body.apply(pd.to_numeric, errors="coerce")
-        if body.shape[0] == body.shape[1] and body_num.notna().all().all():
-            return pd.DataFrame(body_num.to_numpy(dtype=float), index=raw_df.iloc[:, 0].tolist())
-
-        body = raw_df.iloc[1:, :]
-        body_num = body.apply(pd.to_numeric, errors="coerce")
-        if body.shape[0] == body.shape[1] and body_num.notna().all().all():
-            return pd.DataFrame(body_num.to_numpy(dtype=float), columns=raw_df.iloc[0, :].tolist())
-
-    return None
-
-def _align_dematel_matrix(matrix_df: pd.DataFrame, criteria: list[str]) -> pd.DataFrame:
-    n_crit = len(criteria)
-    if matrix_df.shape != (n_crit, n_crit):
-        raise ValueError(
-            tt(
-                f"Yüklenen DEMATEL matrisi {n_crit}x{n_crit} boyutunda olmalı; mevcut dosya {matrix_df.shape[0]}x{matrix_df.shape[1]}.",
-                f"The uploaded DEMATEL matrix must be {n_crit}x{n_crit}; the current file is {matrix_df.shape[0]}x{matrix_df.shape[1]}.",
-            )
-        )
-
-    label_map = {_normalize_dematel_label(name): name for name in criteria}
-    row_named = _has_meaningful_dematel_labels(matrix_df.index)
-    col_named = _has_meaningful_dematel_labels(matrix_df.columns)
-
-    if row_named or col_named:
-        mapped_rows = [label_map.get(_normalize_dematel_label(value)) for value in matrix_df.index]
-        mapped_cols = [label_map.get(_normalize_dematel_label(value)) for value in matrix_df.columns]
-        if any(value is None for value in mapped_rows) or any(value is None for value in mapped_cols):
-            raise ValueError(
-                tt(
-                    "Yüklenen DEMATEL matrisindeki kriter adları, uygulamadaki mevcut kriterlerle eşleşmiyor.",
-                    "The criterion names in the uploaded DEMATEL matrix do not match the current criteria in the app.",
-                )
-            )
-        matrix_df = matrix_df.copy()
-        matrix_df.index = mapped_rows
-        matrix_df.columns = mapped_cols
-        if len(set(matrix_df.index)) != n_crit or len(set(matrix_df.columns)) != n_crit:
-            raise ValueError(
-                tt(
-                    "Yüklenen DEMATEL matrisinde yinelenen kriter etiketleri bulundu.",
-                    "Duplicate criterion labels were found in the uploaded DEMATEL matrix.",
-                )
-            )
-        matrix_df = matrix_df.loc[criteria, criteria]
-    else:
-        matrix_df = matrix_df.copy()
-        matrix_df.index = criteria
-        matrix_df.columns = criteria
-
-    numeric_df = matrix_df.apply(pd.to_numeric, errors="coerce")
-    if numeric_df.isna().any().any():
-        raise ValueError(
-            tt(
-                "Yüklenen DEMATEL matrisi sayısal olmayan veya eksik değerler içeriyor.",
-                "The uploaded DEMATEL matrix contains missing or non-numeric values.",
-            )
-        )
-    if (numeric_df.to_numpy(dtype=float) < 0).any():
-        raise ValueError(
-            tt(
-                "Yüklenen DEMATEL matrisi negatif değer içeremez.",
-                "The uploaded DEMATEL matrix cannot contain negative values.",
-            )
-        )
-    return numeric_df.astype(float)
-
-def _parse_dematel_upload(uploaded_file, criteria: list[str]) -> tuple[pd.DataFrame, str]:
-    raw_df = _read_dematel_upload(uploaded_file)
-    parse_note = ""
-
-    matrix_df = _try_parse_fuzzy_dematel(raw_df)
-    if matrix_df is not None:
-        parse_note = tt(
-            "Bulanık DEMATEL biçimi algılandı; l-m-u üçlüleri ağırlık merkezi yöntemiyle tek değere dönüştürüldü.",
-            "A fuzzy DEMATEL layout was detected; l-m-u triplets were defuzzified into single values using the centroid method.",
-        )
-    else:
-        matrix_df = _try_parse_crisp_dematel(raw_df)
-        if matrix_df is None:
-            raise ValueError(
-                tt(
-                    "Dosya DEMATEL matrisi olarak çözülemedi. Kare sayısal matris veya l-m-u sütunlarından oluşan bulanık DEMATEL biçimi bekleniyor.",
-                    "The file could not be parsed as a DEMATEL matrix. Expected a square numeric matrix or a fuzzy DEMATEL layout with l-m-u columns.",
-                )
-            )
-
-    matrix_df = _align_dematel_matrix(matrix_df, criteria)
-    matrix = matrix_df.to_numpy(dtype=float)
-
-    if not np.allclose(np.diag(matrix), 0.0):
-        np.fill_diagonal(matrix, 0.0)
-        matrix_df = pd.DataFrame(matrix, index=criteria, columns=criteria)
-        diag_note = tt(
-            "Köşegen değerler DEMATEL gereği otomatik olarak 0 yapıldı.",
-            "Diagonal values were automatically set to 0 as required by DEMATEL.",
-        )
-        parse_note = f"{parse_note} {diag_note}".strip()
-
-    return matrix_df, parse_note
+    )
 
 def render_subjective_component(criteria: list[str]):
     n_crit = len(criteria)
@@ -414,53 +123,21 @@ def render_subjective_component(criteria: list[str]):
     st.markdown(f"#### {tt('Uzman Görüşü Hesaplama Paneli', 'Expert Judgment Panel')}")
     
     num_experts = st.number_input(
-        tt("Değerlendirme Yapacak Uzman Sayısı", "Number of Experts"),
-        min_value=1, max_value=100, value=1, step=1,
-        help=tt("Maksimum 100 uzmana kadar desteklenir. Değerler Geometrik Ortalama ile (AIP yöntemi) birleştirilip Normalize edilir.",
-                "Up to 100 experts supported. Weights are aggregated via Geometric Mean (AIP method) and Normalized.")
+        tt("Değerlendirme Yapacak Uzman Sayısı", "Number of Experts"), 
+        min_value=1, max_value=50, value=1, step=1,
+        help=tt("Maksimum 50 uzmana kadar desteklenir. Değerler Geometrik Ortalama ile (AIP yöntemi) birleştirilip Normalize edilir.",
+                "Up to 50 experts supported. Weights are aggregated via Geometric Mean (AIP method) and Normalized.")
     )
     
-    st.info(tt(
-        "Bu alanda yapacağınız hesaplamalar otomatik olarak 'Manuel Ağırlık' sistemine aktarılır. "
-        "Uzman sayısı en fazla **100** olabilir.",
-        "Calculations made here are automatically transferred to the 'Manual Weight' system. "
-        "Maximum number of experts is **100**.",
-    ))
-
-    # ── Global Klasik / Fuzzy seçimi ──────────────────────────────────────────
-    _calc_mode = st.radio(
-        tt("Hesaplama Modu", "Calculation Mode"),
-        [tt("🟦 Klasik", "🟦 Classical"), tt("🟪 Fuzzy", "🟪 Fuzzy")],
-        horizontal=True,
-        key="subjective_calc_mode",
-        help=tt(
-            "Klasik: kesin sayısal değerlerle hesaplama. Fuzzy: belirsizlik spread'i ile üçgen bulanık sayı (TFN) senaryoları üretilir.",
-            "Classical: calculation with crisp values. Fuzzy: triangular fuzzy number (TFN) scenarios generated from uncertainty spread.",
-        ),
-    )
-    _is_fuzzy_sub = "Fuzzy" in _calc_mode or "🟪" in _calc_mode
-
-    fuzzy_spread = float(st.session_state.get("fuzzy_spread", 0.15))
-    if _is_fuzzy_sub:
-        fuzzy_spread = st.slider(
-            tt("Bulanık Belirsizlik Genişliği", "Fuzzy Uncertainty Spread"),
-            min_value=0.05,
-            max_value=0.40,
-            value=fuzzy_spread,
-            step=0.01,
-            help=tt(
-                "Fuzzy yöntemlerde modal uzman değerinin etrafında oluşturulacak alt-orta-üst belirsizlik bandını belirler.",
-                "Defines the lower-middle-upper uncertainty band around the modal expert value in fuzzy methods.",
-            ),
-        )
-        st.session_state["fuzzy_spread"] = float(fuzzy_spread)
-
+    st.info(tt("Bu alanda yapacağınız hesaplamalar otomatik olarak 'Manuel Ağırlık' sistemine aktarılır.",
+               "Calculations made here are automatically transferred to the 'Manual Weight' system."))
+    
     tabs = st.tabs(["AHP", "BWM", "SWARA", "DEMATEL", "SMART"])
     
-    def apply_weights(weights_list, method_name):
+    def apply_weights(weights_list, method_name, data_profile=None):
         weights_dict = {c: float(w) for c, w in zip(criteria, weights_list)}
         st.session_state["subjective_manual_weights"] = weights_dict
-        st.session_state["subjective_method_name"] = method_name
+        st.session_state["subjective_input_profile"] = data_profile
         if num_experts > 1:
             st.success(f"{method_name} " + tt(f"ağırlıkları {num_experts} uzmanın görüşleri Geometrik Ortalama ile birleştirilerek sisteme aktarıldı!", 
                                               f"weights for {num_experts} experts aggregated via Geometric Mean and loaded!"))
@@ -490,6 +167,64 @@ def render_subjective_component(criteria: list[str]):
         normalized = geom / np.sum(geom)
         return normalized
 
+    def build_dematel_inputs():
+        if num_experts == 1:
+            exp_tabs = [st.container()]
+        else:
+            exp_tabs = st.tabs([f"{tt('Uzman', 'Expert')} {i}" for i in range(1, num_experts + 1)])
+
+        inputs = []
+        for i in range(num_experts):
+            with exp_tabs[i]:
+                upload_key = f"dem_upload_{n_crit}_exp_{i}"
+                matrix_state_key = f"dem_{n_crit}_exp_{i}"
+                if matrix_state_key not in st.session_state:
+                    dmat = np.ones((n_crit, n_crit)) * 2.0
+                    np.fill_diagonal(dmat, 0.0)
+                    st.session_state[matrix_state_key] = pd.DataFrame(dmat, columns=criteria, index=criteria)
+
+                uploaded = st.file_uploader(
+                    tt("DEMATEL matrisi yükle (.xlsx / .csv)", "Upload DEMATEL matrix (.xlsx / .csv)"),
+                    type=["xlsx", "csv"],
+                    key=upload_key,
+                    help=tt(
+                        "Klasik kare matris veya fuzzy üçlü sütun yapısı (K1_l, K1_m, K1_u, ...) kabul edilir.",
+                        "Accepts a classical square matrix or fuzzy triplet columns (K1_l, K1_m, K1_u, ...).",
+                    ),
+                )
+
+                parsed_input = None
+                if uploaded is not None:
+                    try:
+                        parsed_input = _load_dematel_upload(uploaded, criteria)
+                        mode_label = "Fuzzy DEMATEL" if parsed_input["mode"] == "fuzzy" else "DEMATEL"
+                        st.success(
+                            tt(
+                                f"Dosya algılandı: {mode_label}. Analizde bu matris kullanılacak.",
+                                f"Detected file: {mode_label}. This matrix will be used in the analysis.",
+                            )
+                        )
+                        if parsed_input["mapping_mode"] == "name":
+                            st.caption(tt("Satır/sütun adları mevcut kriter listesiyle eşleşti; matris ada göre hizalandı.", "Row/column labels matched the active criteria and were aligned by name."))
+                        else:
+                            st.caption(tt("Satır/sütun adları mevcut kriterlerle birebir eşleşmedi; matris mevcut kriter sırasına göre uygulanacak.", "Row/column labels did not fully match the active criteria; the matrix will be applied in the current criteria order."))
+                        if parsed_input["mode"] == "fuzzy":
+                            st.caption(tt("Defuzzification: graded mean integration `(l + 2m + u) / 4`.", "Defuzzification: graded mean integration `(l + 2m + u) / 4`."))
+                        if not parsed_input["diag_zero"]:
+                            st.warning(tt("Köşegen değerleri sıfır değil. DEMATEL'de köşegenin 0 olması genellikle önerilir.", "Diagonal values are not zero. DEMATEL usually expects a zero diagonal."))
+                        render_table = pd.DataFrame(parsed_input["matrix"], index=criteria, columns=criteria)
+                        st.dataframe(render_table, use_container_width=True)
+                    except Exception as exc:
+                        st.error(str(exc))
+
+                if parsed_input is None:
+                    st.caption(tt("İsterseniz dosya yüklemek yerine matrisi aşağıda manuel düzenleyebilirsiniz.", "You can also edit the matrix manually below instead of uploading a file."))
+                    edited = st.data_editor(st.session_state[matrix_state_key], key=f"edit_{matrix_state_key}", use_container_width=True)
+                    inputs.append({"mode": "manual", "matrix": edited.copy(), "triangular_matrix": None})
+                else:
+                    inputs.append(parsed_input)
+        return inputs
+
     def render_consistency(results_list, method):
         if num_experts == 1:
             res = results_list[0]
@@ -497,9 +232,9 @@ def render_subjective_component(criteria: list[str]):
                 cols = st.columns(3)
                 cols[0].metric("CR", f"{res['cr']:.4f}")
                 cols[1].metric(tt("Tutarlı Mı?", "Is Consistent?"), tt("Evet","Yes") if res['is_consistent'] else tt("Hayır","No"))
-                if "AHP" in method:
+                if method == "AHP":
                     cols[2].metric("Lambda Max", f"{res.get('lambda_max',0):.4f}")
-                elif "BWM" in method:
+                elif method == "BWM":
                     cols[2].metric("Xi Değeri", f"{res.get('xi',0):.4f}")
                 if not res['is_consistent']:
                     st.warning(tt("CR > 0.10! Matris tutarsız.", "CR > 0.10! Matrix is inconsistent."))
@@ -548,71 +283,30 @@ def render_subjective_component(criteria: list[str]):
 
         st.write(tt("İkili Karşılaştırma Matrisi (Üst üçgeni doldurmanız yeterlidir, alt üçgen otomatik hesaplanır):", 
                     "Pairwise Comparison Matrix (Fill upper triangle, lower is auto calculated):"))
-        if _is_fuzzy_sub:
-            st.caption(tt(
-                f"Fuzzy AHP aynı matrisi kullanır; {fuzzy_spread:.2f} belirsizlik genişliği ile alt-orta-üst senaryolar oluşturur.",
-                f"Fuzzy AHP uses the same matrix and builds lower-middle-upper scenarios with uncertainty spread {fuzzy_spread:.2f}.",
-            ))
-
-        dfs_ahp = []
-        _ahp_exp_tabs = [st.container()] if num_experts == 1 else st.tabs([f"{tt('Uzman', 'Expert')} {i}" for i in range(1, num_experts + 1)])
-        for _ei in range(num_experts):
-            with _ahp_exp_tabs[_ei]:
-                _ahp_key = f"ahp_{n_crit}_exp_{_ei}"
-                if _ahp_key not in st.session_state:
-                    st.session_state[_ahp_key] = pd.DataFrame(np.ones((n_crit, n_crit)), columns=criteria, index=criteria)
-                _render_upload_and_sample(
-                    method_key="ahp", ss_key=_ahp_key,
-                    parse_fn=_parse_ahp_upload, sample_fn=_sample_ahp_csv,
-                    sample_filename="sample_ahp.xlsx",
-                    upload_label="AHP matrisi yükle (CSV/XLSX)",
-                    upload_label_en="Upload AHP matrix (CSV/XLSX)",
-                    criteria=criteria, expert_idx=_ei,
-                )
-                dfs_ahp.append(st.data_editor(st.session_state[_ahp_key], key=f"edit_{_ahp_key}", use_container_width=True))
-
-        if not _is_fuzzy_sub:
-            if st.button(tt("AHP Hesapla & Uygula", "Calculate & Apply AHP"), key="ahp_btn"):
-                try:
-                    all_weights = []
-                    all_res = []
-                    for df in dfs_ahp:
-                        m_copy = df.to_numpy(dtype=float).copy()
-                        for r in range(n_crit):
-                            for c in range(r+1, n_crit):
-                                val = m_copy[r, c]
-                                if val == 0: val = 1.0
-                                m_copy[r, c] = val
-                                m_copy[c, r] = 1.0 / val
-                        res = sub_engine.calc_ahp(m_copy)
-                        all_weights.append(res['weights'])
-                        all_res.append(res)
-                    final_w = aggregate_weights(all_weights)
-                    render_consistency(all_res, "AHP")
-                    apply_weights(final_w.tolist(), "AHP")
-                except Exception as e:
-                    st.error(f"Hata: {e}")
-        else:
-            if st.button(tt("Fuzzy AHP Hesapla & Uygula", "Calculate & Apply Fuzzy AHP"), key="fuzzy_ahp_btn"):
-                try:
-                    all_weights = []
-                    all_res = []
-                    for df in dfs_ahp:
-                        m_copy = df.to_numpy(dtype=float).copy()
-                        for r in range(n_crit):
-                            for c in range(r+1, n_crit):
-                                val = m_copy[r, c]
-                                if val == 0: val = 1.0
-                                m_copy[r, c] = val
-                                m_copy[c, r] = 1.0 / val
-                        res = sub_engine.calc_fuzzy_ahp(m_copy, spread=fuzzy_spread)
-                        all_weights.append(res["weights"])
-                        all_res.append(res)
-                    final_w = aggregate_weights(all_weights)
-                    render_consistency(all_res, "Fuzzy AHP")
-                    apply_weights(final_w.tolist(), "Fuzzy AHP")
-                except Exception as e:
-                    st.error(f"Hata: {e}")
+        
+        dfs_ahp = build_expert_tabs("ahp", lambda: pd.DataFrame(np.ones((n_crit, n_crit)), columns=criteria, index=criteria))
+        
+        if st.button(tt("AHP Hesapla & Uygula", "Calculate & Apply AHP"), key="ahp_btn"):
+            try:
+                all_weights = []
+                all_res = []
+                for df in dfs_ahp:
+                    m_copy = df.to_numpy(dtype=float).copy()
+                    for r in range(n_crit):
+                        for c in range(r+1, n_crit):
+                            val = m_copy[r, c]
+                            if val == 0: val = 1.0 # prevent div by zero
+                            m_copy[r, c] = val
+                            m_copy[c, r] = 1.0 / val
+                    res = sub_engine.calc_ahp(m_copy)
+                    all_weights.append(res['weights'])
+                    all_res.append(res)
+                
+                final_w = aggregate_weights(all_weights)
+                render_consistency(all_res, "AHP")
+                apply_weights(final_w.tolist(), "AHP", data_profile=None)
+            except Exception as e:
+                st.error(f"Hata: {e}")
 
     # --- BWM ---
     with tabs[1]:
@@ -620,7 +314,7 @@ def render_subjective_component(criteria: list[str]):
         with st.expander(tt("📌 Yöntem Hakkında Bilgi & Örnek Anket Formu", "📌 Method Info & Sample Survey Form")):
             st.markdown(tt("""
             **🌟 Yöntemin Güçlü Yanları:**
-            BWM, AHP'ye göre çok daha az sayıda soru (kıyaslama) sorulmasını gerektirir ($2n-3$ vs $\dfrac{n(n-1)}{2}$). Karar vericinin sadece belirlediği En İyi (Best) ve En Kötü (Worst) kritere göre diğerlerini değerlendirmesini ister. Uzmanlar için bilişsel yükü düşüktür ve tutarlılığı genellikle daha yüksektir.
+            BWM, AHP'ye göre çok daha az sayıda soru (kıyaslama) sorulmasını gerektirir ($2n-3$ vs $\\dfrac{n(n-1)}{2}$). Karar vericinin sadece belirlediği En İyi (Best) ve En Kötü (Worst) kritere göre diğerlerini değerlendirmesini ister. Uzmanlar için bilişsel yükü düşüktür ve tutarlılığı genellikle daha yüksektir.
             
             **📝 Örnek Gönderilecek Anket Formu:**
             - **Aşama 1:** Lütfen elinizdeki kriterler listesinden **SİZCE EN ÖNEMLİ (Best)** olan 1 kriteri seçin. Ardından **EN ÖNEMSİZ (Worst)** olan 1 kriteri seçin.
@@ -638,64 +332,28 @@ def render_subjective_component(criteria: list[str]):
             """))
 
         st.markdown(tt("1. **En iyi** ve **en kötü** kriteri belirleyin.\n2. 1-9 arası puanlayın.", "1. Best/Worst criteria.\n2. Score 1-9."))
-        if _is_fuzzy_sub:
-            st.caption(tt(
-                f"Fuzzy BWM, aynı modal puanlardan {fuzzy_spread:.2f} genişliğinde alt-orta-üst üstünlük senaryoları üretir.",
-                f"Fuzzy BWM derives lower-middle-upper dominance scenarios from the same modal scores using spread {fuzzy_spread:.2f}.",
-            ))
-
-        dfs_bwm = []
-        _bwm_exp_tabs = [st.container()] if num_experts == 1 else st.tabs([f"{tt('Uzman', 'Expert')} {i}" for i in range(1, num_experts + 1)])
-        for _ei in range(num_experts):
-            with _bwm_exp_tabs[_ei]:
-                _bwm_key = f"bwm_{n_crit}_exp_{_ei}"
-                if _bwm_key not in st.session_state:
-                    st.session_state[_bwm_key] = pd.DataFrame({
-                        "Best-to-Others (1-9)": [1.0] * n_crit,
-                        "Others-to-Worst (1-9)": [3.0] * n_crit,
-                    }, index=criteria)
-                _render_upload_and_sample(
-                    method_key="bwm", ss_key=_bwm_key,
-                    parse_fn=_parse_bwm_upload, sample_fn=_sample_bwm_csv,
-                    sample_filename="sample_bwm.xlsx",
-                    upload_label="BWM vektörleri yükle (CSV/XLSX)",
-                    upload_label_en="Upload BWM vectors (CSV/XLSX)",
-                    criteria=criteria, expert_idx=_ei,
-                )
-                dfs_bwm.append(st.data_editor(st.session_state[_bwm_key], key=f"edit_{_bwm_key}", use_container_width=True))
-
-        if not _is_fuzzy_sub:
-            if st.button(tt("BWM Hesapla & Uygula", "Calculate & Apply BWM"), key="bwm_btn"):
-                try:
-                    all_weights = []
-                    all_res = []
-                    for df in dfs_bwm:
-                        bto = df["Best-to-Others (1-9)"].to_numpy(dtype=float)
-                        otw = df["Others-to-Worst (1-9)"].to_numpy(dtype=float)
-                        res = sub_engine.calc_bwm(bto, otw)
-                        all_weights.append(res['weights'])
-                        all_res.append(res)
-                    final_w = aggregate_weights(all_weights)
-                    render_consistency(all_res, "BWM")
-                    apply_weights(final_w.tolist(), "BWM")
-                except Exception as e:
-                    st.error(f"Hata: {e}")
-        else:
-            if st.button(tt("Fuzzy BWM Hesapla & Uygula", "Calculate & Apply Fuzzy BWM"), key="fuzzy_bwm_btn"):
-                try:
-                    all_weights = []
-                    all_res = []
-                    for df in dfs_bwm:
-                        bto = df["Best-to-Others (1-9)"].to_numpy(dtype=float)
-                        otw = df["Others-to-Worst (1-9)"].to_numpy(dtype=float)
-                        res = sub_engine.calc_fuzzy_bwm(bto, otw, spread=fuzzy_spread)
-                        all_weights.append(res["weights"])
-                        all_res.append(res)
-                    final_w = aggregate_weights(all_weights)
-                    render_consistency(all_res, "Fuzzy BWM")
-                    apply_weights(final_w.tolist(), "Fuzzy BWM")
-                except Exception as e:
-                    st.error(f"Hata: {e}")
+        
+        dfs_bwm = build_expert_tabs("bwm", lambda: pd.DataFrame({
+                "Best-to-Others (1-9)": [1.0 for _ in range(n_crit)],
+                "Others-to-Worst (1-9)": [3.0 for _ in range(n_crit)]
+            }, index=criteria))
+        
+        if st.button(tt("BWM Hesapla & Uygula", "Calculate & Apply BWM"), key="bwm_btn"):
+            try:
+                all_weights = []
+                all_res = []
+                for df in dfs_bwm:
+                    bto = df["Best-to-Others (1-9)"].to_numpy(dtype=float)
+                    otw = df["Others-to-Worst (1-9)"].to_numpy(dtype=float)
+                    res = sub_engine.calc_bwm(bto, otw)
+                    all_weights.append(res['weights'])
+                    all_res.append(res)
+                
+                final_w = aggregate_weights(all_weights)
+                render_consistency(all_res, "BWM")
+                apply_weights(final_w.tolist(), "BWM", data_profile=None)
+            except Exception as e:
+                st.error(f"Hata: {e}")
 
     # --- SWARA ---
     with tabs[2]:
@@ -724,55 +382,23 @@ def render_subjective_component(criteria: list[str]):
 
         st.info(tt("Her bir kriterin, bir üstündeki kritere kıyasla yüzde kaç daha az önemli olduğunu ondalık değer (örn: 0.15) olarak giriniz. İlk kriter her zaman 0 olmalıdır.",
                    "Enter how much less important each criterion is compared to the one above it as a decimal (e.g. 0.15). The first value must be 0."))
-        if _is_fuzzy_sub:
-            st.caption(tt(
-                f"Fuzzy SWARA, bu azalış oranlarını {fuzzy_spread:.2f} bandında bulanıklaştırarak senaryo ortalaması alır.",
-                f"Fuzzy SWARA fuzzifies these reduction ratios with spread {fuzzy_spread:.2f} and averages the scenario weights.",
-            ))
-
-        dfs_swara = []
-        _swara_exp_tabs = [st.container()] if num_experts == 1 else st.tabs([f"{tt('Uzman', 'Expert')} {i}" for i in range(1, num_experts + 1)])
-        for _ei in range(num_experts):
-            with _swara_exp_tabs[_ei]:
-                _swara_key = f"swara_{n_crit}_exp_{_ei}"
-                if _swara_key not in st.session_state:
-                    st.session_state[_swara_key] = pd.DataFrame(
-                        {"s_j (İlk değer 0)": [0.0] + [0.2] * (n_crit - 1)}, index=criteria
-                    )
-                _render_upload_and_sample(
-                    method_key="swara", ss_key=_swara_key,
-                    parse_fn=_parse_swara_upload, sample_fn=_sample_swara_csv,
-                    sample_filename="sample_swara.xlsx",
-                    upload_label="SWARA s_j değerleri yükle (CSV/XLSX)",
-                    upload_label_en="Upload SWARA s_j values (CSV/XLSX)",
-                    criteria=criteria, expert_idx=_ei,
-                )
-                dfs_swara.append(st.data_editor(st.session_state[_swara_key], key=f"edit_{_swara_key}", use_container_width=True))
-
-        if not _is_fuzzy_sub:
-            if st.button(tt("SWARA Hesapla & Uygula", "Calculate & Apply SWARA"), key="swara_btn"):
-                try:
-                    all_weights = []
-                    for df in dfs_swara:
-                        sj = df["s_j (İlk değer 0)"].to_numpy(dtype=float)
-                        res = sub_engine.calc_swara(sj)
-                        all_weights.append(res['weights'])
-                    final_w = aggregate_weights(all_weights)
-                    apply_weights(final_w.tolist(), "SWARA")
-                except Exception as e:
-                    st.error(f"Hata: {e}")
-        else:
-            if st.button(tt("Fuzzy SWARA Hesapla & Uygula", "Calculate & Apply Fuzzy SWARA"), key="fuzzy_swara_btn"):
-                try:
-                    all_weights = []
-                    for df in dfs_swara:
-                        sj = df["s_j (İlk değer 0)"].to_numpy(dtype=float)
-                        res = sub_engine.calc_fuzzy_swara(sj, spread=fuzzy_spread)
-                        all_weights.append(res["weights"])
-                    final_w = aggregate_weights(all_weights)
-                    apply_weights(final_w.tolist(), "Fuzzy SWARA")
-                except Exception as e:
-                    st.error(f"Hata: {e}")
+        
+        dfs_swara = build_expert_tabs("swara", lambda: pd.DataFrame({
+                "s_j (İlk değer 0)": [0.0] + [0.2 for _ in range(n_crit-1)]
+            }, index=criteria))
+        
+        if st.button(tt("SWARA Hesapla & Uygula", "Calculate & Apply SWARA"), key="swara_btn"):
+            try:
+                all_weights = []
+                for df in dfs_swara:
+                    sj = df["s_j (İlk değer 0)"].to_numpy(dtype=float)
+                    res = sub_engine.calc_swara(sj)
+                    all_weights.append(res['weights'])
+                
+                final_w = aggregate_weights(all_weights)
+                apply_weights(final_w.tolist(), "SWARA", data_profile=None)
+            except Exception as e:
+                st.error(f"Hata: {e}")
 
     # --- DEMATEL ---
     with tabs[3]:
@@ -800,86 +426,33 @@ def render_subjective_component(criteria: list[str]):
             Rate how strongly Criterion i influences Criterion j (0 to 4 scale).
             - [0] No influence -> [4] Very high influence
             """))
-        st.info(tt(
-            "Manuel girişte 0-4 ölçeğini kullanın. CSV/XLSX yüklemede kare DEMATEL matrisleri ve l-m-u sütunlu bulanık DEMATEL dosyaları da desteklenir.",
-            "Use the 0-4 scale for manual entry. CSV/XLSX upload also supports square DEMATEL matrices and fuzzy DEMATEL files with l-m-u columns."
-        ))
-        if _is_fuzzy_sub:
-            st.caption(tt(
-                f"Fuzzy DEMATEL, girilen modal etki değerlerinden {fuzzy_spread:.2f} genişliğinde alt-orta-üst etki senaryoları kurar.",
-                f"Fuzzy DEMATEL builds lower-middle-upper influence scenarios with spread {fuzzy_spread:.2f} from the entered modal influence values.",
-            ))
+        st.info(tt("Sıfırdan Dörde (0-4) kadar numaralarla etkileşimi girin.", "Scale 0-4 for influences."))
+
+        st.caption(
+            tt(
+                "Yükleme desteği: klasik kare DEMATEL matrisi veya fuzzy üçlü kolon yapısı. Fuzzy dosyalar analizde açık defuzzification adımıyla işlenir.",
+                "Upload support: classical square DEMATEL matrix or fuzzy triplet-column structure. Fuzzy files are handled with an explicit defuzzification step.",
+            )
+        )
+
+        dem_inputs = build_dematel_inputs()
         
-        def dem_def():
-            dmat = np.ones((n_crit, n_crit)) * 2 # Varsayılan olarak Orta etki
-            np.fill_diagonal(dmat, 0) # Köşegen daima 0
-            return pd.DataFrame(dmat, columns=criteria, index=criteria)
-        if num_experts == 1:
-            dem_tabs = [st.container()]
-        else:
-            dem_tabs = st.tabs([f"{tt('Uzman', 'Expert')} {i}" for i in range(1, num_experts + 1)])
-
-        dfs_dem = []
-        for i in range(num_experts):
-            with dem_tabs[i]:
-                dem_key = f"dem_{n_crit}_exp_{i}"
-                if dem_key not in st.session_state:
-                    st.session_state[dem_key] = dem_def()
-
-                _render_upload_and_sample(
-                    method_key="dematel",
-                    ss_key=dem_key,
-                    parse_fn=lambda f, c: _parse_dematel_upload(f, c)[0],
-                    sample_fn=_sample_dematel_csv,
-                    sample_filename="sample_fuzzy_dematel.xlsx",
-                    upload_label="DEMATEL matrisi yükle (CSV/XLSX)",
-                    upload_label_en="Upload DEMATEL matrix (CSV/XLSX)",
-                    criteria=criteria,
-                    expert_idx=i,
-                )
-
-                dfs_dem.append(st.data_editor(st.session_state[dem_key], key=f"edit_{dem_key}", use_container_width=True))
-        
-        if not _is_fuzzy_sub:
-            if st.button(tt("DEMATEL Hesapla & Uygula", "Calculate & Apply DEMATEL"), key="dem_btn"):
-                try:
-                    all_weights = []
-                    any_singular = False
-                    for df in dfs_dem:
-                        dem_mat = df.to_numpy(dtype=float)
-                        res = sub_engine.calc_dematel(dem_mat)
-                        all_weights.append(res['weights'])
-                        if res.get('singular_warning'):
-                            any_singular = True
-                    final_w = aggregate_weights(all_weights)
-                    apply_weights(final_w.tolist(), "DEMATEL")
-                    if any_singular:
-                        st.warning(tt(
-                            "⚠️ Etki matrisi tekil (singular) — (I–X) tersi alınamadı. Sonuçlar güvenilir olmayabilir.",
-                            "⚠️ Influence matrix is singular — (I–X) could not be inverted. Results may be unreliable.",
-                        ))
-                except Exception as e:
-                    st.error(f"Hata: {e}")
-        else:
-            if st.button(tt("Fuzzy DEMATEL Hesapla & Uygula", "Calculate & Apply Fuzzy DEMATEL"), key="fuzzy_dem_btn"):
-                try:
-                    all_weights = []
-                    any_singular = False
-                    for df in dfs_dem:
-                        dem_mat = df.to_numpy(dtype=float)
-                        res = sub_engine.calc_fuzzy_dematel(dem_mat, spread=fuzzy_spread)
-                        all_weights.append(res["weights"])
-                        if res.get("singular_warning"):
-                            any_singular = True
-                    final_w = aggregate_weights(all_weights)
-                    apply_weights(final_w.tolist(), "Fuzzy DEMATEL")
-                    if any_singular:
-                        st.warning(tt(
-                            "⚠️ En az bir bulanık DEMATEL senaryosunda matris tekil bulundu; sonuçları dikkatle yorumlayın.",
-                            "⚠️ At least one fuzzy DEMATEL scenario produced a singular matrix; interpret results with caution.",
-                        ))
-                except Exception as e:
-                    st.error(f"Hata: {e}")
+        if st.button(tt("DEMATEL Hesapla & Uygula", "Calculate & Apply DEMATEL"), key="dem_btn"):
+            try:
+                all_weights = []
+                dematel_profile = "classical"
+                for dem_input in dem_inputs:
+                    if dem_input["mode"] == "fuzzy":
+                        res = sub_engine.calc_fuzzy_dematel(dem_input["triangular_matrix"], defuzz_method="graded_mean")
+                        dematel_profile = "fuzzy"
+                    else:
+                        res = sub_engine.calc_dematel(np.asarray(dem_input["matrix"], dtype=float))
+                    all_weights.append(res['weights'])
+                
+                final_w = aggregate_weights(all_weights)
+                apply_weights(final_w.tolist(), "Fuzzy DEMATEL" if dematel_profile == "fuzzy" else "DEMATEL", data_profile=dematel_profile)
+            except Exception as e:
+                st.error(f"Hata: {e}")
 
     # --- SMART ---
     with tabs[4]:
@@ -902,52 +475,20 @@ def render_subjective_component(criteria: list[str]):
             Directly score your criteria by assigning points between 10 and 100 (e.g., rate your most important as 100).
             """))
         st.info(tt("Kriterlere direkt olarak (10 ile 100 vb.) önem puanları verin.", "Assign direct importance points (e.g., 10 to 100)."))
-        if _is_fuzzy_sub:
-            st.caption(tt(
-                f"Fuzzy SMART, bu doğrudan puanları {fuzzy_spread:.2f} belirsizlik bandıyla alt-orta-üst puan senaryolarına dönüştürür.",
-                f"Fuzzy SMART converts these direct scores into lower-middle-upper scoring scenarios using spread {fuzzy_spread:.2f}.",
-            ))
-
-        dfs_smart = []
-        _smart_exp_tabs = [st.container()] if num_experts == 1 else st.tabs([f"{tt('Uzman', 'Expert')} {i}" for i in range(1, num_experts + 1)])
-        for _ei in range(num_experts):
-            with _smart_exp_tabs[_ei]:
-                _smart_key = f"smart_{n_crit}_exp_{_ei}"
-                if _smart_key not in st.session_state:
-                    st.session_state[_smart_key] = pd.DataFrame(
-                        {"Puan (10-100 vb.)": [50.0] * n_crit}, index=criteria
-                    )
-                _render_upload_and_sample(
-                    method_key="smart", ss_key=_smart_key,
-                    parse_fn=_parse_smart_upload, sample_fn=_sample_smart_csv,
-                    sample_filename="sample_smart.xlsx",
-                    upload_label="SMART puanları yükle (CSV/XLSX)",
-                    upload_label_en="Upload SMART scores (CSV/XLSX)",
-                    criteria=criteria, expert_idx=_ei,
-                )
-                dfs_smart.append(st.data_editor(st.session_state[_smart_key], key=f"edit_{_smart_key}", use_container_width=True))
-
-        if not _is_fuzzy_sub:
-            if st.button(tt("SMART Hesapla & Uygula", "Calculate & Apply SMART"), key="smart_btn"):
-                try:
-                    all_weights = []
-                    for df in dfs_smart:
-                        pts = df["Puan (10-100 vb.)"].to_numpy(dtype=float)
-                        res = sub_engine.calc_smart(pts)
-                        all_weights.append(res['weights'])
-                    final_w = aggregate_weights(all_weights)
-                    apply_weights(final_w.tolist(), "SMART")
-                except Exception as e:
-                    st.error(f"Hata: {e}")
-        else:
-            if st.button(tt("Fuzzy SMART Hesapla & Uygula", "Calculate & Apply Fuzzy SMART"), key="fuzzy_smart_btn"):
-                try:
-                    all_weights = []
-                    for df in dfs_smart:
-                        pts = df["Puan (10-100 vb.)"].to_numpy(dtype=float)
-                        res = sub_engine.calc_fuzzy_smart(pts, spread=fuzzy_spread)
-                        all_weights.append(res["weights"])
-                    final_w = aggregate_weights(all_weights)
-                    apply_weights(final_w.tolist(), "Fuzzy SMART")
-                except Exception as e:
-                    st.error(f"Hata: {e}")
+        
+        dfs_smart = build_expert_tabs("smart", lambda: pd.DataFrame({
+                "Puan (10-100 vb.)": [50.0 for _ in range(n_crit)]
+            }, index=criteria))
+        
+        if st.button(tt("SMART Hesapla & Uygula", "Calculate & Apply SMART")):
+            try:
+                all_weights = []
+                for df in dfs_smart:
+                    pts = df["Puan (10-100 vb.)"].to_numpy(dtype=float)
+                    res = sub_engine.calc_smart(pts)
+                    all_weights.append(res['weights'])
+                
+                final_w = aggregate_weights(all_weights)
+                apply_weights(final_w.tolist(), "SMART", data_profile=None)
+            except Exception as e:
+                st.error(f"Hata: {e}")
