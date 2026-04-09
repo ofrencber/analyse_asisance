@@ -2910,8 +2910,13 @@ def compute_weight_robustness(
     }
 
 @st.cache_data(show_spinner=False)
-def run_full_analysis_cached(data_slice: pd.DataFrame, config_payload: Dict[str, Any]) -> Dict[str, Any]:
+def _run_full_analysis_cached_raw(data_slice: pd.DataFrame, config_payload: Dict[str, Any]) -> Dict[str, Any]:
     return me.run_full_analysis(data_slice, me.AnalysisConfig(**config_payload))
+
+def run_full_analysis_cached(data_slice: pd.DataFrame, config_payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Cache'den gelen read-only sonucu yazılabilir kopya olarak döndürür."""
+    import copy
+    return copy.deepcopy(_run_full_analysis_cached_raw(data_slice, config_payload))
 
 def build_ranking_robustness_table(result: Dict[str, Any]) -> pd.DataFrame:
     ranking = result.get("ranking", {})
