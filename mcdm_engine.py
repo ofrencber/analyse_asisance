@@ -9,107 +9,6 @@ import pandas as pd
 
 EPS = 1e-12
 
-# ---------------------------------------------------------------------------
-# Precondition guard – validates the decision matrix before any computation.
-# References:
-#   Hwang & Yoon (1981): min 2 criteria, min 3 alternatives for MCDM.
-#   Triantaphyllou (2000): constant criteria carry zero information.
-#   Podvezko (2011, CILOS): singular matrix when criterion has zero variance.
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# Data-type purity guard – prevents crisp↔fuzzy cross-contamination.
-# References:
-#   Chen (2000): Fuzzy TOPSIS requires genuine TFN input, not synthetic.
-#   Hwang & Yoon (1981): Crisp MCDM operates on point-valued matrices.
-#   Zimmermann (2001): Fuzzy decision making is meaningful only when
-#     uncertainty is inherent in the data, not artificially injected.
-# ---------------------------------------------------------------------------
-
-def _is_fuzzy_method(method_name: str) -> bool:
-    """Return True if the method name indicates a fuzzy variant."""
-    if method_name is None:
-        return False
-    return method_name.lower().startswith("fuzzy")
-
-
-def _guard_data_method_purity(
-    ranking_method: Optional[str],
-    weight_method: Optional[str],
-    tfn_input: Optional[np.ndarray],
-) -> None:
-    """Raise ValueError if data type and method type are mismatched.
-
-    Rules (no synthetic data generation allowed):
-      1. Fuzzy method + no TFN input → BLOCK (don't fabricate fuzzy numbers)
-      2. Crisp method + TFN input present → BLOCK (don't collapse fuzzy to crisp)
-    """
-    rank_is_fuzzy = _is_fuzzy_method(ranking_method)
-    weight_is_fuzzy = _is_fuzzy_method(weight_method)
-    has_tfn = tfn_input is not None
-
-    if (rank_is_fuzzy or weight_is_fuzzy) and not has_tfn:
-        fuzzy_name = ranking_method if rank_is_fuzzy else weight_method
-        raise ValueError(
-            f"'{fuzzy_name}' bulanık (fuzzy) bir yöntemdir ve üçgen bulanık sayı (TFN) "
-            f"formatında veri gerektirir. Crisp (kesin) veri ile bulanık analiz yapılamaz — "
-            f"sentetik bulanık sayı üretimi bilimsel olarak geçerli değildir. "
-            f"Lütfen bulanık veri girin veya crisp bir yöntem seçin. "
-            f"[Ref: Zimmermann, 2001; Chen, 2000]"
-        )
-
-    if not rank_is_fuzzy and not weight_is_fuzzy and has_tfn:
-        method_name = ranking_method or weight_method or "?"
-        raise ValueError(
-            f"'{method_name}' crisp (kesin) bir yöntemdir ancak bulanık (TFN) veri "
-            f"yüklendi. Bulanık veri crisp yönteme zorlanamaz — bu, belirsizlik "
-            f"bilgisinin kaybolmasına neden olur. "
-            f"Lütfen bulanık bir yöntem seçin veya crisp veri yükleyin. "
-            f"[Ref: Hwang & Yoon, 1981; Chen, 2000]"
-        )
-
-
-def _guard_decision_matrix(
-    df: pd.DataFrame,
-    criteria: Sequence[str],
-    context: str = "",
-) -> List[str]:
-    """Return list of warning strings; raise ValueError on fatal issues."""
-    warnings: List[str] = []
-    # 1. NaN propagation guard
-    nan_cols = [c for c in criteria if df[c].isna().all()]
-    if nan_cols:
-        raise ValueError(
-            f"Tamamen boş kriter(ler) tespit edildi: {', '.join(nan_cols)}. "
-            f"Bu kriterler analiz edilemez — lütfen kaldırın veya doldurun. "
-            f"[Ref: Triantaphyllou, 2000]"
-        )
-    nan_ratio = df[criteria].isna().sum().sum() / max(df[criteria].size, 1)
-    if nan_ratio > 0.10:
-        warnings.append(
-            f"Karar matrisinde %{nan_ratio*100:.1f} eksik gözlem var. "
-            f"Sonuçlar güvenilir olmayabilir."
-        )
-    # 2. Constant (zero-variance) criteria detection
-    constant_cols = [c for c in criteria if df[c].nunique(dropna=True) <= 1]
-    if constant_cols:
-        warnings.append(
-            f"Sabit kriter(ler): {', '.join(constant_cols)}. "
-            f"Bu kriterler ayırt edicilik taşımaz; CILOS/IDOCRIW gibi matris-ters "
-            f"gerektiren yöntemlerde tekil matris hatasına neden olabilir. "
-            f"[Ref: Podvezko, 2011]"
-        )
-    # 3. Minimum dimensionality
-    if len(criteria) < 2:
-        raise ValueError(
-            "MCDM analizi en az 2 kriter gerektirir. [Ref: Hwang & Yoon, 1981]"
-        )
-    if len(df) < 2:
-        raise ValueError(
-            "MCDM analizi en az 2 alternatif gerektirir. [Ref: Hwang & Yoon, 1981]"
-        )
-    return warnings
-
 
 OBJECTIVE_WEIGHT_METHODS = [
     "Entropy",
@@ -645,7 +544,11 @@ def _as_numeric_df(data: pd.DataFrame, criteria: Sequence[str]) -> pd.DataFrame:
     df = data.loc[:, list(criteria)].copy()
     for c in criteria:
         df[c] = pd.to_numeric(df[c], errors="coerce")
-    return df.astype(float)
+    df = df.astype(float)
+    # Drop rows with any NaN to prevent downstream errors (CILOS, Entropy, etc.)
+    if df.isna().any().any():
+        df = df.dropna()
+    return df
 
 
 def _normalize_weights(values: Sequence[float]) -> np.ndarray:
@@ -858,24 +761,6 @@ def pca_diagnostics(data: pd.DataFrame, criteria: Sequence[str], criteria_types:
     from sklearn.preprocessing import StandardScaler
     df = _as_numeric_df(data, criteria)
     oriented = _normalize_minmax(df, criteria_types)
-    # Guard: StandardScaler divides by std; constant columns produce NaN.
-    # Jolliffe (2002, Principal Component Analysis, 2nd ed.) notes that
-    # zero-variance variables must be excluded before standardisation.
-    zero_var_cols = oriented.columns[oriented.std(axis=0) < EPS].tolist()
-    if zero_var_cols:
-        oriented = oriented.drop(columns=zero_var_cols)
-        criteria = [c for c in criteria if c not in zero_var_cols]
-    if oriented.shape[1] < 2:
-        # Cannot run PCA with fewer than 2 variable columns
-        return {
-            "oriented_matrix": oriented,
-            "explained_variance": pd.DataFrame(columns=["Bileşen", "eigenvalue"]),
-            "explained_ratio": pd.DataFrame(columns=["Bileşen", "variance_ratio"]),
-            "loadings": pd.DataFrame(columns=["Kriter"]),
-            "score_df": pd.DataFrame(columns=["Alternatif", "PC1", "PC2"]),
-            "selected_components": [],
-            "skipped_constant": zero_var_cols,
-        }
     scaler = StandardScaler()
     X = scaler.fit_transform(oriented)
     pca = PCA()
@@ -924,11 +809,7 @@ def _weights_entropy(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tupl
 
 def _weights_critic(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tuple[Dict[str, float], Dict[str, Any]]:
     ndata = _normalize_minmax(data, criteria_types)
-    # Diakoulaki et al. (1995): CRITIC uses sample std. With n=1, ddof=1
-    # produces NaN. Fall back to ddof=0 (population std) for n<=2.
-    _ddof = 1 if len(ndata) > 2 else 0
-    stds = ndata.std(axis=0, ddof=_ddof).to_numpy(dtype=float)
-    stds = np.where(np.isfinite(stds), stds, 0.0)
+    stds = ndata.std(axis=0, ddof=1).to_numpy(dtype=float)
     corr = ndata.corr().fillna(0.0).to_numpy(dtype=float)
     contrast = stds * np.sum(1.0 - corr, axis=1)
     weights = _normalize_weights(contrast)
@@ -943,9 +824,7 @@ def _weights_critic(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tuple
 
 def _weights_sd(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tuple[Dict[str, float], Dict[str, Any]]:
     ndata = _normalize_minmax(data, criteria_types)
-    _ddof = 1 if len(ndata) > 2 else 0
-    stds = ndata.std(axis=0, ddof=_ddof).to_numpy(dtype=float)
-    stds = np.where(np.isfinite(stds), stds, 0.0)
+    stds = ndata.std(axis=0, ddof=1).to_numpy(dtype=float)
     weights = _normalize_weights(stds)
     w = dict(zip(ndata.columns, weights))
     det = {
@@ -1032,7 +911,7 @@ def _cilos_benefit_matrix(data: pd.DataFrame, criteria_types: Dict[str, str]) ->
 def _weights_cilos(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tuple[Dict[str, float], Dict[str, Any]]:
     benefit = _cilos_benefit_matrix(data, criteria_types)
     cols = list(benefit.columns)
-    best_rows = {c: benefit[c].idxmax() for c in cols}
+    best_rows = {c: benefit[c].idxmax(skipna=True) for c in cols}
     a_matrix = pd.DataFrame(
         [benefit.loc[best_rows[c], cols].to_numpy(dtype=float) for c in cols],
         index=cols,
@@ -1054,15 +933,7 @@ def _weights_cilos(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tuple[
     lhs[-1, :] = 1.0
     rhs = np.zeros(len(cols), dtype=float)
     rhs[-1] = 1.0
-    # Guard: CILOS requires a non-singular F matrix.
-    # Podvezko (2011) notes the system is solvable only when criteria
-    # provide distinct information. Constant or near-constant criteria
-    # cause rank deficiency. Fallback: uniform weights with warning.
-    mat_rank = np.linalg.matrix_rank(lhs)
-    if mat_rank < len(cols):
-        raw = np.ones(len(cols), dtype=float)  # fallback: equal weights
-    else:
-        raw = np.linalg.lstsq(lhs, rhs, rcond=None)[0]
+    raw = np.linalg.lstsq(lhs, rhs, rcond=None)[0]
     raw = np.clip(raw, 0.0, None)
     weights = _normalize_weights(raw)
     w = dict(zip(cols, weights))
@@ -1119,10 +990,6 @@ def _weights_fuzzy_generic(
     detail_key: str,
     tfn_input: Optional[np.ndarray] = None,
 ) -> Tuple[Dict[str, float], Dict[str, Any]]:
-    # Guard: spread must be in (0, 1). Values >= 1 produce zero-valued
-    # lower scenarios, causing singular matrices in CILOS/IDOCRIW.
-    # Chen (2000, Fuzzy TOPSIS) defines spread as a fraction of the crisp value.
-    spread = float(np.clip(spread, 0.01, 0.99))
     cols = list(data.columns)
     stack: List[np.ndarray] = []
     rows: List[Dict[str, Any]] = []
@@ -1135,22 +1002,10 @@ def _weights_fuzzy_generic(
             ("Upper",  pd.DataFrame(tfn_input[:, :, 2], index=data.index, columns=cols).astype(float)),
         ]
     else:
-        # No synthetic fuzzy generation from crisp data.
-        # Zimmermann (2001): fuzzy numbers must originate from genuine uncertainty.
-        raise ValueError(
-            "Bulanık ağırlık yöntemi seçildi ancak TFN (üçgen bulanık sayı) verisi sağlanmadı. "
-            "Crisp veriden sentetik bulanık sayı üretimi bilimsel olarak geçerli değildir. "
-            "[Ref: Zimmermann, 2001]"
-        )
+        scenarios = _build_fuzzy_data_scenarios(data, spread)
 
     for scenario_name, scenario_df in scenarios:
-        try:
-            w, det = runner(scenario_df, criteria_types)
-        except Exception:
-            # If a single fuzzy scenario fails (e.g., singular matrix in lower
-            # scenario), skip it and rely on remaining scenarios.
-            # Buckley (1985): fuzzy MCDM should degrade gracefully.
-            continue
+        w, det = runner(scenario_df, criteria_types)
         vec = np.asarray([float(w[c]) for c in cols], dtype=float)
         stack.append(vec)
         for crit, val in zip(cols, vec):
@@ -1160,12 +1015,6 @@ def _weights_fuzzy_generic(
                 tagged = value.copy()
                 tagged.insert(0, "Senaryo", scenario_name)
                 detail_frames.setdefault(key, []).append(tagged)
-
-    if not stack:
-        # All scenarios failed — fall back to crisp computation
-        w, det = runner(data, criteria_types)
-        vec = np.asarray([float(w[c]) for c in cols], dtype=float)
-        stack.append(vec)
 
     avg = np.mean(np.vstack(stack), axis=0)
     weights = _normalize_weights(avg)
@@ -1381,6 +1230,11 @@ def compute_objective_weights(
     tfn_input: Optional[np.ndarray] = None,
 ) -> Tuple[Dict[str, float], Dict[str, Any]]:
     df = _as_numeric_df(data, criteria)
+    if len(df) < 2:
+        raise ValueError(
+            f"Ağırlık hesabı için en az 2 geçerli (NaN içermeyen) satır gereklidir. "
+            f"Mevcut geçerli satır sayısı: {len(df)}"
+        )
     dispatch = {
         "Entropy": _weights_entropy,
         "Fuzzy Entropy": lambda d, ct: _weights_fuzzy_entropy(d, ct, spread=fuzzy_spread, tfn_input=tfn_input),
@@ -1666,10 +1520,7 @@ def _rank_saw(data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[
 def _rank_wpm(data: pd.DataFrame, criteria_types: Dict[str, str], weights: Dict[str, float]) -> Tuple[np.ndarray, Dict[str, Any]]:
     norm = _normalize_minmax(data, criteria_types)
     wvec = np.asarray([weights[c] for c in norm.columns], dtype=float)
-    # Bridgman (1922): WPM = ∏(x_ij^w_j). Use log-domain to prevent
-    # underflow/overflow: exp(Σ w_j * ln(x_ij)).
-    log_norm = np.log(norm.to_numpy(dtype=float) + EPS)
-    raw = np.exp(np.sum(log_norm * wvec, axis=1))
+    raw = np.prod(np.power(norm.to_numpy(dtype=float) + EPS, wvec), axis=1)
     score = raw.copy()
     det = {
         "normalized_matrix": norm,
@@ -2044,13 +1895,7 @@ def _rank_fuzzy_topsis(
         det["parameters"] = params
         return score, det
     criteria = list(data.columns)
-    if tfn_input is None:
-        raise ValueError(
-            "Bulanık sıralama yöntemi seçildi ancak TFN verisi sağlanmadı. "
-            "Crisp veriden sentetik bulanık sayı üretimi bilimsel olarak geçerli değildir. "
-            "[Ref: Zimmermann, 2001; Chen, 2000]"
-        )
-    tfn = tfn_input
+    tfn = tfn_input if tfn_input is not None else _triangular_fuzzy_from_crisp(data, spread)
     norm = _normalize_fuzzy_tfn(tfn, criteria, criteria_types)
     wvec = np.asarray([weights[c] for c in criteria], dtype=float)
     weighted = norm * wvec.reshape(1, -1, 1)
@@ -2089,34 +1934,18 @@ def _rank_fuzzy_by_scenarios(
         det["parameters"] = merged_params
         return score, det
     criteria = list(data.columns)
-    if tfn_input is None:
-        raise ValueError(
-            "Bulanık sıralama yöntemi seçildi ancak TFN verisi sağlanmadı. "
-            "Crisp veriden sentetik bulanık sayı üretimi bilimsel olarak geçerli değildir. "
-            "[Ref: Zimmermann, 2001; Chen, 2000]"
-        )
-    tfn = tfn_input
+    tfn = tfn_input if tfn_input is not None else _triangular_fuzzy_from_crisp(data, spread)
     labels = ("Lower", "Middle", "Upper")
     scenario_scores: Dict[str, np.ndarray] = {}
     scenario_details: Dict[str, Dict[str, Any]] = {}
 
     for idx, label in enumerate(labels):
         scenario_df = pd.DataFrame(tfn[:, :, idx], index=data.index, columns=criteria)
-        try:
-            sc, det = ranker(scenario_df, criteria_types, weights)
-            scenario_scores[label] = np.asarray(sc, dtype=float).reshape(-1)
-            scenario_details[label] = det
-        except Exception:
-            # Graceful degradation: skip failed scenario (Buckley, 1985)
-            pass
+        sc, det = ranker(scenario_df, criteria_types, weights)
+        scenario_scores[label] = np.asarray(sc, dtype=float).reshape(-1)
+        scenario_details[label] = det
 
-    if not scenario_scores:
-        # All fuzzy scenarios failed — fall back to crisp
-        sc, det = ranker(data, criteria_types, weights)
-        scenario_scores["Middle"] = np.asarray(sc, dtype=float).reshape(-1)
-        scenario_details["Middle"] = det
-
-    stacked = np.vstack(list(scenario_scores.values()))
+    stacked = np.vstack([scenario_scores["Lower"], scenario_scores["Middle"], scenario_scores["Upper"]])
     score = np.mean(stacked, axis=0)
     middle_det = scenario_details.get("Middle", {})
     det: Dict[str, Any] = dict(middle_det) if isinstance(middle_det, dict) else {}
@@ -2656,6 +2485,11 @@ def rank_alternatives(
     tfn_input: Optional[np.ndarray] = None,
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     df = _as_numeric_df(data, criteria)
+    if len(df) < 2:
+        raise ValueError(
+            f"Sıralama için en az 2 geçerli (NaN içermeyen) satır gereklidir. "
+            f"Mevcut geçerli satır sayısı: {len(df)}"
+        )
     # Input weight validation
     w_vec = np.asarray([float(weights.get(c, 0.0)) for c in criteria], dtype=float)
     if np.any(w_vec < 0):
@@ -3292,12 +3126,7 @@ def run_full_analysis(
     criteria = list(config.criteria)
     criteria_types = {c: config.criteria_types.get(c, "max") for c in criteria}
     df = _as_numeric_df(data, criteria)
-    # Data-type purity guard: no crisp↔fuzzy cross-contamination
-    _guard_data_method_purity(config.ranking_method, config.weight_method, tfn_input)
-    # Pre-flight guard (literature-backed preconditions)
-    _guard_warnings = _guard_decision_matrix(df, criteria, context="run_full_analysis")
     validation = validate_problem(df, criteria, criteria_types)
-    validation["warnings"].extend(_guard_warnings)
     if validation["errors"]:
         raise ValueError("\n".join(validation["errors"]))
 

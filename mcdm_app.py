@@ -1241,18 +1241,14 @@ def ranking_method_groups(layer_key: str) -> List[tuple[str, List[str]]]:
     ]
 
 def sample_dataset() -> pd.DataFrame:
-    rng = np.random.default_rng(42)
-    n = 16
+    n = 10
     df = pd.DataFrame({
         "Alternatif": [f"A{idx:02d}" for idx in range(1, n + 1)],
-        "Karlılık": rng.uniform(10, 28, n),
-        "Likidite": rng.uniform(0.9, 2.6, n),
-        "PazarPayı": rng.uniform(8, 22, n),
-        "MüşteriMemnuniyeti": rng.uniform(55, 95, n),
-        "KaliteSkoru": rng.uniform(60, 98, n),
-        "TeslimSüresi": rng.uniform(2, 15, n),
-        "Risk": rng.uniform(1, 12, n),
-        "İşletmeMaliyeti": rng.uniform(80, 420, n),
+        "Karlılık": [18.5, 22.1, 14.3, 25.7, 19.8, 16.2, 23.4, 20.6, 12.9, 27.0],
+        "PazarPayı": [15.2, 11.8, 19.6, 13.5, 17.4, 21.0, 10.3, 16.7, 14.1, 18.9],
+        "MüşteriMemnuniyeti": [78, 85, 72, 91, 68, 80, 88, 74, 65, 93],
+        "TeslimSüresi": [5.2, 8.1, 3.7, 6.5, 9.3, 4.8, 7.2, 10.5, 6.0, 3.4],
+        "İşletmeMaliyeti": [185, 240, 150, 310, 195, 170, 280, 220, 135, 260],
     })
     return df
 
@@ -1294,18 +1290,14 @@ def sample_fuzzy_dataset() -> pd.DataFrame:
     return _fuzzify_sample_dataset(sample_dataset(), ["Alternatif"])
 
 def sample_dataset_en() -> pd.DataFrame:
-    rng = np.random.default_rng(142)
-    n = 16
+    n = 10
     df = pd.DataFrame({
         "Alternative": [f"A{idx:02d}" for idx in range(1, n + 1)],
-        "Profitability": rng.uniform(10, 28, n),
-        "Liquidity": rng.uniform(0.9, 2.6, n),
-        "MarketShare": rng.uniform(8, 22, n),
-        "CustomerSatisfaction": rng.uniform(55, 95, n),
-        "QualityScore": rng.uniform(60, 98, n),
-        "DeliveryTime": rng.uniform(2, 15, n),
-        "Risk": rng.uniform(1, 12, n),
-        "OperatingCost": rng.uniform(80, 420, n),
+        "Profitability": [18.5, 22.1, 14.3, 25.7, 19.8, 16.2, 23.4, 20.6, 12.9, 27.0],
+        "MarketShare": [15.2, 11.8, 19.6, 13.5, 17.4, 21.0, 10.3, 16.7, 14.1, 18.9],
+        "CustomerSatisfaction": [78, 85, 72, 91, 68, 80, 88, 74, 65, 93],
+        "DeliveryTime": [5.2, 8.1, 3.7, 6.5, 9.3, 4.8, 7.2, 10.5, 6.0, 3.4],
+        "OperatingCost": [185, 240, 150, 310, 195, 170, 280, 220, 135, 260],
     })
     return df
 
@@ -1314,34 +1306,36 @@ def sample_fuzzy_dataset_en() -> pd.DataFrame:
     return _fuzzify_sample_dataset(sample_dataset_en(), ["Alternative"])
 
 def sample_panel_dataset_en() -> pd.DataFrame:
-    rng = np.random.default_rng(2026)
-    countries = [
-        "United States", "Canada", "Mexico", "Brazil", "Argentina",
-        "United Kingdom", "Germany", "France", "Italy", "Spain",
-        "Netherlands", "Sweden", "Norway", "Poland", "Turkey",
-        "Russia", "China", "Japan", "South Korea", "India",
-        "Indonesia", "Malaysia", "Thailand", "Vietnam", "Philippines",
-        "Australia", "New Zealand", "South Africa", "Egypt", "Saudi Arabia",
-    ]
-    years = [2020, 2021, 2022, 2023, 2024]
+    countries = ["USA", "Germany", "Japan", "Brazil", "Turkey",
+                 "UK", "France", "China", "India", "Canada"]
+    years = [2022, 2023, 2024]
     rows: List[Dict[str, Any]] = []
-
+    # Deterministic base values per country (all positive, no zeros)
+    _bases = [
+        (4.2, 3.1, 4.5, 3.8, 72),
+        (3.5, 2.4, 5.2, 4.1, 68),
+        (2.8, 1.9, 6.0, 3.5, 75),
+        (5.1, 6.5, 2.1, 1.8, 55),
+        (4.8, 8.2, 3.3, 2.2, 60),
+        (3.9, 2.8, 4.8, 3.6, 70),
+        (3.2, 3.5, 4.0, 3.3, 65),
+        (6.5, 2.2, 3.0, 2.5, 62),
+        (7.0, 5.8, 1.5, 1.2, 50),
+        (3.6, 2.6, 4.3, 3.9, 71),
+    ]
     for c_idx, country in enumerate(countries):
-        country_factor = 0.88 + (c_idx / (len(countries) - 1)) * 0.24
+        bg, inf, rd, ren, dig = _bases[c_idx]
         for y_idx, year in enumerate(years):
-            progress = y_idx / (len(years) - 1)
+            p = 0.05 * y_idx  # small yearly progression
             rows.append({
                 "Country": country,
                 "Year": year,
-                "GDPGrowth": rng.uniform(1.2, 6.8) * country_factor + 0.35 * progress,
-                "Inflation": rng.uniform(1.8, 9.8) * (1.08 - 0.12 * progress),
-                "Unemployment": rng.uniform(3.0, 12.0) * (1.04 - 0.08 * progress),
-                "RAndDSpending": rng.uniform(0.6, 4.2) * country_factor + 0.12 * progress,
-                "DigitalReadiness": rng.uniform(45, 92) + 2.0 * progress + 2.5 * country_factor,
-                "RenewableEnergyShare": rng.uniform(8, 58) + 3.0 * progress,
-                "PublicDebt": rng.uniform(28, 130) * (1.02 - 0.05 * progress),
+                "GDPGrowth": round(bg + p * 2, 2),
+                "Inflation": round(inf - p * 3, 2),
+                "RAndDSpending": round(rd + p, 2),
+                "RenewableEnergy": round(ren + p * 4, 2),
+                "DigitalReadiness": round(dig + p * 10, 1),
             })
-
     return pd.DataFrame(rows)
 
 
@@ -3443,6 +3437,14 @@ def _short_error_text(exc: Exception, max_len: int = 180) -> str:
 
 def _safe_error_code(exc: Exception) -> str:
     return type(exc).__name__ if exc is not None else "Error"
+
+def _safe_error_detail(exc: Exception) -> str:
+    """Return a human-readable error message including both the type and the message."""
+    if exc is None:
+        return "Error"
+    msg = str(exc).strip()
+    code = type(exc).__name__
+    return f"{code}: {msg}" if msg else code
 
 def _set_docx_run_style(
     run,
@@ -9126,13 +9128,20 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
     working = raw_data.copy()
     working = clean_dataframe(working, missing_strategy, clip_outliers)
     if panel_mode and panel_year_col and panel_year_col in raw_data.columns:
-        working[panel_year_col] = raw_data[panel_year_col]
+        working[panel_year_col] = raw_data.loc[working.index, panel_year_col].values
     st.session_state["alt_names"] = {}
     if (not panel_mode) and isinstance(raw_data, pd.DataFrame):
         _entity_candidates = _guess_entity_columns(raw_data)
         if _entity_candidates:
             _single_entity_col = _entity_candidates[0]
-            working.index = _make_unique_labels(raw_data[_single_entity_col].tolist(), fallback_prefix="A")
+            # Use working's own index to slice from raw_data so lengths always match
+            _shared_idx = working.index.intersection(raw_data.index)
+            if len(_shared_idx) == len(working):
+                _entity_values = raw_data.loc[working.index, _single_entity_col].tolist()
+            else:
+                # Fallback: if indices diverged (e.g. reset_index), use positional alignment
+                _entity_values = raw_data[_single_entity_col].iloc[:len(working)].tolist()
+            working.index = _make_unique_labels(_entity_values, fallback_prefix="A")
         else:
             working.index = [f"A{idx+1}" for idx in range(len(working))]
     else:
@@ -9576,49 +9585,25 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
 
             if "Objektif" in weight_mode or "Objective" in weight_mode:
                 weight_mode_key = "objective"
-                st.caption(tt("Aşağıdaki alt sekmelerden klasik veya fuzzy objektif yöntemleri tek seçim mantığıyla kullanabilirsiniz.", "Use the tabs below to choose a single classical or fuzzy objective weighting method."))
+                _has_tfn_data_w = bool(st.session_state.get("tfn_raw"))
                 # Checkbox durumlarını ilk açılışta ayarla
                 for _m in methods_internal:
                     if f"weight_cb_{_m}" not in st.session_state:
                         st.session_state[f"weight_cb_{_m}"] = False
-                _obj_tab_classic, _obj_tab_fuzzy = st.tabs(
-                    [tt("🟦 Klasik", "🟦 Classical"), tt("🟪 Fuzzy", "🟪 Fuzzy")]
-                )
-                with _obj_tab_classic:
-                    st.caption(tt("Kesin sayısal verilerden doğrudan ağırlık üretir.", "Derives weights directly from crisp numeric data."))
-                    _render_weight_method_selector(weight_method_groups("classical"), methods_internal)
-                with _obj_tab_fuzzy:
-                    if bool(st.session_state.get("tfn_raw")):
-                        st.caption(tt(
-                            "TFN veri yüklü — (l, m, u) üçgen değerleri doğrudan kullanılarak bulanık ağırlık üretilir.",
-                            "TFN data loaded — fuzzy weights are derived directly from the (l, m, u) triangle values.",
-                        ))
-                    else:
-                        st.caption(tt(
-                            "Belirsizlik bandı ve bulanık mantık ile ağırlık üretir. "
-                            "TFN veri yüklerseniz (l, m, u) üçgenleri doğrudan kullanılır — daha gerçekçi belirsizlik modeli.",
-                            "Derives weights using uncertainty bands and fuzzy logic. "
-                            "If you load TFN data, the (l, m, u) triangles are used directly — more realistic uncertainty model.",
-                        ))
-                        with st.expander(tt("📋 TFN veri ile fuzzy ağırlık: örnek ve şablon", "📋 Fuzzy weights with TFN data: sample & template"), expanded=False):
-                            st.markdown(tt(
-                                "Fuzzy ağırlık yöntemleri TFN verisi yüklendiğinde her senaryoyu (alt/orta/üst) ayrı ayrı değerlendirir. "
-                                "Veri bölümünde **🔺 Üçgensel bulanık (TFN)** modunu seçin; "
-                                "her kriter için `KriterAdi_l`, `KriterAdi_m`, `KriterAdi_u` sütunları ekleyin.",
-                                "Fuzzy weight methods evaluate each scenario (lower/middle/upper) separately when TFN data is loaded. "
-                                "Select **🔺 Triangular fuzzy (TFN)** mode in the Data section; "
-                                "add `CriterionName_l`, `CriterionName_m`, `CriterionName_u` columns for each criterion.",
-                            ))
-                            st.markdown(f"**{tt('Örnek TFN verisi (ilk 5 satır):', 'Sample TFN data (first 5 rows):')}**")
-                            render_table(sample_fuzzy_dataset_en().iloc[:5, :7])
-                            st.download_button(
-                                label=tt("⬇️ Örnek TFN veri seti indir (CSV)", "⬇️ Download sample TFN dataset (CSV)"),
-                                data=sample_fuzzy_dataset_en().to_csv(index=False).encode("utf-8"),
-                                file_name="sample_tfn_dataset.csv",
-                                mime="text/csv",
-                                key="dl_tfn_sample_from_obj_fuzzy_tab",
-                            )
+                if _has_tfn_data_w:
+                    # TFN veri yüklü → yalnızca fuzzy ağırlık yöntemleri
+                    st.info(tt(
+                        "🔺 TFN veri yüklü — yalnızca **Fuzzy** ağırlık yöntemleri kullanılabilir. Klasik yöntemler için crisp veri yükleyin.",
+                        "🔺 TFN data loaded — only **Fuzzy** weighting methods are available. Load crisp data for classical methods.",
+                    ))
                     _render_weight_method_selector(weight_method_groups("fuzzy"), methods_internal)
+                else:
+                    # Crisp veri yüklü → yalnızca klasik ağırlık yöntemleri
+                    st.caption(tt(
+                        "Crisp veri yüklü — klasik objektif yöntemler kullanılabilir. Fuzzy yöntemler için TFN (l, m, u) formatında veri yükleyin.",
+                        "Crisp data loaded — classical objective methods are available. Load TFN (l, m, u) data for fuzzy methods.",
+                    ))
+                    _render_weight_method_selector(weight_method_groups("classical"), methods_internal)
                 # Seçili yöntemi güncelle
                 _all_weight_checked = [m for m in methods_internal if st.session_state.get(f"weight_cb_{m}", False)]
                 if _all_weight_checked:
@@ -9899,94 +9884,21 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                 )
                 _has_tfn_data = bool(st.session_state.get("tfn_raw"))
                 if _has_tfn_data:
-                    # TFN veri yüklü → klasik yöntemler önerilmez, direkt fuzzy
+                    # TFN veri yüklü → yalnızca fuzzy sıralama yöntemleri
                     all_ranks = me.FUZZY_MCDM_METHODS
                     _layer_key = "fuzzy"
                     st.info(tt(
-                        "🔺 TFN veri yüklü — yalnızca **Fuzzy** yöntemler kullanılabilir.",
-                        "🔺 TFN data loaded — only **Fuzzy** methods are available.",
+                        "🔺 TFN veri yüklü — yalnızca **Fuzzy** sıralama yöntemleri kullanılabilir. Klasik yöntemler için crisp veri yükleyin.",
+                        "🔺 TFN data loaded — only **Fuzzy** ranking methods are available. Load crisp data for classical methods.",
                     ))
                 else:
-                    _layer_options = [
-                        tt("Temel Yöntemler (Klasik Mantık)", "Core Methods (Classical Logic)"),
-                        tt("İleri Düzey Yöntemler (Fuzzy)", "Advanced Methods (Fuzzy)"),
-                    ]
-                    layer_choice = st.radio(
-                        f"**{tt('Analiz Katmanı', 'Analysis Layer')}**",
-                        _layer_options,
-                        horizontal=True,
-                        help=tt(
-                            "Klasik katman kesin sayısal değerlerle çalışır. Fuzzy katman: crisp veri yüklüyse belirsizlik spread'i ile TFN üretilir.",
-                            "Classical layer uses crisp numeric values. Fuzzy layer: with crisp data, TFN is generated from the spread parameter.",
-                        ),
-                    )
-                    if layer_choice == _layer_options[0]:
-                        all_ranks = me.CLASSICAL_MCDM_METHODS
-                        _layer_key = "classical"
-                    else:
-                        all_ranks = me.FUZZY_MCDM_METHODS
-                        _layer_key = "fuzzy"
-
-                # ── Fuzzy katman seçildi (crisp veri): spread ile TFN üretileceği bilgisi ──
-                if _layer_key == "fuzzy" and not _has_tfn_data:
-                    st.warning(tt(
-                        "⚠️ Şu an crisp veri yüklü. Fuzzy yöntemler spread parametresiyle TFN üretecek. "
-                        "Daha gerçekçi belirsizlik modellemesi için veri bölümünde **TFN modunu** seçin ve "
-                        "(l, m, u) sütunlu verinizi yükleyin veya manuel tabloya girin.",
-                        "⚠️ Crisp data is loaded. Fuzzy methods will generate TFN from the spread parameter. "
-                        "For more realistic uncertainty modelling, select **TFN mode** in the Data section and "
-                        "upload or enter your data with (l, m, u) columns.",
+                    # Crisp veri yüklü → yalnızca klasik sıralama yöntemleri
+                    all_ranks = me.CLASSICAL_MCDM_METHODS
+                    _layer_key = "classical"
+                    st.caption(tt(
+                        "Crisp veri yüklü — klasik sıralama yöntemleri kullanılabilir. Fuzzy yöntemler için TFN (l, m, u) formatında veri yükleyin.",
+                        "Crisp data loaded — classical ranking methods are available. Load TFN (l, m, u) data for fuzzy methods.",
                     ))
-                    with st.expander(tt("📋 TFN veri formatı nedir? Örnek ve şablon", "📋 What is TFN data format? Sample & template"), expanded=False):
-                        st.markdown(tt(
-                            """
-**Üçgensel Bulanık Sayı (TFN) formatı:**
-
-Her kriter için üç sütun gerekir:
-
-| Sütun | Anlam | Örnek |
-|-------|-------|-------|
-| `KriterAdi_l` | Alt sınır (kötümser) | `Maliyet_l` |
-| `KriterAdi_m` | En olası değer | `Maliyet_m` |
-| `KriterAdi_u` | Üst sınır (iyimser) | `Maliyet_u` |
-
-**Kural:** `l ≤ m ≤ u` — alt sınır her zaman en küçük olmalıdır.
-
-**Nasıl kullanılır?**
-1. Veri bölümünde **🔺 Üçgensel bulanık (TFN)** modunu seçin
-2. Dosyanızı yükleyin VEYA manuel tabloya girin
-3. Ağırlık ve sıralama adımlarına geçin
-""",
-                            """
-**Triangular Fuzzy Number (TFN) format:**
-
-Each criterion requires three columns:
-
-| Column | Meaning | Example |
-|--------|---------|---------|
-| `CriterionName_l` | Lower bound (pessimistic) | `Cost_l` |
-| `CriterionName_m` | Most likely value | `Cost_m` |
-| `CriterionName_u` | Upper bound (optimistic) | `Cost_u` |
-
-**Rule:** `l ≤ m ≤ u` — lower bound must always be the smallest.
-
-**How to use?**
-1. Select **🔺 Triangular fuzzy (TFN)** mode in the Data section
-2. Upload your file OR enter data in the manual grid
-3. Proceed to Weighting and Ranking steps
-""",
-                        ))
-                        st.markdown(f"**{tt('Örnek TFN verisi (ilk 5 satır):', 'Sample TFN data (first 5 rows):')}**")
-                        _tfn_preview = sample_fuzzy_dataset_en().iloc[:5, :7]
-                        render_table(_tfn_preview)
-                        _tfn_csv_bytes = sample_fuzzy_dataset_en().to_csv(index=False).encode("utf-8")
-                        st.download_button(
-                            label=tt("⬇️ Örnek TFN veri seti indir (CSV)", "⬇️ Download sample TFN dataset (CSV)"),
-                            data=_tfn_csv_bytes,
-                            file_name="sample_tfn_dataset.csv",
-                            mime="text/csv",
-                            key="dl_tfn_sample_from_fuzzy_layer",
-                        )
 
                 _sugg_rank_raw = st.session_state.get("_sugg_rank", "TOPSIS, VIKOR, EDAS")
                 _sugg_rank_list = st.session_state.get("_sugg_rank_methods") or ["TOPSIS", "VIKOR", "EDAS"]
@@ -10396,6 +10308,29 @@ if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), use_container_width
     if needs_ranking and not ranking_methods_selected:
         st.error(tt("❗ Lütfen en az bir sıralama yöntemi seçin.", "❗ Please select at least one ranking method."))
         st.stop()
+    # ── Crisp/Fuzzy uyumsuzluk kontrolü ──
+    _has_tfn_run = bool(st.session_state.get("tfn_raw"))
+    _wm_is_fuzzy = str(weight_method).startswith("Fuzzy ")
+    _any_rank_fuzzy = any(str(m).startswith("Fuzzy ") for m in ranking_methods_selected)
+    _any_rank_crisp = any(not str(m).startswith("Fuzzy ") and m != "MULTIMOORA" for m in ranking_methods_selected)
+    if not _has_tfn_run and (_wm_is_fuzzy or _any_rank_fuzzy):
+        st.error(tt(
+            "❗ Crisp veri ile Fuzzy yöntem kullanılamaz. Fuzzy yöntemler için TFN (l, m, u) formatında veri yükleyin.",
+            "❗ Fuzzy methods cannot be used with crisp data. Load TFN (l, m, u) data for fuzzy methods.",
+        ))
+        st.stop()
+    if _has_tfn_run and (not _wm_is_fuzzy and weight_mode_key == "objective"):
+        st.error(tt(
+            "❗ TFN veri ile klasik ağırlık yöntemi kullanılamaz. Fuzzy ağırlık yöntemi seçin veya crisp veri yükleyin.",
+            "❗ Classical weighting cannot be used with TFN data. Select a fuzzy weighting method or load crisp data.",
+        ))
+        st.stop()
+    if _has_tfn_run and _any_rank_crisp:
+        st.error(tt(
+            "❗ TFN veri ile klasik sıralama yöntemi kullanılamaz. Fuzzy sıralama yöntemi seçin veya crisp veri yükleyin.",
+            "❗ Classical ranking cannot be used with TFN data. Select fuzzy ranking methods or load crisp data.",
+        ))
+        st.stop()
     if ("Manuel" in weight_mode or "Manual" in weight_mode) and (not manual_weights_valid):
         st.error(tt("Manuel ağırlık için her seçili kriterde geçerli bir pozitif ham değer girin.", "Enter a valid positive raw value for every selected criterion in manual weighting."))
         st.stop()
@@ -10654,44 +10589,14 @@ if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), use_container_width
                     "error_code": _safe_error_code(exc),
                 },
             )
-            _exc_msg = str(exc).strip()
-            _exc_type = _safe_error_code(exc)
-            # Provide specific, actionable error messages based on exception type
-            _specific_hints = {
-                "LinAlgError": tt(
-                    "Matris hesaplaması başarısız — muhtemelen sabit (tüm değerleri aynı) bir kriter var. "
-                    "CILOS/IDOCRIW gibi matris-ters gerektiren ağırlık yöntemlerinde bu durum tekil matris hatası üretir. "
-                    "Çözüm: Sabit kriterleri kaldırın veya farklı bir ağırlık yöntemi (Entropy, CRITIC) deneyin.",
-                    "Matrix computation failed — likely a constant criterion (all values identical). "
-                    "Methods like CILOS/IDOCRIW require invertible matrices. "
-                    "Solution: Remove constant criteria or use a different weighting method (Entropy, CRITIC)."
-                ),
-                "ValueError": tt(
-                    f"Değer hatası: {_exc_msg}",
-                    f"Value error: {_exc_msg}"
-                ),
-                "ZeroDivisionError": tt(
-                    "Sıfıra bölme hatası — karar matrisinde sıfır veya sabit değerler olabilir. "
-                    "WPM, COPRAS, MARCOS gibi yöntemler pozitif değer gerektirir.",
-                    "Division by zero — the decision matrix may contain zero or constant values. "
-                    "Methods like WPM, COPRAS, MARCOS require positive values."
-                ),
-                "OverflowError": tt(
-                    "Sayısal taşma — kriter değerleri arasında çok büyük ölçek farkı var. "
-                    "Verileri normalizasyon öncesi kontrol edin.",
-                    "Numerical overflow — very large scale differences between criteria values."
-                ),
-            }
-            _hint = _specific_hints.get(_exc_type, tt(
-                f"Beklenmeyen hata ({_exc_type}): {_exc_msg[:200]}",
-                f"Unexpected error ({_exc_type}): {_exc_msg[:200]}"
-            ))
+            _err_detail = _safe_error_detail(exc)
             st.error(tt(
-                "Analiz işlemi tamamlanamadı.",
-                "The analysis could not be completed."
+                f"Analiz işlemi tamamlanamadı.\n\n**Hata:** {_err_detail}",
+                f"The analysis could not be completed.\n\n**Error:** {_err_detail}",
             ))
-            st.warning(_hint)
-            st.caption(tt(f"Hata kodu: {_exc_type}", f"Error code: {_exc_type}"))
+            import traceback as _tb
+            with st.expander(tt("Hata detayları", "Error details")):
+                st.code("".join(_tb.format_exception(type(exc), exc, exc.__traceback__)), language="text")
             st.stop()
 
         result["analysis_time"] = time.time() - start
