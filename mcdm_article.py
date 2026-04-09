@@ -2648,8 +2648,8 @@ def generate_imrad_docx(
                 # Inline bold/italic
                 processed = re.sub(r'\*\*([^*]+)\*\*', r'<b>\1</b>', s)
                 processed = re.sub(r'\*([^*]+)\*', r'<i>\1</i>', processed)
-                # Inline math
-                processed = re.sub(r'\$([^$]+)\$', lambda m: re.sub(r'\\text\{([^}]*)\}', r'\1', m.group(1)), processed)
+                # Inline math — preserve for MathJax rendering
+                processed = re.sub(r'\$([^$]+)\$', r'\\(\1\\)', processed)
                 html_parts.append(f"<p>{processed}</p>")
         if in_table:
             html_parts.append("</table>")
@@ -2663,26 +2663,29 @@ def generate_imrad_docx(
 <meta charset="utf-8">
 <title>{_build_title(d, lang)}</title>
 <script>
-MathJax = {{tex: {{inlineMath: [['\\\\(','\\\\)']]}}, displayMath: [['$$','$$']]}};
+MathJax = {{tex: {{inlineMath: [['\\\\(','\\\\)']], displayMath: [['$$','$$']]}}}};
 </script>
 <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
 <style>
 @page {{ size: A4; margin: 2.5cm; }}
-body {{ font-family: 'Times New Roman', serif; font-size: 12pt; color: #000; line-height: 1.6; text-align: justify; max-width: 800px; margin: 0 auto; padding: 2em; }}
-h1 {{ font-size: 15pt; font-weight: bold; text-align: center; margin: 1em 0 0.5em; color: #000; }}
-h2 {{ font-size: 13pt; font-weight: bold; margin: 1em 0 0.4em; color: #000; border-bottom: 1px solid #ddd; padding-bottom: 0.2em; }}
-h3 {{ font-size: 12pt; font-weight: bold; margin: 0.8em 0 0.3em; color: #000; }}
-p {{ margin: 0.4em 0; }}
+body {{ font-family: 'Times New Roman', serif; font-size: 12pt; color: #000; line-height: 1.8; text-align: justify; max-width: 800px; margin: 0 auto; padding: 2em; }}
+h1 {{ font-size: 15pt; font-weight: bold; text-align: center; margin: 1.2em 0 0.6em; color: #000; }}
+h2 {{ font-size: 13pt; font-weight: bold; margin: 1.2em 0 0.5em; color: #000; border-bottom: 1.5px solid #999; padding-bottom: 0.25em; }}
+h3 {{ font-size: 12pt; font-weight: bold; margin: 1em 0 0.4em; color: #000; }}
+p {{ margin: 0.5em 0; }}
 .guide {{ font-style: italic; font-size: 10pt; color: #666; margin: 0.3em 0 0.8em; }}
-.math {{ text-align: center; margin: 0.8em 0; font-size: 11pt; }}
-.fig {{ text-align: center; margin: 1em 0; }}
-.fig img {{ max-width: 85%; border: 1px solid #eee; }}
-.cap {{ font-style: italic; font-size: 10pt; color: #333; margin-top: 0.3em; }}
-.dt {{ width: 100%; border-collapse: collapse; font-size: 10pt; margin: 0.8em 0; }}
-.dt th {{ background: #f0f0f0; border: 1px solid #ccc; padding: 5px 10px; text-align: left; font-weight: bold; }}
-.dt td {{ border: 1px solid #ddd; padding: 4px 10px; }}
-hr {{ border: none; border-top: 1px solid #ccc; margin: 1.5em 0; }}
+.math {{ text-align: center; margin: 1em 0; font-size: 12pt; overflow-x: auto; }}
+.fig {{ text-align: center; margin: 1.5em 0; page-break-inside: avoid; }}
+.fig img {{ max-width: 90%; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }}
+.cap {{ font-style: italic; font-size: 10pt; color: #333; margin-top: 0.5em; }}
+.dt {{ width: 100%; border-collapse: collapse; font-size: 10pt; margin: 1em 0; page-break-inside: avoid; }}
+.dt th {{ background: #f5f5f5; border: 1px solid #bbb; padding: 6px 12px; text-align: left; font-weight: bold; }}
+.dt td {{ border: 1px solid #ddd; padding: 5px 12px; }}
+.dt tr:nth-child(even) td {{ background: #fafafa; }}
+.dt tr:first-child td {{ font-weight: 600; }}
+hr {{ border: none; border-top: 1px solid #ccc; margin: 2em 0; }}
 .footer {{ font-size: 9pt; font-style: italic; color: #666; margin-top: 2em; border-top: 1px solid #ccc; padding-top: 0.5em; }}
+@media print {{ body {{ max-width: 100%; padding: 0; }} .fig {{ page-break-inside: avoid; }} }}
 </style>
 </head>
 <body>
@@ -2818,6 +2821,115 @@ def _generate_panel_comparison_chart(period_keys, all_period_data, lang):
     fig.savefig(buf, format="png", dpi=150)
     plt.close(fig)
     return buf.getvalue()
+
+
+def _write_panel_consolidated_score_table(doc, period_keys, all_period_data, lang, lang_code):
+    """Consolidated table: all alternatives × all periods with scores and ranks."""
+    rows = []
+    for pk in period_keys:
+        d = all_period_data[pk]
+        rt = d.get("ranking_table")
+        if not isinstance(rt, pd.DataFrame) or rt.empty:
+            continue
+        alt_col = "Alternatif" if "Alternatif" in rt.columns else ("Alternative" if "Alternative" in rt.columns else rt.columns[0])
+        score_col = "Skor" if "Skor" in rt.columns else ("Score" if "Score" in rt.columns else None)
+        rank_col = "Sıra" if "Sıra" in rt.columns else ("Rank" if "Rank" in rt.columns else None)
+        for _, r in rt.iterrows():
+            row = {"Alternatif": str(r[alt_col]), "Dönem": pk}
+            if score_col and score_col in rt.columns:
+                row["Skor"] = round(float(pd.to_numeric(r[score_col], errors="coerce")), 4)
+            if rank_col and rank_col in rt.columns:
+                row["Sıra"] = int(pd.to_numeric(r[rank_col], errors="coerce"))
+            rows.append(row)
+    if not rows:
+        return
+    df = pd.DataFrame(rows)
+    if lang == "EN":
+        df = df.rename(columns={"Alternatif": "Alternative", "Dönem": "Period", "Skor": "Score", "Sıra": "Rank"})
+    label = "Tablo 5. Tüm Dönemlerde Alternatif Skorları ve Sıraları" if lang != "EN" \
+        else "Table 5. Alternative Scores and Rankings Across All Periods"
+    _add_paragraph(doc, label, lang_code=lang_code, bold=True)
+    _add_table(doc, df, lang_code=lang_code, max_rows=100)
+
+
+def _write_panel_detailed_commentary(doc, period_keys, all_period_data, lang, lang_code):
+    """Detailed cross-period comparison commentary with insights."""
+    # Collect leaders and weight changes
+    leaders = {}
+    top_criteria = {}
+    for pk in period_keys:
+        d = all_period_data[pk]
+        rt = d.get("ranking_table")
+        wt = d.get("weight_table")
+        if isinstance(rt, pd.DataFrame) and not rt.empty:
+            alt_col = "Alternatif" if "Alternatif" in rt.columns else ("Alternative" if "Alternative" in rt.columns else rt.columns[0])
+            leaders[pk] = str(rt.iloc[0][alt_col])
+        if isinstance(wt, pd.DataFrame) and not wt.empty:
+            crit_col = "Kriter" if "Kriter" in wt.columns else ("Criterion" if "Criterion" in wt.columns else wt.columns[0])
+            top_criteria[pk] = str(wt.iloc[0][crit_col])
+
+    if not leaders:
+        return
+
+    if lang == "EN":
+        _add_heading(doc, "3.3 Cross-Period Interpretation", level=2, lang_code=lang_code)
+    else:
+        _add_heading(doc, "3.3 Dönemler Arası Yorum", level=2, lang_code=lang_code)
+
+    # Leader stability analysis
+    unique_leaders = list(dict.fromkeys(leaders.values()))
+    n = len(period_keys)
+    if lang == "EN":
+        if len(unique_leaders) == 1:
+            text = (f"Across all {n} periods, {unique_leaders[0]} consistently maintained the top position. "
+                    f"This stability suggests that the leader's superiority is robust to temporal fluctuations in the data.")
+        else:
+            changes = []
+            prev = None
+            for pk in period_keys:
+                if prev and leaders[pk] != prev:
+                    changes.append(f"{pk}: {prev} → {leaders[pk]}")
+                prev = leaders[pk]
+            text = (f"The leader alternative changed {len(changes)} time(s) across {n} periods: "
+                    f"{'; '.join(changes)}. This volatility indicates that the decision environment is "
+                    f"sensitive to temporal shifts, and the decision-maker should consider the specific conditions "
+                    f"of each period before drawing conclusions.")
+    else:
+        if len(unique_leaders) == 1:
+            text = (f"Tüm {n} dönemde {unique_leaders[0]} alternatifi tutarlı biçimde ilk sırada kalmıştır. "
+                    f"Bu kararlılık, liderin üstünlüğünün verideki zamansal dalgalanmalara karşı dayanıklı olduğunu göstermektedir.")
+        else:
+            changes = []
+            prev = None
+            for pk in period_keys:
+                if prev and leaders[pk] != prev:
+                    changes.append(f"{pk}: {prev} → {leaders[pk]}")
+                prev = leaders[pk]
+            text = (f"Lider alternatif {n} dönem boyunca {len(changes)} kez değişmiştir: "
+                    f"{'; '.join(changes)}. Bu oynaklık, karar ortamının zamansal değişimlere duyarlı olduğuna "
+                    f"işaret etmekte olup, karar vericinin her dönemin özgün koşullarını ayrıca değerlendirmesi önerilmektedir.")
+    _add_paragraph(doc, text, lang_code=lang_code)
+
+    # Weight stability analysis
+    unique_top_crit = list(dict.fromkeys(top_criteria.values()))
+    if top_criteria:
+        if lang == "EN":
+            if len(unique_top_crit) == 1:
+                w_text = (f"The most influential criterion remained {unique_top_crit[0]} in all periods, "
+                          f"confirming that the weight structure is temporally stable.")
+            else:
+                w_text = (f"The most influential criterion varied across periods "
+                          f"({', '.join(f'{k}: {v}' for k, v in top_criteria.items())}), "
+                          f"suggesting that the relative importance of criteria shifts over time.")
+        else:
+            if len(unique_top_crit) == 1:
+                w_text = (f"En etkili kriter tüm dönemlerde {unique_top_crit[0]} olarak kalmış, "
+                          f"bu durum ağırlık yapısının zamansal olarak kararlı olduğunu teyit etmektedir.")
+            else:
+                w_text = (f"En etkili kriter dönemler arasında değişim göstermiştir "
+                          f"({', '.join(f'{k}: {v}' for k, v in top_criteria.items())}), "
+                          f"bu da kriterlerin göreceli öneminin zaman içinde kaydığına işaret etmektedir.")
+        _add_paragraph(doc, w_text, lang_code=lang_code)
 
 
 def generate_panel_imrad_docx(
@@ -2960,6 +3072,9 @@ def generate_panel_imrad_docx(
     if d["ranking_method"]:
         _write_panel_ranking_comparison(doc, period_keys, all_period_data, lang, lang_code)
 
+    # Consolidated score table (all alternatives × all periods)
+    _write_panel_consolidated_score_table(doc, period_keys, all_period_data, lang, lang_code)
+
     # Cross-period leader summary
     _write_panel_leader_summary(doc, period_keys, all_period_data, lang, lang_code)
 
@@ -2969,6 +3084,25 @@ def generate_panel_imrad_docx(
         cap = "Şekil 2. Dönemler Arası Lider Alternatif Skor Değişimi" if lang != "EN" \
             else "Figure 2. Leader Alternative Score Trends Across Periods"
         _add_figure(doc, chart_bytes, cap, lang_code)
+
+    # Weight bar chart for reference period
+    if isinstance(ref_d.get("weight_table"), pd.DataFrame) and not ref_d["weight_table"].empty:
+        _wb = _generate_weight_bar_bytes(ref_d["weight_table"], lang)
+        if _wb:
+            _w_cap = f"Şekil 3. {ref_key} Dönemi Kriter Ağırlıkları" if lang != "EN" \
+                else f"Figure 3. Criteria Weights for {ref_key} Period"
+            _add_figure(doc, _wb, _w_cap, lang_code)
+
+    # Ranking bar chart for reference period
+    if ref_d.get("ranking_method") and isinstance(ref_d.get("ranking_table"), pd.DataFrame) and not ref_d["ranking_table"].empty:
+        _rb = _generate_ranking_bar_bytes(ref_d["ranking_table"], lang)
+        if _rb:
+            _r_cap = f"Şekil 4. {ref_key} Dönemi Alternatif Skorları" if lang != "EN" \
+                else f"Figure 4. Alternative Scores for {ref_key} Period"
+            _add_figure(doc, _rb, _r_cap, lang_code)
+
+    # Detailed cross-period comparison commentary
+    _write_panel_detailed_commentary(doc, period_keys, all_period_data, lang, lang_code)
 
     # DISCUSSION & CONCLUSION
     _write_discussion(doc, d, lang, lang_code)

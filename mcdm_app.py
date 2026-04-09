@@ -4764,7 +4764,11 @@ def _write_df_block(
     if df.empty:
         ws.write(data_row, 0, "—", formats["note"])
         return {"header_row": data_row, "data_row": data_row + 1, "nrows": 0, "ncols": cols_n, "next_row": data_row + 3}
-    df.to_excel(writer, sheet_name=sheet_name, startrow=data_row, startcol=0, index=index)
+    # Round float columns to 4 decimal places for clean Excel output
+    _export_df = df.copy()
+    for _fc in _export_df.select_dtypes(include=[np.floating, float]).columns:
+        _export_df[_fc] = _export_df[_fc].round(4)
+    _export_df.to_excel(writer, sheet_name=sheet_name, startrow=data_row, startcol=0, index=index)
     ws.set_row(data_row, 24, formats["header"])
     ws.autofilter(data_row, 0, data_row + len(df), cols_n - 1)
     _set_worksheet_widths(ws, df, startcol=0, index=index)
@@ -6245,12 +6249,22 @@ def generate_panel_apa_docx(panel_results: Dict[str, Dict[str, Any]], lang: str 
                 _wt_df = (year_result.get("weights") or {}).get("table")
                 if isinstance(_wt_df, pd.DataFrame) and not _wt_df.empty:
                     add_table_to_doc(doc, localize_df_lang(_wt_df, lang), lang_code=body_lang)
+                    # Weight bar chart
+                    _wb = _weight_bar_figure_bytes(localize_df_lang(_wt_df.copy(), lang), lang)
+                    if _wb:
+                        _fig_label = f"Figure: {year_label} Criteria Weights" if lang == "EN" else f"Şekil: {year_label} Kriter Ağırlıkları"
+                        _doc_add_figure_block(doc, _fig_label, _wb, "", body_lang)
                 ranking_table = year_result.get("ranking", {}).get("table")
                 if isinstance(ranking_table, pd.DataFrame) and not ranking_table.empty:
                     rank_title = "Ranking Table" if lang == "EN" else "Sıralama Tablosu"
                     rank_head = doc.add_paragraph()
                     _set_docx_run_style(rank_head.add_run(rank_title), body_lang, bold=True)
                     add_table_to_doc(doc, localize_df_lang(ranking_table, lang), lang_code=body_lang)
+                    # Ranking bar chart
+                    _rb = _ranking_bar_figure_bytes(localize_df_lang(ranking_table.copy(), lang), lang)
+                    if _rb:
+                        _fig_label = f"Figure: {year_label} Alternative Rankings" if lang == "EN" else f"Şekil: {year_label} Alternatif Sıralaması"
+                        _doc_add_figure_block(doc, _fig_label, _rb, "", body_lang)
                 detail_info = _preferred_doc_detail_table(year_result, lang)
                 if detail_info is not None:
                     detail_title, detail_df = detail_info
