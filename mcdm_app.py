@@ -10654,8 +10654,44 @@ if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), use_container_width
                     "error_code": _safe_error_code(exc),
                 },
             )
-            st.error(tt("Analiz işlemi tamamlanamadı. Parametreleri kontrol edip tekrar deneyin.", "The analysis could not be completed. Please review parameters and try again."))
-            st.caption(tt(f"Hata kodu: {_safe_error_code(exc)}", f"Error code: {_safe_error_code(exc)}"))
+            _exc_msg = str(exc).strip()
+            _exc_type = _safe_error_code(exc)
+            # Provide specific, actionable error messages based on exception type
+            _specific_hints = {
+                "LinAlgError": tt(
+                    "Matris hesaplaması başarısız — muhtemelen sabit (tüm değerleri aynı) bir kriter var. "
+                    "CILOS/IDOCRIW gibi matris-ters gerektiren ağırlık yöntemlerinde bu durum tekil matris hatası üretir. "
+                    "Çözüm: Sabit kriterleri kaldırın veya farklı bir ağırlık yöntemi (Entropy, CRITIC) deneyin.",
+                    "Matrix computation failed — likely a constant criterion (all values identical). "
+                    "Methods like CILOS/IDOCRIW require invertible matrices. "
+                    "Solution: Remove constant criteria or use a different weighting method (Entropy, CRITIC)."
+                ),
+                "ValueError": tt(
+                    f"Değer hatası: {_exc_msg}",
+                    f"Value error: {_exc_msg}"
+                ),
+                "ZeroDivisionError": tt(
+                    "Sıfıra bölme hatası — karar matrisinde sıfır veya sabit değerler olabilir. "
+                    "WPM, COPRAS, MARCOS gibi yöntemler pozitif değer gerektirir.",
+                    "Division by zero — the decision matrix may contain zero or constant values. "
+                    "Methods like WPM, COPRAS, MARCOS require positive values."
+                ),
+                "OverflowError": tt(
+                    "Sayısal taşma — kriter değerleri arasında çok büyük ölçek farkı var. "
+                    "Verileri normalizasyon öncesi kontrol edin.",
+                    "Numerical overflow — very large scale differences between criteria values."
+                ),
+            }
+            _hint = _specific_hints.get(_exc_type, tt(
+                f"Beklenmeyen hata ({_exc_type}): {_exc_msg[:200]}",
+                f"Unexpected error ({_exc_type}): {_exc_msg[:200]}"
+            ))
+            st.error(tt(
+                "Analiz işlemi tamamlanamadı.",
+                "The analysis could not be completed."
+            ))
+            st.warning(_hint)
+            st.caption(tt(f"Hata kodu: {_exc_type}", f"Error code: {_exc_type}"))
             st.stop()
 
         result["analysis_time"] = time.time() - start
