@@ -4428,6 +4428,9 @@ def _preferred_doc_detail_table(result: Dict[str, Any], lang: str) -> tuple[str,
     return None
 
 def generate_apa_docx(result: Dict[str, Any], selected_data: pd.DataFrame, lang: str = "TR") -> bytes | None:
+    import copy
+    result = copy.deepcopy(result)
+    selected_data = selected_data.copy() if isinstance(selected_data, pd.DataFrame) else pd.DataFrame()
     if not _ensure_docx_support():
         return None
     doc = Document()
@@ -5610,6 +5613,9 @@ def _insert_chart(
     ws.insert_chart(_excel_cell(anchor_row if anchor_row is not None else meta["header_row"], anchor_col), chart, {"x_scale": x_scale, "y_scale": y_scale})
 
 def generate_excel(result: Dict[str, Any], selected_data: pd.DataFrame, lang: str = "TR") -> bytes:
+    import copy
+    result = copy.deepcopy(result)
+    selected_data = selected_data.copy() if isinstance(selected_data, pd.DataFrame) else pd.DataFrame()
     output = io.BytesIO()
     used_names: set[str] = set()
     cover_name = _safe_sheet_name(_xl_text(lang, "Kapak", "Cover"), used_names)
@@ -6046,6 +6052,8 @@ def _write_panel_cover_sheet(writer, sheet_name: str, panel_results: Dict[str, D
     ws.set_column(1, 8, 18)
 
 def generate_panel_excel(panel_results: Dict[str, Dict[str, Any]], lang: str = "TR") -> bytes:
+    import copy
+    panel_results = copy.deepcopy(panel_results)
     output = io.BytesIO()
     used_names: set[str] = set()
     cover_name = _safe_sheet_name(_xl_text(lang, "Kapak", "Cover"), used_names)
@@ -6191,6 +6199,8 @@ def generate_panel_excel(panel_results: Dict[str, Dict[str, Any]], lang: str = "
     return output.getvalue()
 
 def generate_panel_apa_docx(panel_results: Dict[str, Dict[str, Any]], lang: str = "TR") -> bytes | None:
+    import copy
+    panel_results = copy.deepcopy(panel_results)
     if not _ensure_docx_support():
         return None
     doc = Document()
@@ -6436,8 +6446,10 @@ def _render_report_download_controls_core(lang: str) -> None:
 
     with dl3:
         if imrad_bytes:
-            if is_panel_download and hasattr(mcdm_article, "generate_panel_imrad_docx"):
-                imrad_name = tt("MCDM_Panel_IMRAD_Makale.docx", "MCDM_Panel_IMRAD_Article.docx")
+            # Detect format: DOCX starts with PK (ZIP), HTML starts with <!DOCTYPE or <html
+            _is_docx_imrad = imrad_bytes[:4] == b"PK\x03\x04" if imrad_bytes else False
+            if _is_docx_imrad:
+                imrad_name = tt("MCDM_IMRAD_Makale.docx", "MCDM_IMRAD_Article.docx")
                 imrad_mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             else:
                 imrad_name = tt("MCDM_IMRAD_Makale.html", "MCDM_IMRAD_Article.html")
