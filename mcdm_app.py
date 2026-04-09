@@ -6242,7 +6242,9 @@ def generate_panel_apa_docx(panel_results: Dict[str, Dict[str, Any]], lang: str 
                 weight_title = "Weight Table" if lang == "EN" else "Ağırlık Tablosu"
                 weight_head = doc.add_paragraph()
                 _set_docx_run_style(weight_head.add_run(weight_title), body_lang, bold=True)
-                add_table_to_doc(doc, localize_df_lang(year_result["weights"]["table"], lang), lang_code=body_lang)
+                _wt_df = (year_result.get("weights") or {}).get("table")
+                if isinstance(_wt_df, pd.DataFrame) and not _wt_df.empty:
+                    add_table_to_doc(doc, localize_df_lang(_wt_df, lang), lang_code=body_lang)
                 ranking_table = year_result.get("ranking", {}).get("table")
                 if isinstance(ranking_table, pd.DataFrame) and not ranking_table.empty:
                     rank_title = "Ranking Table" if lang == "EN" else "Sıralama Tablosu"
@@ -6326,6 +6328,7 @@ def _render_report_download_controls_core(lang: str) -> None:
     )
     excel_filename = _export_file_name(excel_title, lang, "xlsx")
 
+    _excel_error = None
     if excel_key not in blob_cache:
         try:
             if is_panel_download:
@@ -6334,14 +6337,13 @@ def _render_report_download_controls_core(lang: str) -> None:
                 selected_data = result.get("selected_data", pd.DataFrame())
                 blob_cache[excel_key] = generate_excel(result, selected_data, lang=lang)
         except Exception as exc:
-            st.error(tt("Excel çıktısı oluşturulamadı.", "Excel output could not be created."))
-            st.caption(tt(f"Hata kodu: {_safe_error_code(exc)}", f"Error code: {_safe_error_code(exc)}"))
-            st.session_state["download_blob_cache"] = blob_cache
-            return
+            blob_cache[excel_key] = None
+            _excel_error = exc
     st.session_state["download_blob_cache"] = blob_cache
 
     doc_key = f"docx::{lang}"
     doc_bytes = None
+    _docx_error = None
     docx_enabled = _ensure_docx_support()
     if docx_enabled:
         if doc_key not in blob_cache:
@@ -6353,22 +6355,22 @@ def _render_report_download_controls_core(lang: str) -> None:
                     else generate_apa_docx(result, selected_data, lang=lang)
                 )
             except Exception as exc:
-                st.error(tt("Word çıktısı oluşturulamadı.", "Word output could not be created."))
-                st.caption(tt(f"Hata kodu: {_safe_error_code(exc)}", f"Error code: {_safe_error_code(exc)}"))
-                st.session_state["report_docx"] = None
-                st.session_state["download_blob_cache"] = blob_cache
-                return
+                blob_cache[doc_key] = None
+                _docx_error = exc
         doc_bytes = blob_cache.get(doc_key)
         st.session_state["report_docx"] = doc_bytes
         st.session_state["download_blob_cache"] = blob_cache
 
-    # --- IMRAD article generation (HTML) ---
+    # --- IMRAD article generation ---
     imrad_key = f"imrad::{lang}"
     imrad_bytes = None
     if imrad_key not in blob_cache:
         try:
-            selected_data = result.get("selected_data", pd.DataFrame())
-            _imrad_result = mcdm_article.generate_imrad_docx(result, selected_data, lang=lang)
+            if is_panel_download and hasattr(mcdm_article, "generate_panel_imrad_docx"):
+                _imrad_result = mcdm_article.generate_panel_imrad_docx(panel_results, lang=lang)
+            else:
+                selected_data = result.get("selected_data", pd.DataFrame())
+                _imrad_result = mcdm_article.generate_imrad_docx(result, selected_data, lang=lang)
             if isinstance(_imrad_result, str):
                 _imrad_result = _imrad_result.encode("utf-8")
             blob_cache[imrad_key] = _imrad_result
@@ -6380,19 +6382,30 @@ def _render_report_download_controls_core(lang: str) -> None:
 
     dl1, dl2, dl3 = st.columns(3)
     with dl1:
-        _excel_clicked = _render_export_download_button(
-            tt("📊 Tüm Sonuçları İndir (Excel)", "📊 Download All Results (Excel)"),
-            blob_cache[excel_key],
-            excel_filename,
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key=f"download_excel_results_{lang}",
-        )
-        if _excel_clicked:
-            access.track_event("report_downloaded", {"format": "excel", "lang": lang, "is_panel": is_panel_download})
-        st.caption(tt("Tablolar, grafikler ve ham veriler. İş raporları için.", "Tables, charts and raw data. For business reports."))
+        if _excel_error:
+            st.error(tt(
+                f"Excel oluşturulamadı: {_safe_error_detail(_excel_error)}",
+                f"Excel failed: {_safe_error_detail(_excel_error)}",
+            ))
+        elif blob_cache.get(excel_key):
+            _excel_clicked = _render_export_download_button(
+                tt("📊 Tüm Sonuçları İndir (Excel)", "📊 Download All Results (Excel)"),
+                blob_cache[excel_key],
+                excel_filename,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key=f"download_excel_results_{lang}",
+            )
+            if _excel_clicked:
+                access.track_event("report_downloaded", {"format": "excel", "lang": lang, "is_panel": is_panel_download})
+            st.caption(tt("Tablolar, grafikler ve ham veriler. İş raporları için.", "Tables, charts and raw data. For business reports."))
 
     with dl2:
-        if docx_enabled:
+        if _docx_error:
+            st.error(tt(
+                f"Word oluşturulamadı: {_safe_error_detail(_docx_error)}",
+                f"Word failed: {_safe_error_detail(_docx_error)}",
+            ))
+        elif docx_enabled and doc_bytes:
             docx_name = tt("MCDM_Akademik_Rapor.docx", "MCDM_Academic_Report.docx")
             _docx_clicked = _render_export_download_button(
                 tt("📄 Akademik Rapor — APA Word", "📄 Academic Report — APA Word"),
@@ -6404,17 +6417,22 @@ def _render_report_download_controls_core(lang: str) -> None:
             if _docx_clicked:
                 access.track_event("report_downloaded", {"format": "docx", "lang": lang, "is_panel": is_panel_download})
             st.caption(tt("Yorumlu rapor. Matematiğe hakim olmayan okuyucular için.", "Interpretive report for non-technical readers."))
-        else:
+        elif not docx_enabled:
             st.warning(tt("Word çıktısı için python-docx kurulu olmalıdır.", "python-docx must be installed for Word output."))
 
     with dl3:
         if imrad_bytes:
-            imrad_name = tt("MCDM_IMRAD_Makale.html", "MCDM_IMRAD_Article.html")
+            if is_panel_download and hasattr(mcdm_article, "generate_panel_imrad_docx"):
+                imrad_name = tt("MCDM_Panel_IMRAD_Makale.docx", "MCDM_Panel_IMRAD_Article.docx")
+                imrad_mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            else:
+                imrad_name = tt("MCDM_IMRAD_Makale.html", "MCDM_IMRAD_Article.html")
+                imrad_mime = "text/html"
             _imrad_clicked = _render_export_download_button(
-                tt("📝 IMRAD Makale (HTML)", "📝 IMRAD Article (HTML)"),
+                tt("📝 IMRAD Makale", "📝 IMRAD Article"),
                 imrad_bytes,
                 imrad_name,
-                "text/html",
+                imrad_mime,
                 key=f"download_imrad_results_{lang}",
             )
             if _imrad_clicked:

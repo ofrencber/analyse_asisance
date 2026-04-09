@@ -2702,6 +2702,124 @@ hr {{ border: none; border-top: 1px solid #ccc; margin: 1.5em 0; }}
 
 
 
+def _write_panel_weight_comparison(doc, period_keys, all_period_data, lang, lang_code):
+    """Cross-period weight comparison table."""
+    rows = []
+    criteria = None
+    for pk in period_keys:
+        d = all_period_data[pk]
+        wt = d.get("weight_table")
+        if not isinstance(wt, pd.DataFrame) or wt.empty:
+            continue
+        crit_col = "Kriter" if "Kriter" in wt.columns else ("Criterion" if "Criterion" in wt.columns else wt.columns[0])
+        w_col = "Ağırlık" if "Ağırlık" in wt.columns else ("Weight" if "Weight" in wt.columns else wt.columns[-1])
+        if criteria is None:
+            criteria = wt[crit_col].tolist()
+        for _, r in wt.iterrows():
+            rows.append({"Dönem": pk, "Kriter": r[crit_col], "Ağırlık": r[w_col]})
+    if not rows:
+        return
+    df = pd.DataFrame(rows)
+    pivot = df.pivot_table(index="Kriter", columns="Dönem", values="Ağırlık", aggfunc="first")
+    pivot = pivot.reindex(columns=period_keys)
+    pivot = pivot.reset_index()
+    if lang == "EN":
+        pivot = pivot.rename(columns={"Kriter": "Criterion"})
+    label = "Tablo 3. Dönemlere Göre Kriter Ağırlıkları" if lang != "EN" else "Table 3. Criteria Weights by Period"
+    _add_paragraph(doc, label, lang_code=lang_code, bold=True)
+    _add_table(doc, pivot, lang_code=lang_code)
+
+
+def _write_panel_ranking_comparison(doc, period_keys, all_period_data, lang, lang_code):
+    """Cross-period ranking comparison table."""
+    rows = []
+    for pk in period_keys:
+        d = all_period_data[pk]
+        rt = d.get("ranking_table")
+        if not isinstance(rt, pd.DataFrame) or rt.empty:
+            continue
+        alt_col = "Alternatif" if "Alternatif" in rt.columns else ("Alternative" if "Alternative" in rt.columns else rt.columns[0])
+        rank_col = "Sıra" if "Sıra" in rt.columns else ("Rank" if "Rank" in rt.columns else None)
+        if rank_col is None or rank_col not in rt.columns:
+            continue
+        for _, r in rt.iterrows():
+            rows.append({"Dönem": pk, "Alternatif": r[alt_col], "Sıra": r[rank_col]})
+    if not rows:
+        return
+    df = pd.DataFrame(rows)
+    pivot = df.pivot_table(index="Alternatif", columns="Dönem", values="Sıra", aggfunc="first")
+    pivot = pivot.reindex(columns=period_keys)
+    pivot["OrtSıra"] = pivot.mean(axis=1, skipna=True)
+    pivot = pivot.sort_values("OrtSıra").reset_index()
+    if lang == "EN":
+        pivot = pivot.rename(columns={"Alternatif": "Alternative", "OrtSıra": "AvgRank"})
+    else:
+        pivot = pivot.rename(columns={"OrtSıra": "Ort.Sıra"})
+    label = "Tablo 4. Dönemlere Göre Alternatif Sıraları" if lang != "EN" else "Table 4. Alternative Rankings by Period"
+    _add_paragraph(doc, label, lang_code=lang_code, bold=True)
+    _add_table(doc, pivot, lang_code=lang_code)
+
+
+def _write_panel_leader_summary(doc, period_keys, all_period_data, lang, lang_code):
+    """Cross-period leader summary paragraph."""
+    leaders = {}
+    for pk in period_keys:
+        d = all_period_data[pk]
+        rt = d.get("ranking_table")
+        if isinstance(rt, pd.DataFrame) and not rt.empty:
+            alt_col = "Alternatif" if "Alternatif" in rt.columns else ("Alternative" if "Alternative" in rt.columns else rt.columns[0])
+            leaders[pk] = str(rt.iloc[0][alt_col])
+    if not leaders:
+        return
+    unique_leaders = list(dict.fromkeys(leaders.values()))
+    stable = len(unique_leaders) == 1
+    if lang == "EN":
+        if stable:
+            text = f"The leader alternative remained **{unique_leaders[0]}** across all {len(period_keys)} periods, indicating high ranking stability."
+        else:
+            changes = ", ".join(f"{k}: {v}" for k, v in leaders.items())
+            text = f"The leader alternative changed across periods ({changes}), suggesting sensitivity to temporal variation."
+    else:
+        if stable:
+            text = f"Lider alternatif tüm {len(period_keys)} dönemde **{unique_leaders[0]}** olarak kalmış, bu durum sıralama kararlılığına işaret etmektedir."
+        else:
+            changes = ", ".join(f"{k}: {v}" for k, v in leaders.items())
+            text = f"Lider alternatif dönemler arasında değişim göstermiştir ({changes}); bu durum zamansal duyarlılığa işaret etmektedir."
+    _add_paragraph(doc, text, lang_code=lang_code)
+
+
+def _generate_panel_comparison_chart(period_keys, all_period_data, lang):
+    """Generate a leader score trend chart across periods. Returns PNG bytes or None."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return None
+    scores = {}
+    for pk in period_keys:
+        d = all_period_data[pk]
+        rt = d.get("ranking_table")
+        if isinstance(rt, pd.DataFrame) and not rt.empty:
+            score_col = "Skor" if "Skor" in rt.columns else ("Score" if "Score" in rt.columns else None)
+            alt_col = "Alternatif" if "Alternatif" in rt.columns else ("Alternative" if "Alternative" in rt.columns else rt.columns[0])
+            if score_col and score_col in rt.columns:
+                scores[pk] = float(pd.to_numeric(rt.iloc[0][score_col], errors="coerce"))
+    if len(scores) < 2:
+        return None
+    fig, ax = plt.subplots(figsize=(6, 3.5))
+    ax.plot(list(scores.keys()), list(scores.values()), marker="o", linewidth=2, color="#1F4A73")
+    ax.set_xlabel("Dönem" if lang != "EN" else "Period", fontsize=10)
+    ax.set_ylabel("Lider Skoru" if lang != "EN" else "Leader Score", fontsize=10)
+    ax.set_title("Dönemlere Göre Lider Skoru" if lang != "EN" else "Leader Score by Period", fontsize=11, fontweight="bold")
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=150)
+    plt.close(fig)
+    return buf.getvalue()
+
+
 def generate_panel_imrad_docx(
     panel_results: Dict[str, Dict[str, Any]],
     lang: str = "TR",
@@ -2820,12 +2938,14 @@ def generate_panel_imrad_docx(
         _add_table(doc, ref_d["ranking_table"], lang_code=lang_code)
 
     # Robustness for reference period
-    if ref_d["stability"] > 0 or ref_d["mean_spearman"] > 0:
+    if ref_d.get("stability", 0) > 0 or ref_d.get("mean_spearman", 0) > 0:
         if lang == "EN":
             _add_paragraph(doc, "Robustness findings for the reference period:", lang_code=lang_code, bold=True)
+            _rob_text = f"Monte Carlo stability: {ref_d.get('stability', 0):.1%}. Mean Spearman correlation across comparison methods: {ref_d.get('mean_spearman', 0):.3f}."
         else:
             _add_paragraph(doc, "Referans dönem sağlamlık bulguları:", lang_code=lang_code, bold=True)
-        _write_results_section_robustness(doc, ref_d, lang, lang_code)
+            _rob_text = f"Monte Carlo kararlılığı: {ref_d.get('stability', 0):.1%}. Karşılaştırma yöntemleri arası ortalama Spearman korelasyonu: {ref_d.get('mean_spearman', 0):.3f}."
+        _add_paragraph(doc, _rob_text, lang_code=lang_code)
 
     # --- 3.2 Cross-period comparison ---
     if lang == "EN":
