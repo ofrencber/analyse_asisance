@@ -929,7 +929,7 @@ def _weights_cilos(data: pd.DataFrame, criteria_types: Dict[str, str]) -> Tuple[
     for crit in cols:
         f_matrix.loc[crit, crit] = -float(p_matrix.loc[:, crit].sum())
 
-    lhs = f_matrix.to_numpy(dtype=float)
+    lhs = f_matrix.to_numpy(dtype=float).copy()
     lhs[-1, :] = 1.0
     rhs = np.zeros(len(cols), dtype=float)
     rhs[-1] = 1.0
