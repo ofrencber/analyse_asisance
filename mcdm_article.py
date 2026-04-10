@@ -739,6 +739,7 @@ def _extract_analysis_data(result: dict, selected_data: pd.DataFrame) -> Dict[st
         "fuzzy_spread": fuzzy_spread,
         "is_fuzzy": is_fuzzy,
         "eliminated": result.get("eliminated_alternatives") or [],
+        "criteria_groups": result.get("criteria_groups") or {},
     }
 
 
@@ -2427,6 +2428,37 @@ def generate_imrad_docx(
         else:
             md.append(f"En yüksek ağırlık **{d['top_criterion']}** kriterine aittir (w = {f(d['top_weight'], lang)}). Bu bulgu, söz konusu kriterin mevcut veri setinde alternatifleri birbirinden en güçlü biçimde ayırt eden bilgi yapısına sahip olduğuna işaret etmektedir.\n")
 
+    # Dimension summary table (if criteria groups exist)
+    _cg = d.get("criteria_groups") or {}
+    if _cg and isinstance(d["weight_table"], pd.DataFrame) and not d["weight_table"].empty:
+        _wt_dim = d["weight_table"].copy()
+        _dim_c_col = "Kriter" if "Kriter" in _wt_dim.columns else ("Criterion" if "Criterion" in _wt_dim.columns else None)
+        _dim_w_col = "Ağırlık" if "Ağırlık" in _wt_dim.columns else ("Weight" if "Weight" in _wt_dim.columns else None)
+        if _dim_c_col and _dim_w_col:
+            _dim_data = []
+            for _, _dr in _wt_dim.iterrows():
+                _cn = str(_dr[_dim_c_col])
+                _gn = _cg.get(_cn, "")
+                if _gn:
+                    _dim_data.append({"dim": _gn, "w": float(_dr[_dim_w_col])})
+            if _dim_data:
+                _dim_pdf = pd.DataFrame(_dim_data)
+                _dim_agg = _dim_pdf.groupby("dim").agg(total=("w", "sum"), count=("w", "count")).sort_values("total", ascending=False).reset_index()
+                if lang == "EN":
+                    _dim_agg.columns = ["Dimension", "Total Weight", "Sub-criteria"]
+                    md.append(f"**Table {len([l for l in md if l.startswith('**Table')]) + 1}.** Dimension (Main Criteria) Weight Summary.\n")
+                else:
+                    _dim_agg.columns = ["Boyut", "Toplam Ağırlık", "Alt Kriter Sayısı"]
+                    md.append(f"**Tablo {len([l for l in md if l.startswith('**Tablo')]) + 1}.** Boyut (Ana Kriter) Ağırlık Özeti.\n")
+                _dim_agg.iloc[:, 1] = _dim_agg.iloc[:, 1].round(4)
+                md.append(_df_to_md_table(_dim_agg, lang) + "\n")
+                _top_dim_name = _dim_agg.iloc[0].iloc[0]
+                _top_dim_val = _dim_agg.iloc[0].iloc[1]
+                if lang == "EN":
+                    md.append(f"The dominant dimension is **{_top_dim_name}** (total weight: {f(_top_dim_val, lang)}). Sub-criteria weights are aggregated by their parent dimension; the analysis itself operates at the sub-criteria level.\n")
+                else:
+                    md.append(f"En baskın boyut **{_top_dim_name}** (toplam ağırlık: {f(_top_dim_val, lang)}) olarak belirlenmiştir. Alt kriter ağırlıkları ana boyutlarına göre toplanmıştır; analizin kendisi alt kriter düzeyinde çalışmaktadır.\n")
+
     try:
         wb = _generate_weight_bar_bytes(d["weight_table"], lang)
     except Exception:
@@ -3223,6 +3255,37 @@ def generate_panel_imrad_docx(
             md.append(f"The highest weight belongs to **{d['top_criterion']}** (w = {f(d['top_weight'], lang)}), indicating it carries the greatest discriminatory power among alternatives.\n")
         else:
             md.append(f"En yüksek ağırlık **{d['top_criterion']}** kriterine aittir (w = {f(d['top_weight'], lang)}). Bu bulgu, söz konusu kriterin mevcut veri setinde alternatifleri birbirinden en güçlü biçimde ayırt eden bilgi yapısına sahip olduğuna işaret etmektedir.\n")
+
+    # Dimension summary table (if criteria groups exist)
+    _cg = d.get("criteria_groups") or {}
+    if _cg and isinstance(wt, pd.DataFrame) and not wt.empty:
+        _dim_c_col = "Kriter" if "Kriter" in wt.columns else ("Criterion" if "Criterion" in wt.columns else None)
+        _dim_w_col = "Ağırlık" if "Ağırlık" in wt.columns else ("Weight" if "Weight" in wt.columns else None)
+        if _dim_c_col and _dim_w_col:
+            _dim_data = []
+            for _, _dr in wt.iterrows():
+                _cn = str(_dr[_dim_c_col])
+                _gn = _cg.get(_cn, "")
+                if _gn:
+                    _dim_data.append({"dim": _gn, "w": float(_dr[_dim_w_col])})
+            if _dim_data:
+                _dim_pdf = pd.DataFrame(_dim_data)
+                _dim_agg = _dim_pdf.groupby("dim").agg(total=("w", "sum"), count=("w", "count")).sort_values("total", ascending=False).reset_index()
+                tn = _next_tbl()
+                if lang == "EN":
+                    _dim_agg.columns = ["Dimension", "Total Weight", "Sub-criteria"]
+                    md.append(f"**Table {tn}.** Dimension (Main Criteria) Weight Summary — {ref_key}.\n")
+                else:
+                    _dim_agg.columns = ["Boyut", "Toplam Ağırlık", "Alt Kriter Sayısı"]
+                    md.append(f"**Tablo {tn}.** Boyut (Ana Kriter) Ağırlık Özeti — {ref_key}.\n")
+                _dim_agg.iloc[:, 1] = _dim_agg.iloc[:, 1].round(4)
+                md.append(_df_to_md_table(_dim_agg, lang) + "\n")
+                _top_dim_name = _dim_agg.iloc[0].iloc[0]
+                _top_dim_val = _dim_agg.iloc[0].iloc[1]
+                if lang == "EN":
+                    md.append(f"The dominant dimension is **{_top_dim_name}** (total weight: {f(_top_dim_val, lang)}). Sub-criteria weights are aggregated by their parent dimension.\n")
+                else:
+                    md.append(f"En baskın boyut **{_top_dim_name}** (toplam ağırlık: {f(_top_dim_val, lang)}) olarak belirlenmiştir. Alt kriter ağırlıkları ana boyutlarına göre toplanmıştır.\n")
 
     # Weight bar chart
     try:

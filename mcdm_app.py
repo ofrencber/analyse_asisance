@@ -2157,6 +2157,29 @@ def _render_upload_data_source_section(lang: str) -> None:
                 st.error(tt("Dosya okunamadı. Lütfen dosya formatını kontrol edip tekrar deneyin.", "File could not be read. Please verify the file format and try again."))
                 st.caption(tt(f"Hata kodu: {_safe_error_code(upload_exc)}", f"Error code: {_safe_error_code(upload_exc)}"))
             else:
+                # Kriter gruplama: Excel'de ikinci sheet (Grup/Group) var mı kontrol et
+                _preloaded_groups = {}
+                try:
+                    uploaded.seek(0)
+                    _xls_check = pd.ExcelFile(uploaded)
+                    _sn_lower = [s.lower().strip() for s in _xls_check.sheet_names]
+                    _gs_idx = None
+                    for _gs_n in ("grup", "group", "groups", "boyut", "dimension", "kriter grup", "criteria groups"):
+                        if _gs_n in _sn_lower:
+                            _gs_idx = _sn_lower.index(_gs_n)
+                            break
+                    if _gs_idx is not None:
+                        _gdf_pre = pd.read_excel(_xls_check, sheet_name=_xls_check.sheet_names[_gs_idx])
+                        if len(_gdf_pre.columns) >= 2:
+                            _gdf_pre.columns = [str(c).strip() for c in _gdf_pre.columns]
+                            for _, _gr in _gdf_pre.iterrows():
+                                _ck = str(_gr.iloc[0]).strip()
+                                _gv = str(_gr.iloc[1]).strip()
+                                if _ck and _gv and _ck != "nan" and _gv != "nan":
+                                    _preloaded_groups[_ck] = _gv
+                except Exception:
+                    pass
+                st.session_state["_preloaded_criteria_groups"] = _preloaded_groups
                 _stage_data_source(loaded_df, _upload_sig)
                 st.rerun()
 
@@ -9199,6 +9222,10 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
     if panel_mode and panel_year_col in numeric_cols:
         numeric_cols = [c for c in numeric_cols if c != panel_year_col]
 
+    # ── Kriter Gruplama (Boyut Özeti) — Excel'de "Grup" sheet'i varsa ──
+    _criteria_groups: dict = dict(st.session_state.get("_preloaded_criteria_groups", {}))
+    st.session_state["criteria_groups"] = _criteria_groups
+
     if len(numeric_cols) < 2:
         st.error(tt("Hata: Analiz için en az iki sayısal sütun (kriter) gereklidir.", "Error: At least two numeric criterion columns are required for analysis."))
         st.stop()
@@ -9433,6 +9460,14 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                 except Exception:
                     st.info(_direction_notice)
 
+            # Grup bilgisi varsa bilgilendirme
+            if _criteria_groups:
+                _n_grp = len(set(_criteria_groups.values()))
+                st.info(tt(
+                    f"🏷️ Excel dosyanızda **{_n_grp} boyut (ana kriter grubu)** algılandı. Grup etiketleri kriter adlarının yanında gösterilmektedir. Analiz alt kriterler üzerinde çalışır; boyut özeti sonuç sekmesinde sunulacaktır.",
+                    f"🏷️ **{_n_grp} dimension(s) (main criteria groups)** detected from your Excel file. Group labels are shown next to criterion names. Analysis runs on sub-criteria; dimension summary will be shown in the results tab."
+                ))
+
             # Tablo başlığı (HTML div)
             st.markdown(
                 f'<div class="ct-wrap"><div class="ct-head">'
@@ -9455,7 +9490,9 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                         label_visibility="collapsed",
                     )
                 with _rc[1]:
-                    st.markdown(f'<div class="ct-crit-name">{_safe_html_text(_c)}</div>', unsafe_allow_html=True)
+                    _grp_label = _criteria_groups.get(_c, "")
+                    _grp_badge = f' <span style="background:#E8F0FE;color:#1A73E8;font-size:0.72em;padding:1px 6px;border-radius:4px;margin-left:6px;">{_safe_html_text(_grp_label)}</span>' if _grp_label else ""
+                    st.markdown(f'<div class="ct-crit-name">{_safe_html_text(_c)}{_grp_badge}</div>', unsafe_allow_html=True)
                 _is_benefit = st.session_state["crit_dir"].get(_c, True)
                 with _rc[2]:
                     if st.button(
@@ -10651,12 +10688,14 @@ if st.button(tt("🚀 Analiz Zamanı", "🚀 Run Analysis"), use_container_width
         result["analysis_time"] = time.time() - start
         result["criteria"] = list(criteria)
         result["criteria_types"] = dict(criteria_types)
+        result["criteria_groups"] = dict(st.session_state.get("criteria_groups", {}))
         result["data_source_id"] = st.session_state.get("data_source_id")
         if st.session_state.get("panel_results"):
             for year_result in st.session_state["panel_results"].values():
                 year_result["analysis_time"] = result["analysis_time"]
                 year_result["criteria"] = list(criteria)
                 year_result["criteria_types"] = dict(criteria_types)
+                year_result["criteria_groups"] = dict(st.session_state.get("criteria_groups", {}))
                 year_result["data_source_id"] = st.session_state.get("data_source_id")
         st.session_state["analysis_result"] = result
         st.session_state["report_docx"] = None
@@ -10988,6 +11027,40 @@ with tabs[_tab_weights]:
             render_table(_weight_disp)
         with st.container():
             st.markdown(f'<div class="commentary-box">{_safe_plain_commentary_html(_weight_comment)}</div>', unsafe_allow_html=True)
+
+    # ── Boyut Özeti (Dimension Summary) — Grup bilgisi varsa ──
+    _cg = result.get("criteria_groups") or {}
+    if _cg:
+        _crit_col_name = col_key(weight_df, "Kriter", "Criterion")
+        _w_col_name = col_key(weight_df, "Ağırlık", "Weight")
+        if _crit_col_name in weight_df.columns and _w_col_name in weight_df.columns:
+            _dim_rows = []
+            for _, _wr_row in weight_df.iterrows():
+                _cn = str(_wr_row[_crit_col_name])
+                _wv = float(pd.to_numeric(_wr_row[_w_col_name], errors="coerce"))
+                _gn = _cg.get(_cn, "")
+                if _gn:
+                    _dim_rows.append({"_grp": _gn, "_w": _wv})
+            if _dim_rows:
+                _dim_df = pd.DataFrame(_dim_rows)
+                _dim_agg = _dim_df.groupby("_grp").agg(
+                    **{tt("Toplam Ağırlık", "Total Weight"): ("_w", "sum"),
+                       tt("Kriter Sayısı", "Criteria Count"): ("_w", "count")}
+                ).sort_values(tt("Toplam Ağırlık", "Total Weight"), ascending=False).reset_index()
+                _dim_agg = _dim_agg.rename(columns={"_grp": tt("Boyut", "Dimension")})
+                _tw_col = tt("Toplam Ağırlık", "Total Weight")
+                _dim_agg[_tw_col] = _dim_agg[_tw_col].round(4)
+                with st.expander(f"🏷️ {tt('Boyut Özeti (Ana Kriter Grupları)', 'Dimension Summary (Main Criteria Groups)')}", expanded=True):
+                    render_table(_dim_agg)
+                    _top_dim = _dim_agg.iloc[0][tt("Boyut", "Dimension")] if len(_dim_agg) > 0 else ""
+                    _top_dim_w = _dim_agg.iloc[0][_tw_col] if len(_dim_agg) > 0 else 0
+                    with st.container():
+                        st.markdown(
+                            f'<div class="commentary-box">'
+                            f'{tt(f"Alt kriter ağırlıkları boyut bazında toplanmıştır. En baskın boyut <b>{_top_dim}</b> ({_top_dim_w:.3f}) olarak belirlenmiştir. Bu tablo raporlama amaçlıdır; analiz alt kriterler üzerinde çalışmaktadır.", f"Sub-criteria weights are aggregated by dimension. The dominant dimension is <b>{_top_dim}</b> ({_top_dim_w:.3f}). This table is for reporting purposes; the analysis operates on sub-criteria.")}'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
 
     with st.expander(f"📊 {tt('Şekiller', 'Figures')}", expanded=True):
         fig_col1, fig_col2 = st.columns(2)
