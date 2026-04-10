@@ -2082,8 +2082,8 @@ def _render_upload_data_source_section(lang: str) -> None:
         with _tpl_col2:
             _panel_tpl_clicked = st.download_button(
                 tt("⬇️ Panel şablonu indir", "⬇️ Download panel template"),
-                data=generate_input_template_excel(lang="EN", panel=True, fuzzy_tfn=_is_tfn_input),
-                file_name="MCDM_Panel_Template.xlsx",
+                data=generate_input_template_excel(lang=lang, panel=True, fuzzy_tfn=_is_tfn_input),
+                file_name=tt("MCDM_Panel_Sablon.xlsx", "MCDM_Panel_Template.xlsx"),
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
                 on_click="ignore",
@@ -2152,7 +2152,7 @@ def _render_upload_data_source_section(lang: str) -> None:
             try:
                 loaded_df = load_uploaded_file(uploaded)
             except ValueError as upload_exc:
-                st.error(str(upload_exc))
+                st.error(tt(f"Veri doğrulama hatası: {upload_exc}", f"Data validation error: {upload_exc}"))
             except Exception as upload_exc:
                 st.error(tt("Dosya okunamadı. Lütfen dosya formatını kontrol edip tekrar deneyin.", "File could not be read. Please verify the file format and try again."))
                 st.caption(tt(f"Hata kodu: {_safe_error_code(upload_exc)}", f"Error code: {_safe_error_code(upload_exc)}"))
@@ -2177,8 +2177,8 @@ def _render_upload_data_source_section(lang: str) -> None:
                                 _gv = str(_gr.iloc[1]).strip()
                                 if _ck and _gv and _ck != "nan" and _gv != "nan":
                                     _preloaded_groups[_ck] = _gv
-                except Exception:
-                    pass
+                except Exception as _grp_exc:
+                    st.session_state["_criteria_group_parse_warning"] = str(_grp_exc)
                 st.session_state["_preloaded_criteria_groups"] = _preloaded_groups
                 _stage_data_source(loaded_df, _upload_sig)
                 st.rerun()
@@ -2195,7 +2195,7 @@ def _render_upload_data_source_section(lang: str) -> None:
             try:
                 _converted_preview, _preview_meta = _preprocess_input_dataset(_pending_df, "tfn")
             except ValueError as preview_exc:
-                st.warning(str(preview_exc))
+                st.warning(tt(f"Önizleme hatası: {preview_exc}", f"Preview error: {preview_exc}"))
             else:
                 _pending_note = tt(
                     f"TFN veri algılandı. Klasik yöntemler ağırlık merkezi (crisp) ile, Fuzzy yöntemler ise (l, m, u) üçgenleri doğrudan kullanarak çalışır. Tahmini fuzzy spread ≈ {_preview_meta.get('estimated_fuzzy_spread', 0.10):.2f}.",
@@ -2213,8 +2213,8 @@ def _render_upload_data_source_section(lang: str) -> None:
             )
         st.success(
             tt(
-                f"Seçilen veri hazır: {_pending_df.shape[0]} satır, {_pending_df.shape[1]} sütun.",
-                f"Selected data is ready: {_pending_df.shape[0]} rows, {_pending_df.shape[1]} columns.",
+                f"✅ Seçilen veri hazır: {_pending_df.shape[0]} satır, {_pending_df.shape[1]} sütun. → Aşağıdaki **1. Adım** panelinden analiz amacını belirleyin.",
+                f"✅ Selected data is ready: {_pending_df.shape[0]} rows, {_pending_df.shape[1]} columns. → Define your analysis objective in **Step 1** below.",
             )
         )
         if _pending_note:
@@ -2240,7 +2240,7 @@ def _render_upload_data_source_section(lang: str) -> None:
             try:
                 _activate_data_source(_pending_df, _pending_id, "upload")
             except ValueError as activation_exc:
-                st.error(str(activation_exc))
+                st.error(tt(f"Veri aktivasyon hatası: {activation_exc}", f"Data activation error: {activation_exc}"))
             else:
                 st.rerun()
 
@@ -2561,7 +2561,7 @@ def _render_manual_entry_workspace(lang: str) -> None:
                             has_header=bool(st.session_state.get("manual_paste_has_header", True)),
                         )
                     except ValueError as manual_paste_exc:
-                        st.error(str(manual_paste_exc))
+                        st.error(tt(f"Yapıştırma hatası: {manual_paste_exc}", f"Paste error: {manual_paste_exc}"))
                     else:
                         st.session_state["manual_entry_df"] = _parsed_manual
                         st.session_state["manual_row_count"] = max(int(len(_parsed_manual)), 2)
@@ -2592,13 +2592,13 @@ def _render_manual_entry_workspace(lang: str) -> None:
                             fuzzy_tfn=_is_tfn_input,
                         )
                     except ValueError as manual_exc:
-                        st.error(str(manual_exc))
+                        st.error(tt(f"Manuel giriş hatası: {manual_exc}", f"Manual entry error: {manual_exc}"))
                     else:
                         st.session_state["manual_entry_df"] = _prepared_manual
                         try:
                             _activate_data_source(_prepared_manual, "manual_entry", "manual")
                         except ValueError as activation_exc:
-                            st.error(str(activation_exc))
+                            st.error(tt(f"Veri aktivasyon hatası: {activation_exc}", f"Data activation error: {activation_exc}"))
                         else:
                             st.rerun()
 
@@ -2638,7 +2638,7 @@ def _render_manual_entry_workspace(lang: str) -> None:
                                 fuzzy_tfn=_is_tfn_input,
                             )
                         except ValueError as manual_exc:
-                            st.error(str(manual_exc))
+                            st.error(tt(f"Manuel giriş hatası: {manual_exc}", f"Manual entry error: {manual_exc}"))
                         else:
                             access.track_event(
                                 "manual_grid_saved",
@@ -2651,7 +2651,7 @@ def _render_manual_entry_workspace(lang: str) -> None:
                             try:
                                 _activate_data_source(_prepared_manual, "manual_entry", "manual")
                             except ValueError as activation_exc:
-                                st.error(str(activation_exc))
+                                st.error(tt(f"Veri aktivasyon hatası: {activation_exc}", f"Data activation error: {activation_exc}"))
                             else:
                                 st.rerun()
                     else:
@@ -6491,6 +6491,31 @@ def _render_report_download_controls_core(lang: str) -> None:
             _gen_err = st.session_state.get("_imrad_gen_error", "")
             st.caption(tt(f"IMRAD makale taslağı oluşturulamadı. {_gen_err}", f"IMRAD draft could not be generated. {_gen_err}"))
 
+    # --- IMRAD PDF generation (optional, requires fpdf2) ---
+    if not is_panel_download and hasattr(mcdm_article, "generate_imrad_pdf"):
+        pdf_key = f"imrad_pdf::{lang}"
+        if pdf_key not in blob_cache:
+            try:
+                _sel = result.get("selected_data", pd.DataFrame())
+                blob_cache[pdf_key] = mcdm_article.generate_imrad_pdf(result, _sel, lang=lang)
+            except Exception:
+                blob_cache[pdf_key] = None
+            st.session_state["download_blob_cache"] = blob_cache
+        _pdf_bytes = blob_cache.get(pdf_key)
+        if _pdf_bytes:
+            _pdf_dl1, _pdf_dl2, _pdf_dl3 = st.columns(3)
+            with _pdf_dl1:
+                _pdf_clicked = _render_export_download_button(
+                    tt("📕 IMRAD Makale (PDF)", "📕 IMRAD Article (PDF)"),
+                    _pdf_bytes,
+                    tt("MCDM_IMRAD_Makale.pdf", "MCDM_IMRAD_Article.pdf"),
+                    "application/pdf",
+                    key=f"download_imrad_pdf_{lang}",
+                )
+                if _pdf_clicked:
+                    access.track_event("report_downloaded", {"format": "imrad_pdf", "lang": lang})
+                st.caption(tt("APA formatlı PDF. Doğrudan paylaşılabilir.", "APA-formatted PDF. Ready to share."))
+
 if hasattr(st, "fragment"):
     _render_report_download_controls = st.fragment(_render_report_download_controls_core)
 else:
@@ -8493,7 +8518,11 @@ with st.sidebar:
         _render_user_session_card(_auth_settings, _current_user)
         _render_admin_usage_panel(_auth_settings, _current_user)
 
-        with st.expander(tt("📘 Uygulama Rehberi", "📘 User Guide"), expanded=False):
+        _guide_seen_key = "_member_guide_seen"
+        _guide_expanded = not st.session_state.get(_guide_seen_key, False)
+        if _guide_expanded:
+            st.session_state[_guide_seen_key] = True
+        with st.expander(tt("📘 Uygulama Rehberi", "📘 User Guide"), expanded=_guide_expanded):
             _member_guide = tt(
                 "1️⃣ Sağ paneldeki veri girişi alanından dosya yükleyin, örnek veriyi kullanın veya manuel tabloya geçin.<br>"
                 "2️⃣ Sağ panelde analiz amacını seçin.<br>"
@@ -8981,6 +9010,16 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                 )
                 st.session_state["panel_weight_strategy"] = "global" if _panel_strategy_choice == _panel_strategy_opts[1] else "yearly"
                 _det_years = _sorted_panel_years(raw_data[_panel_col_inner])
+                if not _det_years:
+                    st.warning(tt(
+                        f"Seçilen sütun **{_panel_col_inner}** geçerli dönem etiketi içermiyor. Lütfen yıl/dönem değerleri olan bir sütun seçin.",
+                        f"Selected column **{_panel_col_inner}** does not contain valid period labels. Please select a column with year/period values."
+                    ))
+                elif len(_det_years) < 2:
+                    st.warning(tt(
+                        f"**{_panel_col_inner}** sütununda yalnızca 1 dönem bulundu. Panel analiz için en az 2 dönem gereklidir.",
+                        f"Only 1 period found in **{_panel_col_inner}**. Panel analysis requires at least 2 periods."
+                    ))
                 if _det_years:
                     _known_years = st.session_state.get("panel_selected_years_all", [])
                     _known_col = st.session_state.get("panel_selected_years_col")
@@ -9030,9 +9069,10 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                         f'{tt("Dönemler:", "Periods:")}</p>',
                         unsafe_allow_html=True,
                     )
-                    _yr_sel_cols = st.columns(min(10, len(_det_years)), gap="small")
+                    _yr_cols_max = min(5, len(_det_years))
+                    _yr_sel_cols = st.columns(_yr_cols_max, gap="small")
                     for _yi, _yr in enumerate(_det_years):
-                        with _yr_sel_cols[_yi % min(10, len(_det_years))]:
+                        with _yr_sel_cols[_yi % _yr_cols_max]:
                             _yr_key = f"{_yr_key_prefix}{_yr}"
                             if _yr_key not in st.session_state:
                                 st.session_state[_yr_key] = _yr in st.session_state.get("panel_selected_years", [])
@@ -9461,6 +9501,12 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                     st.info(_direction_notice)
 
             # Grup bilgisi varsa bilgilendirme
+            _grp_parse_warn = st.session_state.get("_criteria_group_parse_warning", "")
+            if _grp_parse_warn and not _criteria_groups:
+                st.warning(tt(
+                    f"Excel dosyanızda 'Grup' sayfası algılandı ancak okunamadı: {_grp_parse_warn}. Beklenen format: iki sütun (Kriter | Grup).",
+                    f"A 'Group' sheet was detected in your Excel file but could not be read: {_grp_parse_warn}. Expected format: two columns (Criterion | Group)."
+                ))
             if _criteria_groups:
                 _n_grp = len(set(_criteria_groups.values()))
                 st.info(tt(
@@ -10061,14 +10107,17 @@ with st.expander(tt("⚙️ Analiz Kurulumu (1-2-3. Adımlar)", "⚙️ Analysis
                             else:
                                 default_val = False
                             _rank_widget_key = f"rank_cb_{rank_method}"
+                            _is_recommended = rank_method in recommended_rank_methods[:3]
+                            _rec_tag = tt(" ⭐ önerilen", " ⭐ recommended") if _is_recommended else ""
                             _rank_help = tt(
-                                f"{_method_help_text(rank_method)}\nBu yöntemi seçerseniz karşılaştırma çıktılarında da birlikte değerlendirilir.",
-                                f"{_method_help_text(rank_method)}\nIf you select this method, it will also be evaluated in the comparison outputs.",
+                                f"{_method_help_text(rank_method)}\nBu yöntemi seçerseniz karşılaştırma çıktılarında da birlikte değerlendirilir.{_rec_tag}",
+                                f"{_method_help_text(rank_method)}\nIf you select this method, it will also be evaluated in the comparison outputs.{_rec_tag}",
                             )
+                            _rank_label = f"{rank_method} ⭐" if _is_recommended else rank_method
                             if _rank_widget_key in st.session_state:
-                                _rank_checked = st.checkbox(rank_method, key=_rank_widget_key, help=_rank_help)
+                                _rank_checked = st.checkbox(_rank_label, key=_rank_widget_key, help=_rank_help)
                             else:
-                                _rank_checked = st.checkbox(rank_method, value=default_val, key=_rank_widget_key, help=_rank_help)
+                                _rank_checked = st.checkbox(_rank_label, value=default_val, key=_rank_widget_key, help=_rank_help)
                             if _rank_checked:
                                 ranking_methods_selected.append(rank_method)
                 st.session_state["ranking_prefs"] = ranking_methods_selected
@@ -10755,6 +10804,10 @@ _show_step_hint_once(
     "Results are ready. Start with the setup summary, then use the KPI strip and tabs.",
     icon="✅",
 )
+st.info(tt(
+    "📌 **Önerilen inceleme sırası:** Ağırlıklar → Sıralama → Karşılaştırma → Sağlamlık → Çıktı sekmesinden rapor indirin.",
+    "📌 **Recommended review order:** Weights → Ranking → Comparison → Robustness → Download report from Output tab.",
+))
 st.markdown(f"<h3 style='font-size: 1.2rem; margin-top:1rem;'>📥 {tt('Analiz Sonuçları ve Raporlar', 'Analysis Results and Reports')}</h3>", unsafe_allow_html=True)
 _panel_run_warnings = st.session_state.get("panel_run_warnings", [])
 if isinstance(_panel_run_warnings, list) and _panel_run_warnings:
@@ -11492,10 +11545,12 @@ with tabs[_tab_output]:
     _dl_extra_1, _dl_extra_2 = st.columns(2)
     with _dl_extra_1:
         if _ensure_docx_support():
+            _exec_bytes = None
+            _exec_err = ""
             try:
                 _exec_bytes = mcdm_article.generate_executive_summary_docx(_ar, _ar.get("selected_data", pd.DataFrame()), lang=_out_lang) if isinstance(_ar, dict) else None
-            except Exception:
-                _exec_bytes = None
+            except Exception as _e_exc:
+                _exec_err = str(_e_exc)
             if _exec_bytes:
                 st.download_button(
                     tt("📋 Yönetici Özeti (Word)", "📋 Executive Summary (Word)"),
@@ -11503,17 +11558,23 @@ with tabs[_tab_output]:
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     key=f"dl_exec_{_out_lang}", use_container_width=True)
                 st.caption(tt("Tek sayfalık özet. Yönetim kurulu ve sunum için.", "One-page summary for board meetings."))
+            elif _exec_err:
+                st.caption(tt(f"Yönetici özeti oluşturulamadı: {_exec_err}", f"Executive summary could not be generated: {_exec_err}"))
     with _dl_extra_2:
+        _dash_html = None
+        _dash_err = ""
         try:
             _dash_html = mcdm_article.generate_dashboard_html(_ar, _ar.get("selected_data", pd.DataFrame()), lang=_out_lang) if isinstance(_ar, dict) else None
-        except Exception:
-            _dash_html = None
+        except Exception as _d_exc:
+            _dash_err = str(_d_exc)
         if _dash_html:
             st.download_button(
                 tt("🌐 Dashboard (HTML)", "🌐 Dashboard (HTML)"),
                 _dash_html.encode("utf-8"), tt("MCDM_Dashboard.html", "MCDM_Dashboard.html"),
                 "text/html", key=f"dl_dash_{_out_lang}", use_container_width=True)
             st.caption(tt("Tarayıcıda açılabilen interaktif dashboard.", "Interactive dashboard viewable in any browser."))
+        elif _dash_err:
+            st.caption(tt(f"Dashboard oluşturulamadı: {_dash_err}", f"Dashboard could not be generated: {_dash_err}"))
 
     st.markdown(_reference_notice_html(_out_lang), unsafe_allow_html=True)
     st.markdown(f"### 📚 {_ref_heading}")
