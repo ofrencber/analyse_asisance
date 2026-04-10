@@ -2936,195 +2936,740 @@ def generate_panel_imrad_docx(
     panel_results: Dict[str, Dict[str, Any]],
     lang: str = "TR",
 ) -> bytes | None:
-    """Generate an IMRAD-format article for panel (multi-period) analysis.
+    """Generate an IMRAD-format HTML article for panel (multi-period) analysis.
 
-    Parameters
-    ----------
-    panel_results : dict
-        Mapping of period label → analysis result dict.
-    lang : str
-        "TR" or "EN".
+    Uses the same markdown→HTML pipeline as single-period IMRAD so that
+    MathJax renders formulas correctly in the browser.
 
-    Returns
-    -------
-    bytes or None
+    Returns HTML as UTF-8 bytes.
     """
-    if not _ensure_docx():
-        return None
     if not panel_results:
         return None
 
-    lang_code = "en-US" if lang == "EN" else "tr-TR"
-    h = _h(lang)
+    import base64 as _b64
 
-    # Use the first period's data for common info
     first_key = next(iter(panel_results))
     first_result = panel_results[first_key]
     first_data = first_result.get("selected_data", pd.DataFrame())
     d = _extract_analysis_data(first_result, first_data)
-
-    doc = Document()
-    _configure_doc(doc)
-
-    # TITLE
+    f = _fmt
+    template = _load_template()
+    h = _h(lang)
+    wm = d["weight_method"] or "?"
+    rm = d["ranking_method"] or ""
+    is_fuzzy = d.get("is_fuzzy", False)
     n_periods = len(panel_results)
-    if lang == "EN":
-        title = f"Panel Multi-Criteria Decision Analysis ({n_periods} Periods): {d['weight_method']}"
-        if d["ranking_method"]:
-            title += f" and {d['ranking_method']}"
-    else:
-        title = f"Panel Çok Kriterli Karar Analizi ({n_periods} Dönem): {d['weight_method']}"
-        if d["ranking_method"]:
-            title += f" ve {d['ranking_method']}"
-
-    p_title = doc.add_paragraph()
-    run = p_title.add_run(title)
-    _set_run_style(run, lang_code=lang_code, font_size=14, bold=True)
-    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-    # Subtitle with placeholders
-    # Subtitle omitted — title is sufficient
-
-    doc.add_paragraph("")
-
-    # ABSTRACT
-    _add_heading(doc, h["abstract"], level=1, lang_code=lang_code)
-    abstract = _build_abstract(d, lang)
-    if lang == "EN":
-        abstract += f" The analysis covers {n_periods} time periods."
-    else:
-        abstract += f" Analiz {n_periods} zaman dönemini kapsamaktadır."
-    _add_paragraph(doc, abstract, lang_code=lang_code)
-
-    doc.add_paragraph("")
-
-    # INTRODUCTION (common)
-    _write_introduction(doc, d, lang, lang_code)
-
-    # METHOD (common — uses first period's data as reference)
-    _write_method_section(doc, d, first_data, lang, lang_code)
-
-    # RESULTS
-    _add_heading(doc, h["results"], level=1, lang_code=lang_code)
-
     period_keys = list(panel_results.keys())
+
+    # Extract all period data
     all_period_data: Dict[str, Dict[str, Any]] = {}
     for pk in period_keys:
         pr = panel_results[pk]
         pd_sel = pr.get("selected_data", pd.DataFrame())
         all_period_data[pk] = _extract_analysis_data(pr, pd_sel)
 
-    # --- 3.1 Reference period: full results for the first period ---
     ref_key = period_keys[0]
     ref_d = all_period_data[ref_key]
 
+    md = []
+    _tmp_files = []
+    _fig_counter = [0]  # mutable counter for figure numbering
+
+    def _next_fig():
+        _fig_counter[0] += 1
+        return _fig_counter[0]
+
+    _tbl_counter = [0]
+
+    def _next_tbl():
+        _tbl_counter[0] += 1
+        return _tbl_counter[0]
+
+    def _save_png(png_bytes):
+        import tempfile as _tm
+        p = _tm.mktemp(suffix=".png")
+        with open(p, "wb") as _f:
+            _f.write(png_bytes)
+        _tmp_files.append(p)
+        return p
+
+    # ── TITLE ──
     if lang == "EN":
-        _add_heading(doc, f"3.1 Reference Period Results: {ref_key}", level=2, lang_code=lang_code)
-        _add_paragraph(doc, (
-            f"To illustrate the computational steps in detail, the results for the {ref_key} period are "
-            f"presented as the reference case. The same methodology was applied identically to all "
-            f"{n_periods} periods; therefore, the mathematical procedure is documented once below and "
-            f"the remaining periods are summarized in the cross-period comparison tables that follow."
-        ), lang_code=lang_code)
+        title = f"Panel Multi-Criteria Decision Analysis ({n_periods} Periods): {wm}"
+        if rm:
+            title += f" and {rm}"
     else:
-        _add_heading(doc, f"3.1 Referans Dönem Sonuçları: {ref_key}", level=2, lang_code=lang_code)
-        _add_paragraph(doc, (
-            f"Hesaplama adımlarını ayrıntılı göstermek amacıyla {ref_key} dönemi referans olarak sunulmuştur. "
-            f"Aynı metodoloji {n_periods} dönemin tamamına birebir uygulanmıştır; dolayısıyla matematiksel "
-            f"prosedür aşağıda bir kez belgelenmiş, kalan dönemler ilerleyen karşılaştırma tablolarında "
-            f"özetlenmiştir."
-        ), lang_code=lang_code)
+        title = f"Panel Çok Kriterli Karar Analizi ({n_periods} Dönem): {wm}"
+        if rm:
+            title += f" ve {rm}"
+    md.append(f"# {title}")
+    md.append("")
 
-    # Weight table for reference period
-    if isinstance(ref_d["weight_table"], pd.DataFrame) and not ref_d["weight_table"].empty:
-        tbl_label = f"Tablo 1. {ref_key} dönemi kriter ağırlıkları ({ref_d['weight_method']})." if lang != "EN" \
-            else f"Table 1. Criteria weights for {ref_key} period ({ref_d['weight_method']})."
-        _add_paragraph(doc, tbl_label, lang_code=lang_code, bold=True)
-        _add_table(doc, ref_d["weight_table"], lang_code=lang_code)
+    # ── ABSTRACT ──
+    md.append(f"## {h['abstract']}")
+    abstract = _build_abstract(d, lang)
+    if lang == "EN":
+        abstract += f" The analysis covers {n_periods} time periods ({', '.join(period_keys)}), enabling assessment of ranking stability across temporal shifts."
+    else:
+        abstract += f" Analiz {n_periods} zaman dönemini ({', '.join(period_keys)}) kapsamakta olup sıralamanın zamansal değişimlere karşı kararlılığının değerlendirilmesine olanak tanımaktadır."
+    md.append(abstract)
+    kw_label = "Keywords" if lang == "EN" else "Anahtar Kelimeler"
+    kw_val = ("MCDM" if lang == "EN" else "ÇKKV") + f", {wm}" + (f", {rm}" if rm else "") + ", " + ("Panel Analysis, Robustness" if lang == "EN" else "Panel Analiz, Sağlamlık")
+    md.append(f"***{kw_label}:*** *{kw_val}*")
+    md.append("")
 
-    # Ranking table for reference period
-    if ref_d["ranking_method"] and isinstance(ref_d["ranking_table"], pd.DataFrame) and not ref_d["ranking_table"].empty:
-        tbl_label = f"Tablo 2. {ref_key} dönemi sıralama sonuçları ({ref_d['ranking_method']})." if lang != "EN" \
-            else f"Table 2. Ranking results for {ref_key} period ({ref_d['ranking_method']})."
-        _add_paragraph(doc, tbl_label, lang_code=lang_code, bold=True)
-        _add_table(doc, ref_d["ranking_table"], lang_code=lang_code)
+    # ── 1. INTRODUCTION ──
+    md.append(f"## {h['introduction']}")
+    md.append("")
 
-    # Robustness for reference period
-    if ref_d.get("stability", 0) > 0 or ref_d.get("mean_spearman", 0) > 0:
+    # 1.1 Purpose and Scope
+    if lang == "EN":
+        md.append("### 1.1 Purpose and Scope of the Study\n")
+        md.append(f"The purpose of this study is to objectively evaluate the performance of {d['n_alt']} alternatives across {d['n_crit']} criteria over {n_periods} time periods ({', '.join(period_keys)}) through a systematic multi-criteria decision-making (MCDM) panel framework. ")
+        md.append(f"Criteria weights are determined using the {wm} method, which derives importance levels directly from the data structure without requiring subjective expert judgment. ")
+        if rm:
+            md.append(f"The alternatives are then ranked using the {rm} method, which {'models measurement uncertainty through triangular fuzzy numbers (TFN)' if is_fuzzy else 'evaluates alternatives based on their distance to ideal and anti-ideal solutions'}. ")
+        md.append(f"The robustness of the results is validated through local sensitivity analysis, Monte Carlo simulation ({d['mc_n']} iterations), and cross-method comparison for each period independently. ")
+        md.append("The panel dimension adds a temporal stability layer, enabling the assessment of whether rankings persist across different time periods or exhibit sensitivity to temporal shifts in the data.\n")
+    else:
+        md.append("### 1.1 Çalışmanın Amacı ve Kapsamı\n")
+        md.append(f"Bu çalışmanın amacı, {d['n_alt']} alternatifin {d['n_crit']} kriter üzerindeki performansını {n_periods} zaman dönemi ({', '.join(period_keys)}) boyunca sistematik bir çok kriterli karar verme (ÇKKV) panel çerçevesiyle nesnel biçimde değerlendirmektir. ")
+        md.append(f"Kriter ağırlıkları, uzman yargısına gerek duymaksızın verilerin kendi yapısından önem düzeylerini türeten {wm} yöntemiyle belirlenmektedir. ")
+        if rm:
+            md.append(f"Alternatifler, {'ölçüm belirsizliğini üçgensel bulanık sayılar (TFN) aracılığıyla modelleyen' if is_fuzzy else 'alternatiflerin ideal ve anti-ideal çözümlere uzaklığını değerlendiren'} {rm} yöntemiyle sıralanmaktadır. ")
+        md.append(f"Sonuçların sağlamlığı her dönem için bağımsız olarak lokal duyarlılık analizi, Monte Carlo simülasyonu ({d['mc_n']} iterasyon) ve çapraz yöntem karşılaştırması ile doğrulanmaktadır. ")
+        md.append("Panel boyutu zamansal bir kararlılık katmanı eklemekte, sıralamaların farklı zaman dilimlerinde de geçerliliğini koruyup korumadığının değerlendirilmesine olanak tanımaktadır.\n")
+
+    # ── 2. METHOD ──
+    md.append(f"## {h['method']}")
+    md.append("")
+
+    # Overview
+    if lang == "EN":
+        md.append("The proposed methodology consists of four integrated layers: (1) objective criteria weighting from the raw decision matrix, " + ("(2) fuzzification of the decision matrix via TFN, " if is_fuzzy else "") + (f"({'3' if is_fuzzy else '2'}) systematic ranking, ({'4' if is_fuzzy else '3'}) multi-layered robustness validation, and ({'5' if is_fuzzy else '4'}) cross-period panel comparison.\n"))
+    else:
+        md.append("Önerilen metodoloji birbiriyle bütünleşik dört katmandan oluşmaktadır: (1) ham karar matrisinden nesnel kriter ağırlıklandırma, " + ("(2) karar matrisinin TFN ile bulanıklaştırılması, " if is_fuzzy else "") + (f"({'3' if is_fuzzy else '2'}) sistematik sıralama, ({'4' if is_fuzzy else '3'}) çok katmanlı sağlamlık doğrulaması ve ({'5' if is_fuzzy else '4'}) dönemler arası panel karşılaştırması.\n"))
+
+    # 2.0 Philosophy of the Methodology
+    if lang == "EN":
+        md.append("### 2.0 Philosophy of the Methodology\n")
+    else:
+        md.append("### 2.0 Yöntemin Felsefesi\n")
+
+    if lang == "EN":
+        w_en = _WEIGHT_JUSTIFICATION_EN.get(wm, "")
+        if w_en:
+            md.append(f"**{wm}:** {w_en}\n")
+        if rm:
+            base_rm = rm.replace("Fuzzy ", "")
+            r_en = _RANKING_JUSTIFICATION_EN.get(rm, "") or _RANKING_JUSTIFICATION_EN.get(base_rm, "")
+            if r_en:
+                md.append(f"**{rm}:** {r_en}\n")
+    else:
+        try:
+            from mcdm_engine import METHOD_PHILOSOPHY as _MP
+            w_phil = _MP.get(wm, {})
+            if w_phil.get("academic"):
+                md.append(f"**{wm}:** {w_phil['academic']}\n")
+            if rm:
+                r_phil = _MP.get(rm, {}) or _MP.get(rm.replace('Fuzzy ', ''), {})
+                if r_phil.get("academic"):
+                    md.append(f"**{rm}:** {r_phil['academic']}\n")
+        except ImportError:
+            pass
+
+    if is_fuzzy:
         if lang == "EN":
-            _add_paragraph(doc, "Robustness findings for the reference period:", lang_code=lang_code, bold=True)
-            _rob_text = f"Monte Carlo stability: {ref_d.get('stability', 0):.1%}. Mean Spearman correlation across comparison methods: {ref_d.get('mean_spearman', 0):.3f}."
+            md.append("The fuzzy extension models measurement uncertainty and data imprecision through triangular fuzzy numbers (TFN). Rather than treating criterion values as deterministic quantities, TFN representation acknowledges that each observed value carries an implicit confidence interval, strengthening the defensibility of the ranking under uncertainty.\n")
         else:
-            _add_paragraph(doc, "Referans dönem sağlamlık bulguları:", lang_code=lang_code, bold=True)
-            _rob_text = f"Monte Carlo kararlılığı: {ref_d.get('stability', 0):.1%}. Karşılaştırma yöntemleri arası ortalama Spearman korelasyonu: {ref_d.get('mean_spearman', 0):.3f}."
-        _add_paragraph(doc, _rob_text, lang_code=lang_code)
+            md.append("Bulanık uzantı, ölçüm belirsizliğini ve veri kesinliksizliğini üçgensel bulanık sayılar (TFN) aracılığıyla modellemektedir. Kriter değerlerini deterministik büyüklükler olarak ele almak yerine TFN temsili, her gözlenen değerin örtük bir güven aralığı taşıdığını kabul ederek sıralamanın belirsizlik altındaki savunulabilirliğini güçlendirmektedir.\n")
 
-    # --- 3.2 Cross-period comparison ---
+    # Flowchart
+    try:
+        fc = _generate_flowchart_bytes(d, lang)
+    except Exception:
+        fc = None
+    if fc:
+        fn = _next_fig()
+        fc_path = _save_png(fc)
+        cap = f"Şekil {fn}. Önerilen Yöntemin Akış Şeması" if lang != "EN" else f"Figure {fn}. Proposed Methodology Flowchart"
+        md.append(f"![{cap}]({fc_path}){{width=85%}}\n")
+        if lang != "EN":
+            md.append(f"Şekil {fn}, çalışmada uygulanan metodolojik akışı özetlemektedir. Her aşama bir önceki aşamanın çıktısını girdi olarak kullanmakta olup süreç bütünsel bir karar destek çerçevesi oluşturmaktadır.\n")
+        else:
+            md.append(f"Figure {fn} summarizes the methodological flow applied in this study. Each stage uses the output of the previous stage as input, forming a holistic decision support framework.\n")
+
+    # 2.1 Decision Matrix
+    md.append(f"### {h['method_dm']}\n")
+    ben = ", ".join(d["benefit"]) if d["benefit"] else "-"
+    cos = ", ".join(d["cost"]) if d["cost"] else "-"
     if lang == "EN":
-        _add_heading(doc, "3.2 Cross-Period Comparison", level=2, lang_code=lang_code)
+        md.append(f"The decision matrix consists of {d['n_alt']} alternatives across {d['n_crit']} criteria, replicated across {n_periods} time periods. Benefit: {ben}. Cost: {cos}.\n")
     else:
-        _add_heading(doc, "3.2 Dönemler Arası Karşılaştırma", level=2, lang_code=lang_code)
+        md.append(f"Karar matrisi {d['n_alt']} alternatif ve {d['n_crit']} kriterden oluşmakta olup {n_periods} zaman döneminde tekrarlanmaktadır. Fayda yönlü (büyük olan tercih edilir): {ben}. Maliyet yönlü (küçük olan tercih edilir): {cos}.\n")
 
-    # Build cross-period weight comparison table
-    _write_panel_weight_comparison(doc, period_keys, all_period_data, lang, lang_code)
+    elim = d.get("eliminated") or []
+    if elim:
+        en_list = sorted(set(e.get("alternative", "?") for e in elim))
+        if lang == "EN":
+            md.append(f"{len(en_list)} alternative(s) ({', '.join(en_list)}) were eliminated by pre-screening.\n")
+        else:
+            md.append(f"{len(en_list)} alternatif ({', '.join(en_list)}) eşik tabanlı ön eleme prosedürü ile analiz dışı bırakılmıştır.\n")
 
-    # Build cross-period ranking comparison table
-    if d["ranking_method"]:
-        _write_panel_ranking_comparison(doc, period_keys, all_period_data, lang, lang_code)
+    # 2.2 Weight — Justification + Formulas
+    md.append(f"### {h['method_weight']}\n")
+    wj = (_WEIGHT_JUSTIFICATION_EN if lang == "EN" else _WEIGHT_JUSTIFICATION_TR).get(wm, "")
+    if wj:
+        md.append(wj + "\n")
+    wc = _find_template_content(wm, template.get("weight_methods", {}))
+    if wc:
+        if lang == "EN":
+            for line in wc.split("\n"):
+                s = line.strip()
+                if not s or s == "---":
+                    continue
+                if s.startswith("$$"):
+                    md.append(s + "\n")
+                elif s.startswith("Adım"):
+                    md.append(s.replace("Adım", "Step") + "\n")
+                elif s.startswith("**Dayanak"):
+                    md.append(s.replace("Dayanak:", "Reference:") + "\n")
+        else:
+            md.append(wc + "\n")
 
-    # Consolidated score table (all alternatives × all periods)
-    _write_panel_consolidated_score_table(doc, period_keys, all_period_data, lang, lang_code)
+    # 2.3 Ranking
+    if rm:
+        md.append(f"### {h['method_rank']}\n")
+        if lang != "EN":
+            try:
+                from mcdm_engine import METHOD_PHILOSOPHY
+                rphil = METHOD_PHILOSOPHY.get(rm, {}) or METHOD_PHILOSOPHY.get(rm.replace("Fuzzy ", ""), {})
+                if rphil.get("academic"):
+                    md.append(rphil["academic"] + "\n")
+            except Exception:
+                pass
+        base_rm = rm.replace("Fuzzy ", "")
+        rj = (_RANKING_JUSTIFICATION_EN if lang == "EN" else _RANKING_JUSTIFICATION_TR).get(rm, "") or (_RANKING_JUSTIFICATION_EN if lang == "EN" else _RANKING_JUSTIFICATION_TR).get(base_rm, "")
+        if rj:
+            md.append(rj + "\n")
+        if is_fuzzy:
+            fc_common = template.get("ranking_methods", {}).get("_fuzzy_common", "")
+            if fc_common:
+                spread_txt = f"s = {f(d['fuzzy_spread'], lang)}"
+                if lang == "EN":
+                    md.append(f"The decision matrix was converted to TFN with {spread_txt}. Fuzzification is applied after weighting to preserve weight objectivity.\n")
+                else:
+                    md.append(f"Karar matrisi {spread_txt} spread ile TFN'ye dönüştürülmüştür. Bulanıklaştırma adımı, ağırlık vektörünün nesnelliğini korumak amacıyla bilinçli olarak ağırlık hesabından sonraya konumlandırılmaktadır.\n")
+                if lang == "EN":
+                    for line in fc_common.split("\n"):
+                        s = line.strip()
+                        if s.startswith("$$") or s.startswith("Adım"):
+                            md.append(s.replace("Adım", "Step") + "\n")
+                else:
+                    md.append(fc_common + "\n")
+        rc = _find_template_content(rm, template.get("ranking_methods", {}))
+        if rc:
+            if lang == "EN":
+                for line in rc.split("\n"):
+                    s = line.strip()
+                    if not s or s == "---":
+                        continue
+                    if s.startswith("$$") or s.startswith("Adım") or s.startswith("**Dayanak"):
+                        md.append(s.replace("Adım", "Step").replace("Dayanak:", "Reference:") + "\n")
+            else:
+                md.append(rc + "\n")
 
-    # Cross-period leader summary
-    _write_panel_leader_summary(doc, period_keys, all_period_data, lang, lang_code)
+    # 2.4 Robustness
+    md.append(f"### {h['method_robust']}\n")
+    if lang == "EN":
+        md.append("A ranking result is only as credible as its resilience to the assumptions it rests upon. For this reason, the robustness of the findings is assessed through a multi-layered verification protocol combining three independent tests, applied to each period independently.\n")
+        md.append(f"**(1) Local Sensitivity Analysis:** Each criterion weight is perturbed by ±10% and ±20% while the remaining weights are re-normalized, producing {d['n_crit']*4} scenarios per period. For each scenario, the Spearman rank correlation between the perturbed ranking and the base ranking is computed. High correlation (close to 1.0) indicates that the ranking is stable against weight changes on that criterion.\n")
+        if d["mc_n"] > 0:
+            md.append(f"**(2) Monte Carlo Simulation:** The weight vector is randomly perturbed {d['mc_n']} times using log-normal noise with standard deviation sigma = {f(d['mc_sigma'], lang)}. In each iteration, the ranking is recomputed and the first-place alternative is recorded. The stability rate represents the percentage of iterations in which the base leader retains first place. Stability above 80% is considered high, 60-80% moderate, and below 60% low.\n")
+        if d["comp_methods"]:
+            md.append(f"**(3) Cross-Method Comparison:** The ranking is independently computed using {', '.join(d['comp_methods'][:3])} and pairwise Spearman rank correlations are calculated. High average agreement confirms that the findings are not artifacts of the chosen method.\n")
+        md.append("**(4) Cross-Period Panel Stability:** Beyond within-period robustness, the panel framework introduces a temporal stability dimension. By comparing leaders and weight structures across all periods, the analysis assesses whether the decision recommendation holds over time.\n")
+    else:
+        md.append("Bir sıralama sonucu, ancak dayandığı varsayımlara karşı direncini kanıtladığı ölçüde güvenilir kabul edilmektedir. Bu nedenle bulguların sağlamlığı, her dönem için bağımsız olarak uygulanan üç testten oluşan çok katmanlı bir doğrulama protokolüyle değerlendirilmektedir.\n")
+        md.append(f"**(1) Lokal Duyarlılık Analizi:** Her kriter ağırlığı ±%10 ve ±%20 oranında değiştirilerek kalan ağırlıklar yeniden normalize edilmekte ve dönem başına toplam {d['n_crit']*4} senaryo üretilmektedir. Her senaryoda, baz sıralama ile pertürbe edilmiş sıralama arasındaki Spearman sıra korelasyonu hesaplanmaktadır. 1.0'a yakın korelasyon, sıralamanın ilgili kriter ağırlığındaki değişimlere karşı kararlı olduğunu göstermektedir.\n")
+        if d["mc_n"] > 0:
+            md.append(f"**(2) Monte Carlo Simülasyonu:** Ağırlık vektörü, sigma = {f(d['mc_sigma'], lang)} standart sapmalı log-normal gürültü kullanılarak {d['mc_n']} kez rastgele pertürbe edilmektedir. Her iterasyonda sıralama yeniden hesaplanarak birinci sıradaki alternatif kaydedilmektedir. Kararlılık oranı, baz liderin birinciliğini koruduğu iterasyonların yüzdesini temsil etmektedir. %80 üzeri yüksek, %60-80 arası orta, %60 altı düşük kararlılık olarak değerlendirilmektedir.\n")
+        if d["comp_methods"]:
+            md.append(f"**(3) Çapraz Yöntem Karşılaştırması:** Sıralama, {', '.join(d['comp_methods'][:3])} yöntemleriyle bağımsız olarak hesaplanmakta ve ikili Spearman sıra korelasyonları elde edilmektedir. Yüksek ortalama uyum, bulguların seçilen yönteme özgü bir yapıt olmadığını doğrulamaktadır.\n")
+        md.append("**(4) Dönemler Arası Panel Kararlılığı:** Dönem içi sağlamlığın ötesinde, panel çerçevesi zamansal bir kararlılık boyutu eklemektedir. Tüm dönemlerdeki lider alternatiflerin ve ağırlık yapılarının karşılaştırılmasıyla karar önerisinin zaman içinde geçerliliğini koruyup korumadığı değerlendirilmektedir.\n")
 
-    # Cross-period comparison chart
-    chart_bytes = _generate_panel_comparison_chart(period_keys, all_period_data, lang)
-    if chart_bytes:
-        cap = "Şekil 2. Dönemler Arası Lider Alternatif Skor Değişimi" if lang != "EN" \
-            else "Figure 2. Leader Alternative Score Trends Across Periods"
-        _add_figure(doc, chart_bytes, cap, lang_code)
+    # ── 3. RESULTS ──
+    md.append(f"## {h['results']}\n")
 
-    # Weight bar chart for reference period
-    if isinstance(ref_d.get("weight_table"), pd.DataFrame) and not ref_d["weight_table"].empty:
-        _wb = _generate_weight_bar_bytes(ref_d["weight_table"], lang)
-        if _wb:
-            _w_cap = f"Şekil 3. {ref_key} Dönemi Kriter Ağırlıkları" if lang != "EN" \
-                else f"Figure 3. Criteria Weights for {ref_key} Period"
-            _add_figure(doc, _wb, _w_cap, lang_code)
+    # 3.1 Weights
+    md.append(f"### {h['results_weight']}\n")
 
-    # Ranking bar chart for reference period
-    if ref_d.get("ranking_method") and isinstance(ref_d.get("ranking_table"), pd.DataFrame) and not ref_d["ranking_table"].empty:
-        _rb = _generate_ranking_bar_bytes(ref_d["ranking_table"], lang)
-        if _rb:
-            _r_cap = f"Şekil 4. {ref_key} Dönemi Alternatif Skorları" if lang != "EN" \
-                else f"Figure 4. Alternative Scores for {ref_key} Period"
-            _add_figure(doc, _rb, _r_cap, lang_code)
+    # Reference period weight table
+    wt = ref_d.get("weight_table")
+    if isinstance(wt, pd.DataFrame) and not wt.empty:
+        wt_fmt = wt.copy()
+        for c in wt_fmt.select_dtypes(include=["float", "number"]).columns:
+            wt_fmt[c] = wt_fmt[c].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "")
+        tn = _next_tbl()
+        tbl_cap = f"**{'Table' if lang == 'EN' else 'Tablo'} {tn}.** {wm} {'weights for' if lang == 'EN' else 'ağırlıkları —'} {ref_key}."
+        md.append(tbl_cap + "\n")
+        md.append(_df_to_md_table(wt_fmt, lang) + "\n")
+    if lang != "EN":
+        md.append(f"Tablo {_tbl_counter[0]}, {ref_key} dönemi için {wm} yöntemiyle hesaplanan kriter ağırlıklarını sunmaktadır. Ağırlık değerleri, her kriterin karar sürecine olan göreli katkısını yansıtmaktadır.\n")
+    else:
+        md.append(f"Table {_tbl_counter[0]} presents the criteria weights calculated by {wm} for the {ref_key} period. Weight values reflect the relative contribution of each criterion to the decision process.\n")
+    if d["top_criterion"]:
+        if lang == "EN":
+            md.append(f"The highest weight belongs to **{d['top_criterion']}** (w = {f(d['top_weight'], lang)}), indicating it carries the greatest discriminatory power among alternatives.\n")
+        else:
+            md.append(f"En yüksek ağırlık **{d['top_criterion']}** kriterine aittir (w = {f(d['top_weight'], lang)}). Bu bulgu, söz konusu kriterin mevcut veri setinde alternatifleri birbirinden en güçlü biçimde ayırt eden bilgi yapısına sahip olduğuna işaret etmektedir.\n")
 
-    # Detailed cross-period comparison commentary
-    _write_panel_detailed_commentary(doc, period_keys, all_period_data, lang, lang_code)
+    # Weight bar chart
+    try:
+        wb = _generate_weight_bar_bytes(wt, lang)
+    except Exception:
+        wb = None
+    if wb:
+        fn = _next_fig()
+        wb_path = _save_png(wb)
+        cap_w = (f"Şekil {fn}. {ref_key} Kriter Ağırlık Dağılımı" if lang != "EN" else f"Figure {fn}. {ref_key} Criteria Weight Distribution")
+        md.append(f"![{cap_w}]({wb_path}){{width=70%}}\n")
 
-    # DISCUSSION & CONCLUSION
-    _write_discussion(doc, d, lang, lang_code)
-    _write_conclusion(doc, d, lang, lang_code)
+    # 3.2 Ranking
+    if rm:
+        md.append(f"### {h['results_rank']}\n")
+        rt = ref_d.get("ranking_table")
+        if isinstance(rt, pd.DataFrame) and not rt.empty:
+            rt_fmt = rt.copy()
+            for c in rt_fmt.select_dtypes(include=["float", "number"]).columns:
+                rt_fmt[c] = rt_fmt[c].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "")
+            tn = _next_tbl()
+            md.append(f"**{'Table' if lang == 'EN' else 'Tablo'} {tn}.** {rm} {'ranking for' if lang == 'EN' else 'sıralaması —'} {ref_key}.\n")
+            md.append(_df_to_md_table(rt_fmt, lang) + "\n")
+        if lang != "EN":
+            md.append(f"Tablo {_tbl_counter[0]}, {ref_key} dönemi için {rm} yöntemiyle elde edilen alternatif sıralamasını göstermektedir.\n")
+        else:
+            md.append(f"Table {_tbl_counter[0]} shows the alternative ranking obtained by {rm} for the {ref_key} period.\n")
+        if d["top_alt"]:
+            gap = abs(d["top_score"] - d["second_score"])
+            if lang == "EN":
+                gw = "a clear margin" if gap > 0.05 else "a narrow margin"
+                md.append(f"**{d['top_alt']}** ranks first (score: {f(d['top_score'], lang)}). Gap to second: {f(gap, lang)} ({gw}).\n")
+            else:
+                gw = "net bir fark" if gap > 0.05 else "dar bir marj"
+                md.append(f"**{d['top_alt']}** birinci sıradadır (skor: {f(d['top_score'], lang)}). İkinciyle fark: {f(gap, lang)} ({gw}).\n")
 
-    # REFERENCES (consolidated)
-    _write_references(doc, d, lang, lang_code)
+        # Ranking bar chart
+        try:
+            rb = _generate_ranking_bar_bytes(rt, lang)
+        except Exception:
+            rb = None
+        if rb:
+            fn = _next_fig()
+            rb_path = _save_png(rb)
+            cap_r = f"Şekil {fn}. {ref_key} Alternatif Skorları" if lang != "EN" else f"Figure {fn}. {ref_key} Alternative Scores"
+            md.append(f"![{cap_r}]({rb_path}){{width=70%}}\n")
 
-    # Signature
-    doc.add_paragraph("")
-    # Disclaimer + Signature
-    doc.add_paragraph("")
-    _add_paragraph(doc,
-        "This output is generated for informational and academic evaluation purposes only. The results presented are analytical recommendations based on the selected method and data; final decision responsibility rests with the decision-maker." if lang == "EN" else "Bu çıktı yalnızca bilgilendirme ve akademik değerlendirme amacıyla üretilmiştir. Sunulan sonuçlar, seçilen yöntem ve veriye dayalı analitik öneriler niteliğindedir; nihai karar sorumluluğu karar vericiye aittir.",
-        lang_code=lang_code, italic=True, font_size=9, space_after=4)
-    _add_paragraph(doc, "MCDM Karar Destek Sistemi — Prof. Dr. Ömer Faruk Rençber",
-        lang_code=lang_code, italic=True, font_size=9,
-        alignment=WD_ALIGN_PARAGRAPH.RIGHT)
+        # Method-specific chart
+        try:
+            mc_chart = _generate_method_specific_chart(d, lang)
+        except Exception:
+            mc_chart = None
+        if mc_chart:
+            fn = _next_fig()
+            mc_path = _save_png(mc_chart)
+            cap_m = f"Şekil {fn}. {rm} Görselleştirme" if lang != "EN" else f"Figure {fn}. {rm} Visualization"
+            md.append(f"![{cap_m}]({mc_path}){{width=70%}}\n")
 
-    buf = io.BytesIO()
-    doc.save(buf)
-    return buf.getvalue()
+    # 3.3 Robustness Findings
+    md.append(f"### {h['results_robust']}\n")
+
+    # Per-period robustness summary
+    for pk in period_keys:
+        pd_d = all_period_data[pk]
+        stab_pk = pd_d.get("stability", 0)
+        ms_pk = pd_d.get("mean_spearman", 0)
+        top_pk = pd_d.get("top_alt", "")
+
+        if lang == "EN":
+            md.append(f"**{pk}:** ")
+        else:
+            md.append(f"**{pk}:** ")
+
+        parts = []
+        if stab_pk > 0 and top_pk:
+            if lang == "EN":
+                lev = "high" if stab_pk >= 0.80 else ("moderate" if stab_pk >= 0.60 else "low")
+                parts.append(f"MC stability: **{top_pk}** first in **{f(stab_pk*100, lang, 1)}%** of iterations (**{lev}**)")
+            else:
+                lev = "yüksek" if stab_pk >= 0.80 else ("orta" if stab_pk >= 0.60 else "düşük")
+                parts.append(f"MC kararlılık: **{top_pk}** iterasyonların **%{f(stab_pk*100, lang, 1)}**'inde birinci (**{lev}**)")
+        if ms_pk > 0:
+            if lang == "EN":
+                lev = "high" if ms_pk >= 0.85 else ("moderate" if ms_pk >= 0.70 else "low")
+                parts.append(f"Cross-method Spearman: **ρ̄ = {f(ms_pk, lang)}** ({lev})")
+            else:
+                lev = "yüksek" if ms_pk >= 0.85 else ("orta" if ms_pk >= 0.70 else "düşük")
+                parts.append(f"Çapraz yöntem Spearman: **ρ̄ = {f(ms_pk, lang)}** ({lev})")
+        if parts:
+            md.append(". ".join(parts) + ".\n")
+        else:
+            if lang == "EN":
+                md.append("Robustness data not available for this period.\n")
+            else:
+                md.append("Bu dönem için sağlamlık verisi mevcut değildir.\n")
+
+    md.append("")
+
+    # 3.4 Cross-period comparison
+    if lang == "EN":
+        md.append("### 3.4 Cross-Period Comparison\n")
+    else:
+        md.append("### 3.4 Dönemler Arası Karşılaştırma\n")
+
+    # Weight comparison pivot
+    _w_rows = []
+    for pk in period_keys:
+        pd_d = all_period_data[pk]
+        _wt = pd_d.get("weight_table")
+        if isinstance(_wt, pd.DataFrame) and not _wt.empty:
+            crit_col = "Kriter" if "Kriter" in _wt.columns else _wt.columns[0]
+            w_col = "Ağırlık" if "Ağırlık" in _wt.columns else _wt.columns[-1]
+            for _, r in _wt.iterrows():
+                _w_rows.append({"Kriter": r[crit_col], pk: round(float(r[w_col]), 4)})
+    if _w_rows:
+        _wpivot = pd.DataFrame(_w_rows).groupby("Kriter").first().reset_index()
+        tn = _next_tbl()
+        cap = f"**Tablo {tn}.** Dönemlere Göre Kriter Ağırlıkları" if lang != "EN" else f"**Table {tn}.** Criteria Weights by Period"
+        md.append(cap)
+        md.append(_df_to_md_table(_wpivot))
+        md.append("")
+
+    # Ranking comparison pivot
+    if rm:
+        _r_rows = []
+        for pk in period_keys:
+            pd_d = all_period_data[pk]
+            _rt = pd_d.get("ranking_table")
+            if isinstance(_rt, pd.DataFrame) and not _rt.empty:
+                alt_col = "Alternatif" if "Alternatif" in _rt.columns else _rt.columns[0]
+                rank_col = "Sıra" if "Sıra" in _rt.columns else None
+                if rank_col and rank_col in _rt.columns:
+                    for _, r in _rt.iterrows():
+                        _r_rows.append({"Alternatif": str(r[alt_col]), pk: int(r[rank_col])})
+        if _r_rows:
+            _rpivot = pd.DataFrame(_r_rows).groupby("Alternatif").first().reset_index()
+            tn = _next_tbl()
+            cap = f"**Tablo {tn}.** Dönemlere Göre Alternatif Sıraları" if lang != "EN" else f"**Table {tn}.** Alternative Rankings by Period"
+            md.append(cap)
+            md.append(_df_to_md_table(_rpivot))
+            md.append("")
+
+    # Consolidated score table
+    _s_rows = []
+    for pk in period_keys:
+        pd_d = all_period_data[pk]
+        _rt = pd_d.get("ranking_table")
+        if isinstance(_rt, pd.DataFrame) and not _rt.empty:
+            alt_col = "Alternatif" if "Alternatif" in _rt.columns else _rt.columns[0]
+            score_col = "Skor" if "Skor" in _rt.columns else None
+            rank_col = "Sıra" if "Sıra" in _rt.columns else None
+            for _, r in _rt.iterrows():
+                row = {"Alternatif": str(r[alt_col]), "Dönem": pk}
+                if score_col and score_col in _rt.columns:
+                    row["Skor"] = round(float(pd.to_numeric(r[score_col], errors="coerce")), 4)
+                if rank_col and rank_col in _rt.columns:
+                    row["Sıra"] = int(pd.to_numeric(r[rank_col], errors="coerce"))
+                _s_rows.append(row)
+    if _s_rows:
+        _sdf = pd.DataFrame(_s_rows)
+        tn = _next_tbl()
+        cap = f"**Tablo {tn}.** Tüm Dönemlerde Alternatif Skorları ve Sıraları" if lang != "EN" \
+            else f"**Table {tn}.** Alternative Scores and Rankings Across All Periods"
+        md.append(cap)
+        md.append(_df_to_md_table(_sdf))
+        md.append("")
+
+    # Leader trend chart
+    if _ensure_matplotlib():
+        chart_bytes = _generate_panel_comparison_chart(period_keys, all_period_data, lang)
+        if chart_bytes:
+            fn = _next_fig()
+            cap = f"Şekil {fn}. Dönemler Arası Lider Skor Değişimi" if lang != "EN" \
+                else f"Figure {fn}. Leader Score Trends Across Periods"
+            md.append(f"![{cap}]({_save_png(chart_bytes)}){{width=85%}}\n")
+
+    # 3.5 Cross-Period Interpretation
+    leaders = {}
+    top_criteria = {}
+    for pk in period_keys:
+        pd_d = all_period_data[pk]
+        _rt = pd_d.get("ranking_table")
+        _wt = pd_d.get("weight_table")
+        if isinstance(_rt, pd.DataFrame) and not _rt.empty:
+            alt_col = "Alternatif" if "Alternatif" in _rt.columns else _rt.columns[0]
+            leaders[pk] = str(_rt.iloc[0][alt_col])
+        if isinstance(_wt, pd.DataFrame) and not _wt.empty:
+            crit_col = "Kriter" if "Kriter" in _wt.columns else _wt.columns[0]
+            top_criteria[pk] = str(_wt.iloc[0][crit_col])
+
+    unique_leaders = list(dict.fromkeys(leaders.values())) if leaders else []
+
+    if leaders:
+        if lang == "EN":
+            md.append("### 3.5 Cross-Period Interpretation\n")
+        else:
+            md.append("### 3.5 Dönemler Arası Yorum\n")
+
+        if lang == "EN":
+            if len(unique_leaders) == 1:
+                md.append(f"Across all {n_periods} periods, **{unique_leaders[0]}** consistently maintained the top position, indicating high ranking stability and robustness to temporal fluctuations in the underlying data.\n")
+            else:
+                changes = []
+                prev = None
+                for pk in period_keys:
+                    if pk in leaders:
+                        if prev and leaders[pk] != prev:
+                            changes.append(f"{pk}: {prev} → {leaders[pk]}")
+                        prev = leaders[pk]
+                md.append(f"The leader alternative changed {len(changes)} time(s) across {n_periods} periods ({'; '.join(changes)}). This volatility indicates that the decision environment is sensitive to temporal shifts, and the decision-maker should consider the specific conditions of each period before drawing conclusions.\n")
+        else:
+            if len(unique_leaders) == 1:
+                md.append(f"Tüm {n_periods} dönemde **{unique_leaders[0]}** tutarlı biçimde ilk sırada kalmıştır. Bu kararlılık, liderin üstünlüğünün verideki zamansal dalgalanmalara karşı dayanıklı olduğunu göstermektedir.\n")
+            else:
+                changes = []
+                prev = None
+                for pk in period_keys:
+                    if pk in leaders:
+                        if prev and leaders[pk] != prev:
+                            changes.append(f"{pk}: {prev} → {leaders[pk]}")
+                        prev = leaders[pk]
+                md.append(f"Lider alternatif {n_periods} dönem boyunca {len(changes)} kez değişmiştir ({'; '.join(changes)}). Bu oynaklık, karar ortamının zamansal değişimlere duyarlı olduğuna işaret etmekte olup, karar vericinin her dönemin özgün koşullarını ayrıca değerlendirmesi önerilmektedir.\n")
+
+        unique_top_crit = list(dict.fromkeys(top_criteria.values()))
+        if top_criteria:
+            if lang == "EN":
+                if len(unique_top_crit) == 1:
+                    md.append(f"The most influential criterion remained **{unique_top_crit[0]}** in all periods, confirming that the weight structure is temporally stable.\n")
+                else:
+                    md.append(f"The most influential criterion varied across periods ({', '.join(f'{k}: **{v}**' for k, v in top_criteria.items())}), suggesting that the relative importance of criteria shifts over time.\n")
+            else:
+                if len(unique_top_crit) == 1:
+                    md.append(f"En etkili kriter tüm dönemlerde **{unique_top_crit[0]}** olarak kalmış, ağırlık yapısının zamansal kararlılığını teyit etmektedir.\n")
+                else:
+                    md.append(f"En etkili kriter dönemler arasında değişim göstermiştir ({', '.join(f'{k}: **{v}**' for k, v in top_criteria.items())}); kriterlerin göreceli önemi zaman içinde kaymaktadır.\n")
+
+    # ── 4. DISCUSSION ──
+    md.append(f"## {h['discussion']}\n")
+    guide_disc = "Compare findings with the literature, interpret the leader's advantage, and discuss method strengths and limitations." if lang == "EN" else "Bulgular literatürle karşılaştırılmalı, liderin avantajı yorumlanmalı, yöntemin güçlü ve zayıf yönleri tartışılmalıdır."
+    md.append(f"*{guide_disc}*\n")
+
+    if lang == "EN":
+        if leaders:
+            stable = len(set(leaders.values())) == 1
+            md.append(f"The panel analysis reveals {'stable' if stable else 'dynamic'} decision patterns across {n_periods} periods. ")
+            if stable and unique_leaders:
+                md.append(f"**{unique_leaders[0]}** consistently achieved the highest score under the {wm} + {rm or wm} methodology across all periods, providing strong evidence for its superiority. ")
+            elif unique_leaders:
+                md.append(f"The alternation of leadership among {', '.join(unique_leaders)} across periods indicates that the decision environment is inherently dynamic, requiring period-specific interpretation. ")
+        # Robustness interpretation
+        avg_stab = np.mean([all_period_data[pk].get("stability", 0) for pk in period_keys])
+        avg_spearman = np.mean([all_period_data[pk].get("mean_spearman", 0) for pk in period_keys if all_period_data[pk].get("mean_spearman", 0) > 0])
+        if avg_stab > 0:
+            md.append(f"The average Monte Carlo stability across periods is {f(avg_stab*100, lang, 1)}%, {'confirming robust results' if avg_stab >= 0.80 else 'suggesting moderate sensitivity to weight perturbations' if avg_stab >= 0.60 else 'indicating notable sensitivity to weight perturbations'}. ")
+        if not np.isnan(avg_spearman) and avg_spearman > 0:
+            md.append(f"Cross-method agreement (mean Spearman ρ = {f(avg_spearman, lang)}) {'confirms that rankings are robust to method selection' if avg_spearman >= 0.85 else 'indicates partial sensitivity to method choice, suggesting that the rationale for the selected method should be carefully documented'}. ")
+        md.append(f"\n\nThe strength of {wm} lies in its ability to derive weights directly from data without expert intervention, ensuring objectivity and reproducibility. ")
+        if rm:
+            md.append(f"{rm} complements this by providing a systematic scoring framework that {'incorporates measurement uncertainty through TFN modeling' if is_fuzzy else 'evaluates alternatives relative to ideal reference points'}. ")
+        md.append("The multi-layered robustness protocol (local sensitivity + Monte Carlo + cross-method comparison) applied to each period independently, combined with cross-period stability assessment, ensures that the conclusions are not artifacts of a single assumption or temporal snapshot.\n")
+    else:
+        if leaders:
+            stable = len(set(leaders.values())) == 1
+            md.append(f"Panel analizi, {n_periods} dönem boyunca {'kararlı' if stable else 'dinamik'} karar örüntülerini ortaya koymaktadır. ")
+            if stable and unique_leaders:
+                md.append(f"**{unique_leaders[0]}** alternatifi {wm} + {rm or wm} metodolojisi altında tüm dönemlerde tutarlı biçimde en yüksek skoru elde etmiş, üstünlüğü için güçlü kanıt sunmuştur. ")
+            elif unique_leaders:
+                md.append(f"Liderliğin dönemler arasında {', '.join(unique_leaders)} alternatifleri arasında değişmesi, karar ortamının doğası gereği dinamik olduğuna ve döneme özel yorumlama gerektirdiğine işaret etmektedir. ")
+        avg_stab = np.mean([all_period_data[pk].get("stability", 0) for pk in period_keys])
+        avg_spearman = np.mean([all_period_data[pk].get("mean_spearman", 0) for pk in period_keys if all_period_data[pk].get("mean_spearman", 0) > 0])
+        if avg_stab > 0:
+            md.append(f"Dönemler genelinde ortalama Monte Carlo kararlılığı %{f(avg_stab*100, lang, 1)} olup {'sonuçların sağlam olduğunu doğrulamaktadır' if avg_stab >= 0.80 else 'ağırlık pertürbasyonlarına orta düzeyde duyarlılığa işaret etmektedir' if avg_stab >= 0.60 else 'ağırlık pertürbasyonlarına kayda değer duyarlılığa işaret etmektedir'}. ")
+        if not np.isnan(avg_spearman) and avg_spearman > 0:
+            md.append(f"Yöntemler arası uyum (ortalama Spearman ρ = {f(avg_spearman, lang)}) {'sıralamanın yöntem seçimine karşı dayanıklı olduğunu doğrulamaktadır' if avg_spearman >= 0.85 else 'sıralamanın yöntem seçimine kısmen duyarlı olduğuna işaret etmekte olup seçilen yöntemin gerekçesinin dikkatle belgelenmesi gerekmektedir'}. ")
+        md.append(f"\n\n{wm} yönteminin güçlü yönü, ağırlıkları uzman müdahalesine gerek kalmadan doğrudan veriden türetebilmesi, böylece nesnellik ve tekrar üretilebilirlik sağlamasıdır. ")
+        if rm:
+            md.append(f"{rm} yöntemi bunu, {'ölçüm belirsizliğini TFN modellemesiyle skorlama sürecine dahil eden' if is_fuzzy else 'alternatifleri ideal referans noktalarına göre değerlendiren'} sistematik bir skorlama çerçevesi sunarak tamamlamaktadır. ")
+        md.append("Her döneme bağımsız olarak uygulanan çok katmanlı sağlamlık protokolü (lokal duyarlılık + Monte Carlo + çapraz yöntem karşılaştırması) ile dönemler arası kararlılık değerlendirmesinin birleşimi, sonuçların tek bir varsayımın veya zamansal anlık görüntünün yapıtı olmadığını garanti altına almaktadır.\n")
+
+    # ── 5. CONCLUSION ──
+    md.append(f"## {h['conclusion']}\n")
+    guide_conc = "Summarize key findings, state the contribution, and suggest future research directions." if lang == "EN" else "Ana bulguları özetleyiniz, çalışmanın katkısını belirtiniz ve gelecek araştırma yönlerini öneriniz."
+    md.append(f"*{guide_conc}*\n")
+
+    if lang == "EN":
+        md.append(f"This study presented a panel multi-criteria evaluation framework integrating {wm} for objective criteria weighting" + (f" and {rm} for alternative ranking" if rm else "") + f", applied to {d['n_alt']} alternatives across {d['n_crit']} criteria over {n_periods} time periods ({', '.join(period_keys)}). ")
+        if unique_leaders:
+            avg_stab = np.mean([all_period_data[pk].get("stability", 0) for pk in period_keys])
+            if len(unique_leaders) == 1:
+                if avg_stab >= 0.80:
+                    md.append(f"**{unique_leaders[0]}** ranked first consistently across all periods and robustness tests (average MC stability: {f(avg_stab*100, lang, 1)}%), establishing a reliable and temporally stable reference point for decision-makers. ")
+                elif avg_stab >= 0.60:
+                    md.append(f"**{unique_leaders[0]}** showed relative advantage across all periods (average stability: {f(avg_stab*100, lang, 1)}%), though the result should be interpreted alongside the sensitivity findings. ")
+                else:
+                    md.append(f"**{unique_leaders[0]}** achieved the highest score across all periods, but the average stability ({f(avg_stab*100, lang, 1)}%) suggests sensitivity to weight perturbations. ")
+            else:
+                md.append(f"The leadership alternated among {', '.join(unique_leaders)} across periods, providing nuanced evidence that requires period-specific interpretation. ")
+        md.append("The proposed methodology contributes to the literature by integrating data-driven weighting with multi-layered robustness validation within a unified panel decision support framework, enabling both cross-sectional and temporal assessment of decision reliability.\n")
+        md.append("Future work may extend the analysis to additional periods, incorporate dynamic weighting strategies that capture temporal dependencies, or apply the framework to broader application domains.\n")
+    else:
+        md.append(f"Bu çalışmada, {d['n_alt']} alternatif ve {d['n_crit']} kriter üzerinde {n_periods} zaman dönemi ({', '.join(period_keys)}) boyunca {wm} ile nesnel kriter ağırlıklandırma" + (f" ve {rm} ile alternatif sıralama" if rm else "") + "yı bütünleştiren panel çok kriterli bir değerlendirme çerçevesi sunulmuştur. ")
+        if unique_leaders:
+            avg_stab = np.mean([all_period_data[pk].get("stability", 0) for pk in period_keys])
+            if len(unique_leaders) == 1:
+                if avg_stab >= 0.80:
+                    md.append(f"**{unique_leaders[0]}** alternatifi tüm dönemlerde ve sağlamlık testlerinde tutarlı biçimde birinci sırada yer almış (ortalama MC kararlılık: %{f(avg_stab*100, lang, 1)}) ve karar vericiler için güvenilir, zamansal olarak kararlı bir referans noktası oluşturmuştur. ")
+                elif avg_stab >= 0.60:
+                    md.append(f"**{unique_leaders[0]}** alternatifi tüm dönemlerde göreli avantaj sergilemiştir (ortalama kararlılık: %{f(avg_stab*100, lang, 1)}); bununla birlikte sonucun duyarlılık bulguları eşliğinde değerlendirilmesi önerilmektedir. ")
+                else:
+                    md.append(f"**{unique_leaders[0]}** tüm dönemlerde en yüksek skoru elde etmiş olmakla birlikte ortalama kararlılık düzeyi (%{f(avg_stab*100, lang, 1)}) ağırlık pertürbasyonlarına duyarlılığa işaret etmektedir. ")
+            else:
+                md.append(f"Liderliğin dönemler arasında {', '.join(unique_leaders)} alternatifleri arasında değişmesi, döneme özel yorumlama gerektiren nüanslı kanıtlar sunmaktadır. ")
+        md.append("Önerilen metodoloji, veri temelli ağırlıklandırmayı çok katmanlı sağlamlık doğrulamasıyla bütünleşik bir panel karar destek çerçevesi içinde birleştirerek hem kesitsel hem de zamansal karar güvenilirliği değerlendirmesine olanak tanımasıyla literatüre katkı sağlamaktadır.\n")
+        md.append("Gelecek çalışmalar analizi ek dönemlere genişletebilir, zamansal bağımlılıkları yakalayan dinamik ağırlıklandırma stratejileri kullanabilir veya çerçeveyi daha geniş uygulama alanlarına taşıyabilir.\n")
+
+    # ── REFERENCES ──
+    md.append(f"## {h['references']}\n")
+    md.append("- Rençber, Ö. F. (2026). MCDM Karar Destek Sistemi (Version 1.1) [Computer software]. https://mcdm-assistance.streamlit.app/\n")
+    try:
+        from mcdm_engine import _report_references
+        for ref in _report_references(d["weight_method"], d["ranking_method"]):
+            md.append(f"- {ref}\n")
+    except ImportError:
+        pass
+
+    # ── DISCLAIMER ──
+    md.append("\n---\n")
+    disc = "This output is for informational and academic evaluation purposes only. Final decision responsibility rests with the decision-maker." if lang == "EN" else "Bu çıktı yalnızca bilgilendirme ve akademik değerlendirme amacıyla üretilmiştir. Nihai karar sorumluluğu karar vericiye aittir."
+    md.append(f"*{disc}*\n")
+    md.append("\n*MCDM Karar Destek Sistemi — Prof. Dr. Ömer Faruk Rençber*\n")
+
+    # ── BUILD HTML ──
+    md_text = "\n".join(md)
+
+    def _md_to_html_body(md_str: str) -> str:
+        import re
+        lines = md_str.split("\n")
+        html_parts = []
+        in_table = False
+        for line in lines:
+            s = line.strip()
+            if not s:
+                if in_table:
+                    html_parts.append("</table>")
+                    in_table = False
+                html_parts.append("<p>&nbsp;</p>")
+                continue
+            if s.startswith("# "):
+                html_parts.append(f"<h1>{s[2:]}</h1>")
+            elif s.startswith("### "):
+                html_parts.append(f"<h3>{s[4:]}</h3>")
+            elif s.startswith("## "):
+                html_parts.append(f"<h2>{s[3:]}</h2>")
+            elif s.startswith("!["):
+                m = re.match(r"!\[([^\]]*)\]\(([^)]+)\)", s)
+                if m:
+                    cap, img_path = m.group(1), m.group(2)
+                    try:
+                        with open(img_path, "rb") as _imgf:
+                            img_b64 = _b64.b64encode(_imgf.read()).decode()
+                        html_parts.append(f'<div class="fig"><img src="data:image/png;base64,{img_b64}" style="max-width:85%"><p class="cap">{cap}</p></div>')
+                    except Exception:
+                        pass
+            elif s.startswith("$$"):
+                formula = s.strip("$").strip()
+                if formula:
+                    html_parts.append(f'<div class="math">$${formula}$$</div>')
+            elif s.startswith("|"):
+                if not in_table:
+                    html_parts.append('<table class="dt">')
+                    in_table = True
+                if s.replace(" ", "").replace("-", "").replace("|", "") == "" or s.startswith("|--") or s.startswith("| --"):
+                    continue
+                cells = [c.strip() for c in s.split("|")[1:-1]]
+                if not any(c for c in cells):
+                    continue
+                tag = "th" if not any(c.replace("*", "").strip() for c in cells if c.replace("*", "").strip() and c.replace("*", "").strip()[0].isdigit()) and html_parts[-1] == '<table class="dt">' else "td"
+                row_html = "".join(f"<{tag}>{c.replace('**', '')}</{tag}>" for c in cells)
+                html_parts.append(f"<tr>{row_html}</tr>")
+            elif s.startswith("---"):
+                if in_table:
+                    html_parts.append("</table>")
+                    in_table = False
+                html_parts.append("<hr>")
+            elif s.startswith("- "):
+                html_parts.append(f"<p style='margin-left:1.5em;'>• {s[2:]}</p>")
+            elif s.startswith("***") and s.endswith("***"):
+                html_parts.append(f"<p><b><i>{s[3:-3]}</i></b></p>")
+            elif s.startswith("*") and s.endswith("*") and not s.startswith("**"):
+                html_parts.append(f"<p class='guide'><i>{s.strip('*')}</i></p>")
+            elif s.startswith("**") and s.endswith("**"):
+                html_parts.append(f"<p><b>{s.strip('*')}</b></p>")
+            else:
+                processed = re.sub(r'\*\*([^*]+)\*\*', r'<b>\1</b>', s)
+                processed = re.sub(r'\*([^*]+)\*', r'<i>\1</i>', processed)
+                processed = re.sub(r'\$([^$]+)\$', r'\\(\1\\)', processed)
+                html_parts.append(f"<p>{processed}</p>")
+        if in_table:
+            html_parts.append("</table>")
+        return "\n".join(html_parts)
+
+    body = _md_to_html_body(md_text)
+
+    html = f"""<!DOCTYPE html>
+<html lang="{'en' if lang == 'EN' else 'tr'}">
+<head>
+<meta charset="utf-8">
+<title>{title}</title>
+<script>
+MathJax = {{tex: {{inlineMath: [['\\\\(','\\\\)']], displayMath: [['$$','$$']]}}}};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+<style>
+@page {{ size: A4; margin: 2.5cm; }}
+body {{ font-family: 'Times New Roman', serif; font-size: 12pt; color: #000; line-height: 1.8; text-align: justify; max-width: 800px; margin: 0 auto; padding: 2em; }}
+h1 {{ font-size: 15pt; font-weight: bold; text-align: center; margin: 1.2em 0 0.6em; color: #000; }}
+h2 {{ font-size: 13pt; font-weight: bold; margin: 1.2em 0 0.5em; color: #000; border-bottom: 1.5px solid #999; padding-bottom: 0.25em; }}
+h3 {{ font-size: 12pt; font-weight: bold; margin: 1em 0 0.4em; color: #000; }}
+p {{ margin: 0.5em 0; }}
+.guide {{ font-style: italic; font-size: 10pt; color: #666; margin: 0.3em 0 0.8em; }}
+.math {{ text-align: center; margin: 1em 0; font-size: 12pt; overflow-x: auto; }}
+.fig {{ text-align: center; margin: 1.5em 0; page-break-inside: avoid; }}
+.fig img {{ max-width: 90%; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }}
+.cap {{ font-style: italic; font-size: 10pt; color: #333; margin-top: 0.5em; }}
+.dt {{ width: 100%; border-collapse: collapse; font-size: 10pt; margin: 1em 0; page-break-inside: avoid; }}
+.dt th {{ background: #f5f5f5; border: 1px solid #bbb; padding: 6px 12px; text-align: left; font-weight: bold; }}
+.dt td {{ border: 1px solid #ddd; padding: 5px 12px; }}
+.dt tr:nth-child(even) td {{ background: #fafafa; }}
+.dt tr:first-child td {{ font-weight: 600; }}
+hr {{ border: none; border-top: 1px solid #ccc; margin: 2em 0; }}
+.footer {{ font-size: 9pt; font-style: italic; color: #666; margin-top: 2em; border-top: 1px solid #ccc; padding-top: 0.5em; }}
+@media print {{ body {{ max-width: 100%; padding: 0; }} .fig {{ page-break-inside: avoid; }} }}
+</style>
+</head>
+<body>
+{body}
+</body>
+</html>"""
+
+    for tp in _tmp_files:
+        try:
+            import os
+            os.unlink(tp)
+        except Exception:
+            pass
+
+    return html.encode("utf-8")
 
 
 # ---------------------------------------------------------------------------
