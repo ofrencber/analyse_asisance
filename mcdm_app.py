@@ -8311,6 +8311,31 @@ def _render_auth_gate(auth_settings: access.AuthSettings) -> None:
         ):
             access.login_user(auth_settings.provider)
 
+    # >>> DEBUG (kaldırılacak) — auth durumunu yüzeye çıkar
+    import streamlit as _st_debug
+    _has_login = callable(getattr(_st_debug, "login", None))
+    _has_logout = callable(getattr(_st_debug, "logout", None))
+    _has_user = hasattr(_st_debug, "user")
+    _st_ver = getattr(_st_debug, "__version__", "?")
+    _user_obj = getattr(_st_debug, "user", None)
+    _user_logged_in = bool(getattr(_user_obj, "is_logged_in", False)) if _user_obj is not None else False
+    st.warning(
+        f"DEBUG | streamlit={_st_ver} | "
+        f"st.login callable={_has_login} | st.logout callable={_has_logout} | hasattr st.user={_has_user} | "
+        f"is_logged_in={_user_logged_in} | "
+        f"enabled={auth_settings.enabled} | configured={auth_settings.configured} | "
+        f"provider={auth_settings.provider!r} | signup_provider={auth_settings.signup_provider!r}"
+    )
+    if st.button("🔬 DEBUG: Direkt st.login('auth0') dene", key="btn_debug_direct_login"):
+        try:
+            st.login("auth0")
+            st.warning("st.login('auth0') çağrıldı, ama exception YOK ve redirect de OLMADI (görüyorsan bu satırı).")
+        except Exception as _exc:
+            import traceback as _tb
+            st.error(f"DEBUG exception: {type(_exc).__name__}: {_exc}")
+            st.code(_tb.format_exc())
+    # <<< DEBUG sonu
+
     # YouTube & Instagram
     _vid = tt("Tanıtım Videosu", "Demo Video")
     st.markdown(
