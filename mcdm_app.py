@@ -8174,6 +8174,17 @@ def _render_name_collection_screen(user: access.CurrentUser) -> None:
         st.rerun()
 
 def _render_auth_gate(auth_settings: access.AuthSettings) -> None:
+    # >>> DEBUG (kaldırılacak) — TOP-LEVEL st.login butonu (column/with disinda)
+    if st.button("🧪 TOP-LEVEL st.login('auth0')", key="btn_debug_toplevel_login"):
+        try:
+            st.login("auth0")
+            st.warning("Top-level st.login cagrildi — exception YOK, redirect OLMADI (bu satiri gorebiliyorsan).")
+        except Exception as _exc_tl:
+            import traceback as _tb_tl
+            st.error(f"DEBUG TOP-LEVEL exception: {type(_exc_tl).__name__}: {_exc_tl}")
+            st.code(_tb_tl.format_exc())
+    # <<< DEBUG sonu
+
     # Hero banner — giriş yapmamış kullanıcılara gösterilir (yıldızlı gece gökyüzü)
 
     # CSS: Kayıt Ol butonu sarı gradient, Giriş Yap butonu outline
@@ -8319,21 +8330,26 @@ def _render_auth_gate(auth_settings: access.AuthSettings) -> None:
     _st_ver = getattr(_st_debug, "__version__", "?")
     _user_obj = getattr(_st_debug, "user", None)
     _user_logged_in = bool(getattr(_user_obj, "is_logged_in", False)) if _user_obj is not None else False
+    # st.user'a dogrudan eris dene — hasattr False neden, gercek exception ne?
+    try:
+        _direct_user = _st_debug.user
+        _user_access = f"OK type={type(_direct_user).__name__}"
+    except Exception as _ue:
+        _user_access = f"FAIL {type(_ue).__name__}: {str(_ue)[:120]}"
+    # Authlib durumu
+    try:
+        import authlib  # noqa: F401
+        _authlib_ver = getattr(authlib, "__version__", "?")
+    except Exception as _ae:
+        _authlib_ver = f"IMPORT_FAIL: {_ae}"
     st.warning(
-        f"DEBUG | streamlit={_st_ver} | "
+        f"DEBUG | streamlit={_st_ver} | authlib={_authlib_ver} | "
         f"st.login callable={_has_login} | st.logout callable={_has_logout} | hasattr st.user={_has_user} | "
+        f"st.user erisim={_user_access} | "
         f"is_logged_in={_user_logged_in} | "
         f"enabled={auth_settings.enabled} | configured={auth_settings.configured} | "
         f"provider={auth_settings.provider!r} | signup_provider={auth_settings.signup_provider!r}"
     )
-    if st.button("🔬 DEBUG: Direkt st.login('auth0') dene", key="btn_debug_direct_login"):
-        try:
-            st.login("auth0")
-            st.warning("st.login('auth0') çağrıldı, ama exception YOK ve redirect de OLMADI (görüyorsan bu satırı).")
-        except Exception as _exc:
-            import traceback as _tb
-            st.error(f"DEBUG exception: {type(_exc).__name__}: {_exc}")
-            st.code(_tb.format_exc())
     # <<< DEBUG sonu
 
     # YouTube & Instagram
