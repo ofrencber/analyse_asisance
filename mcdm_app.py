@@ -8297,21 +8297,19 @@ def _render_auth_gate(auth_settings: access.AuthSettings) -> None:
     # Giriş / Kayıt butonları — col1: sarı CTA, col2: outline login
     _btn_col1, _btn_col2, _btn_spacer = st.columns([1.6, 1, 0.8])
     with _btn_col1:
-        st.button(
+        if st.button(
             tt("🚀 Ücretsiz Kayıt Ol · Hemen Başla", "🚀 Sign Up Free · Get Started Now"),
-            on_click=access.login_user,
-            args=[auth_settings.signup_provider],
             use_container_width=True,
             key="btn_auth_signup_gate",
-        )
+        ):
+            access.login_user(auth_settings.signup_provider)
     with _btn_col2:
-        st.button(
+        if st.button(
             tt("🔐 Giriş Yap", "🔐 Sign In"),
-            on_click=access.login_user,
-            args=[auth_settings.provider],
             use_container_width=True,
             key="btn_auth_login_gate",
-        )
+        ):
+            access.login_user(auth_settings.provider)
 
     # YouTube & Instagram
     _vid = tt("Tanıtım Videosu", "Demo Video")
