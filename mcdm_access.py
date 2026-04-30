@@ -125,7 +125,9 @@ def _as_list(value: Any) -> List[str]:
 
 
 def _streamlit_auth_supported() -> bool:
-    return hasattr(st, "user") and callable(getattr(st, "login", None)) and callable(getattr(st, "logout", None))
+    # st.user bazi surumlerde lazy-property olabiliyor (ilk login oncesi
+    # hasattr False donuyor). Login icin st.login + st.logout yeterli.
+    return callable(getattr(st, "login", None)) and callable(getattr(st, "logout", None))
 
 
 def get_auth_settings() -> AuthSettings:
