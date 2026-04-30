@@ -8342,13 +8342,16 @@ def _render_auth_gate(auth_settings: access.AuthSettings) -> None:
         _authlib_ver = getattr(authlib, "__version__", "?")
     except Exception as _ae:
         _authlib_ver = f"IMPORT_FAIL: {_ae}"
+    # streamlit modulunde auth/user/login icerikli tum attribute'lari listele
+    _st_auth_attrs = sorted([a for a in dir(_st_debug) if any(k in a.lower() for k in ("user", "auth", "login", "oauth"))])
     st.warning(
         f"DEBUG | streamlit={_st_ver} | authlib={_authlib_ver} | "
         f"st.login callable={_has_login} | st.logout callable={_has_logout} | hasattr st.user={_has_user} | "
         f"st.user erisim={_user_access} | "
         f"is_logged_in={_user_logged_in} | "
         f"enabled={auth_settings.enabled} | configured={auth_settings.configured} | "
-        f"provider={auth_settings.provider!r} | signup_provider={auth_settings.signup_provider!r}"
+        f"provider={auth_settings.provider!r} | signup_provider={auth_settings.signup_provider!r} | "
+        f"st.* auth-related attrs={_st_auth_attrs}"
     )
     # <<< DEBUG sonu
 
